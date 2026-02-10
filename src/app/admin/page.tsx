@@ -37,6 +37,13 @@ export default function AdminPage() {
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: 'Cocktails' });
   const [paymentForm, setPaymentForm] = useState({ method: 'cash' as string, transactionId: '', paymentType: 'direct_cash' as string });
 
+  // Toast notifications
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' = 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 5000);
+  };
+
   // Receipt verification
   const [receiptInput, setReceiptInput] = useState('');
   const [verificationResult, setVerificationResult] = useState<Order | null>(null);
@@ -71,17 +78,20 @@ export default function AdminPage() {
 
   // Data fetching
   const fetchOrders = useCallback(async () => {
-    const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (error) { console.error('Failed to fetch orders:', error.message); return; }
     if (data) setOrders(data as Order[]);
   }, []);
 
   const fetchMenu = useCallback(async () => {
-    const { data } = await supabase.from('menu_items').select('*').order('category', { ascending: true });
+    const { data, error } = await supabase.from('menu_items').select('*').order('category', { ascending: true });
+    if (error) { console.error('Failed to fetch menu:', error.message); return; }
     if (data) setMenuItems(data as MenuItem[]);
   }, []);
 
   const fetchTables = useCallback(async () => {
-    const { data } = await supabase.from('restaurant_tables').select('*').order('table_number', { ascending: true });
+    const { data, error } = await supabase.from('restaurant_tables').select('*').order('table_number', { ascending: true });
+    if (error) { console.error('Failed to fetch tables:', error.message); return; }
     if (data) setTables(data as RestaurantTable[]);
   }, []);
 
@@ -125,21 +135,26 @@ export default function AdminPage() {
   };
 
   const confirmOrder = async (order: Order) => {
-    await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', order.id);
-    await supabase.from('restaurant_tables').update({ status: 'booked', current_order_id: order.receipt_id, updated_at: new Date().toISOString() }).eq('table_number', order.table_number);
+    const { error: orderError } = await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', order.id);
+    if (orderError) { showToast(`Failed to confirm order: ${orderError.message}`); return; }
+    const { error: tableError } = await supabase.from('restaurant_tables').update({ status: 'booked', current_order_id: order.receipt_id, updated_at: new Date().toISOString() }).eq('table_number', order.table_number);
+    if (tableError) { console.error('Failed to update table:', tableError.message); }
     setNotifications(prev => prev.filter(n => n.id !== order.id));
+    showToast('Order confirmed', 'success');
     fetchOrders();
     fetchTables();
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId);
+    const { error } = await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId);
+    if (error) { showToast(`Failed to update order: ${error.message}`); return; }
+    showToast(`Order status updated to ${status}`, 'success');
     fetchOrders();
   };
 
   const handleMarkPaid = async () => {
     if (!showPaymentModal) return;
-    await supabase.from('orders').update({
+    const { error: payError } = await supabase.from('orders').update({
       status: 'paid',
       payment_status: 'paid',
       payment_method: paymentForm.method,
@@ -147,11 +162,14 @@ export default function AdminPage() {
       transaction_id: paymentForm.transactionId || null,
       updated_at: new Date().toISOString()
     }).eq('id', showPaymentModal.id);
-    await supabase.from('restaurant_tables').update({
+    if (payError) { showToast(`Failed to record payment: ${payError.message}`); return; }
+    const { error: tableError } = await supabase.from('restaurant_tables').update({
       status: 'available',
       current_order_id: null,
       updated_at: new Date().toISOString()
     }).eq('table_number', showPaymentModal.table_number);
+    if (tableError) { console.error('Failed to update table:', tableError.message); }
+    showToast('Payment recorded successfully', 'success');
     setShowPaymentModal(null);
     setPaymentForm({ method: 'cash', transactionId: '', paymentType: 'direct_cash' });
     fetchOrders();
@@ -159,21 +177,26 @@ export default function AdminPage() {
   };
 
   const releaseTable = async (tableNumber: number) => {
-    await supabase.from('restaurant_tables').update({
+    const { error } = await supabase.from('restaurant_tables').update({
       status: 'available', current_order_id: null, updated_at: new Date().toISOString()
     }).eq('table_number', tableNumber);
+    if (error) { showToast(`Failed to release table: ${error.message}`); return; }
+    showToast('Table released', 'success');
     fetchTables();
   };
 
   // Menu CRUD
   const handleSaveMenuItem = async () => {
-    if (!menuForm.name || !menuForm.price) return;
+    if (!menuForm.name || !menuForm.price) { showToast('Please fill in name and price'); return; }
     const data = { name: menuForm.name, price: parseFloat(menuForm.price), category: menuForm.category, available: true, updated_at: new Date().toISOString() };
+    let error;
     if (editMenuItem) {
-      await supabase.from('menu_items').update(data).eq('id', editMenuItem.id);
+      ({ error } = await supabase.from('menu_items').update(data).eq('id', editMenuItem.id));
     } else {
-      await supabase.from('menu_items').insert(data);
+      ({ error } = await supabase.from('menu_items').insert(data));
     }
+    if (error) { showToast(`Failed to save menu item: ${error.message}`); return; }
+    showToast(editMenuItem ? 'Menu item updated' : 'Menu item added', 'success');
     setShowMenuModal(false);
     setEditMenuItem(null);
     setMenuForm({ name: '', price: '', category: 'Cocktails' });
@@ -181,25 +204,32 @@ export default function AdminPage() {
   };
 
   const toggleMenuAvailability = async (item: MenuItem) => {
-    await supabase.from('menu_items').update({ available: !item.available, updated_at: new Date().toISOString() }).eq('id', item.id);
+    const { error } = await supabase.from('menu_items').update({ available: !item.available, updated_at: new Date().toISOString() }).eq('id', item.id);
+    if (error) { showToast(`Failed to toggle availability: ${error.message}`); return; }
     fetchMenu();
   };
 
   const deleteMenuItem = async (id: number) => {
     if (!confirm('Delete this menu item?')) return;
-    await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) { showToast(`Failed to delete menu item: ${error.message}`); return; }
+    showToast('Menu item deleted', 'success');
     fetchMenu();
   };
 
   const addTable = async () => {
     const maxNum = tables.length > 0 ? Math.max(...tables.map(t => t.table_number)) : 0;
-    await supabase.from('restaurant_tables').insert({ table_number: maxNum + 1 });
+    const { error } = await supabase.from('restaurant_tables').insert({ table_number: maxNum + 1 });
+    if (error) { showToast(`Failed to add table: ${error.message}`); return; }
+    showToast(`Table ${maxNum + 1} added`, 'success');
     fetchTables();
   };
 
   const removeTable = async (id: number) => {
     if (!confirm('Remove this table?')) return;
-    await supabase.from('restaurant_tables').delete().eq('id', id);
+    const { error } = await supabase.from('restaurant_tables').delete().eq('id', id);
+    if (error) { showToast(`Failed to remove table: ${error.message}`); return; }
+    showToast('Table removed', 'success');
     fetchTables();
   };
 
@@ -288,6 +318,24 @@ export default function AdminPage() {
             </div>
           </div>
         </header>
+
+        {/* Toast Notification */}
+        {toast && (
+          <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-xl shadow-lg transition-all animate-slideIn ${
+            toast.type === 'error' 
+              ? 'bg-red-900/95 border border-red-500/50 text-red-200' 
+              : 'bg-green-900/95 border border-green-500/50 text-green-200'
+          }`}>
+            <div className="flex items-center gap-2">
+              {toast.type === 'error' ? (
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" /></svg>
+              ) : (
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              )}
+              <p className="text-sm font-medium">{toast.message}</p>
+            </div>
+          </div>
+        )}
 
         {/* Notification Toasts */}
         {notifications.length > 0 && (
@@ -700,7 +748,13 @@ export default function AdminPage() {
               <p className="text-center text-gray-500 text-xs mt-1">Print and place on each table</p>
             </div>
             <div className="p-4 md:p-6 grid grid-cols-2 md:grid-cols-3 gap-3 max-h-[60vh] overflow-y-auto">
-              {tables.map((table) => (
+              {tables.length === 0 ? (
+                <div className="col-span-full text-center py-8">
+                  <svg className="w-12 h-12 mx-auto text-gray-600 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6z" /></svg>
+                  <p className="text-gray-400 text-sm font-medium">No tables configured</p>
+                  <p className="text-gray-500 text-xs mt-1">Go to Tables tab and add tables first</p>
+                </div>
+              ) : tables.map((table) => (
                 <div key={table.id} className="bg-white rounded-xl p-3 text-center">
                   <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${getBaseUrl()}/order?table=${table.table_number}`)}&bgcolor=ffffff&color=000000`} alt={`Table ${table.table_number} QR`} className="mx-auto mb-2 w-[120px] h-[120px]" />
                   <p className="text-black font-bold">Table {table.table_number}</p>
@@ -710,7 +764,7 @@ export default function AdminPage() {
             </div>
             <div className="p-4 border-t border-[#d4af37]/20 flex gap-2">
               <button className="secondary-btn flex-1 text-sm py-2.5" onClick={() => setShowQRModal(false)}>Close</button>
-              <button className="luxury-btn flex-1 text-sm py-2.5" onClick={() => window.print()}>Print</button>
+              {tables.length > 0 && <button className="luxury-btn flex-1 text-sm py-2.5" onClick={() => window.print()}>Print</button>}
             </div>
           </div>
         </div>

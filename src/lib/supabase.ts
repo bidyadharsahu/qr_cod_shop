@@ -24,8 +24,14 @@ export function getSupabase(): SupabaseClient {
 }
 
 // For backward compatibility – lazy getter so the client is only created at runtime
+// Using bind() to ensure methods retain proper `this` context
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
-    return (getSupabase() as unknown as Record<string | symbol, unknown>)[prop];
+    const client = getSupabase();
+    const value = (client as unknown as Record<string | symbol, unknown>)[prop];
+    if (typeof value === 'function') {
+      return (value as Function).bind(client);
+    }
+    return value;
   },
 });
