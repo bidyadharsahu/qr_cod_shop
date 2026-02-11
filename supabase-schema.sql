@@ -53,44 +53,41 @@ ALTER TABLE menu_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE restaurant_tables ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 
--- Menu Items: Anyone can READ, only authenticated users can MODIFY
-CREATE POLICY "Public can read menu" ON menu_items
-  FOR SELECT USING (true);
+-- ===========================================
+-- MENU ITEMS POLICIES
+-- ===========================================
+-- Anyone can read menu
+CREATE POLICY "menu_select" ON menu_items FOR SELECT USING (true);
+-- Authenticated users can insert
+CREATE POLICY "menu_insert" ON menu_items FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Authenticated users can update
+CREATE POLICY "menu_update" ON menu_items FOR UPDATE USING (auth.role() = 'authenticated');
+-- Authenticated users can delete
+CREATE POLICY "menu_delete" ON menu_items FOR DELETE USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Admin can insert menu" ON menu_items
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
+-- ===========================================
+-- RESTAURANT TABLES POLICIES
+-- ===========================================
+-- Anyone can read tables
+CREATE POLICY "tables_select" ON restaurant_tables FOR SELECT USING (true);
+-- Authenticated users can insert
+CREATE POLICY "tables_insert" ON restaurant_tables FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+-- Authenticated users can update
+CREATE POLICY "tables_update" ON restaurant_tables FOR UPDATE USING (auth.role() = 'authenticated');
+-- Authenticated users can delete
+CREATE POLICY "tables_delete" ON restaurant_tables FOR DELETE USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Admin can update menu" ON menu_items
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Admin can delete menu" ON menu_items
-  FOR DELETE USING (auth.uid() IS NOT NULL);
-
--- Tables: Anyone can READ, only authenticated users can MODIFY
-CREATE POLICY "Public can read tables" ON restaurant_tables
-  FOR SELECT USING (true);
-
-CREATE POLICY "Admin can insert tables" ON restaurant_tables
-  FOR INSERT WITH CHECK (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Admin can update tables" ON restaurant_tables
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Admin can delete tables" ON restaurant_tables
-  FOR DELETE USING (auth.uid() IS NOT NULL);
-
--- Orders: Anyone can INSERT & READ, only authenticated users can UPDATE
-CREATE POLICY "Anyone can create orders" ON orders
-  FOR INSERT WITH CHECK (true);
-
-CREATE POLICY "Anyone can read orders" ON orders
-  FOR SELECT USING (true);
-
-CREATE POLICY "Admin can update orders" ON orders
-  FOR UPDATE USING (auth.uid() IS NOT NULL);
-
-CREATE POLICY "Admin can delete orders" ON orders
-  FOR DELETE USING (auth.uid() IS NOT NULL);
+-- ===========================================
+-- ORDERS POLICIES
+-- ===========================================
+-- Anyone can read orders
+CREATE POLICY "orders_select" ON orders FOR SELECT USING (true);
+-- Anyone can create orders (customers placing orders)
+CREATE POLICY "orders_insert" ON orders FOR INSERT WITH CHECK (true);
+-- Authenticated users can update orders
+CREATE POLICY "orders_update" ON orders FOR UPDATE USING (auth.role() = 'authenticated');
+-- Authenticated users can delete orders
+CREATE POLICY "orders_delete" ON orders FOR DELETE USING (auth.role() = 'authenticated');
 
 -- ============================================
 -- Enable Realtime
@@ -100,7 +97,7 @@ ALTER PUBLICATION supabase_realtime ADD TABLE restaurant_tables;
 ALTER PUBLICATION supabase_realtime ADD TABLE orders;
 
 -- ============================================
--- Default Data
+-- Default Data (use ON CONFLICT to avoid duplicates)
 -- ============================================
 
 -- Default Menu Items
@@ -113,8 +110,10 @@ INSERT INTO menu_items (name, price, category) VALUES
   ('Bud Light', 5.00, 'Beer'),
   ('Crown Royal Apple', 9.00, 'Whiskey'),
   ('Smirnoff Vodka', 6.00, 'Vodka'),
-  ('Budweiser', 6.00, 'Beer');
+  ('Budweiser', 6.00, 'Beer')
+ON CONFLICT DO NOTHING;
 
 -- Default Tables (1-10)
 INSERT INTO restaurant_tables (table_number) VALUES
-  (1), (2), (3), (4), (5), (6), (7), (8), (9), (10);
+  (1), (2), (3), (4), (5), (6), (7), (8), (9), (10)
+ON CONFLICT (table_number) DO NOTHING;
