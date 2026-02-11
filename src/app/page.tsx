@@ -1,168 +1,197 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 
-export default function Home() {
-  const [mounted, setMounted] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  useEffect(() => {
-    setMounted(true);
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-    };
-    
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
-
+export default function LandingPage() {
   return (
-    <main className="min-h-screen min-h-dvh relative overflow-hidden bg-[#030303]">
-      {/* Animated gradient background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div 
-          className="absolute w-[800px] h-[800px] rounded-full opacity-20 blur-[120px] transition-all duration-1000 ease-out pointer-events-none"
-          style={{
-            background: 'radial-gradient(circle, #d4af37 0%, transparent 70%)',
-            left: mousePos.x - 400,
-            top: mousePos.y - 400,
-          }}
-        />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-gradient-to-br from-amber-500/10 to-transparent rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-gradient-to-tl from-yellow-600/10 to-transparent rounded-full blur-3xl animate-pulse" style={{ animationDelay: '1s' }} />
-      </div>
-      
-      {/* Grid pattern overlay */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(212,175,55,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(212,175,55,0.03)_1px,transparent_1px)] bg-[size:64px_64px]" />
-      
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen min-h-dvh px-6 py-12">
-        {/* Floating particles */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          {mounted && [...Array(20)].map((_, i) => (
-            <div
-              key={i}
-              className="absolute w-1 h-1 bg-[#d4af37]/40 rounded-full"
-              style={{
-                left: `${Math.random() * 100}%`,
-                top: `${Math.random() * 100}%`,
-                animation: `float ${5 + Math.random() * 10}s linear infinite`,
-                animationDelay: `${Math.random() * 5}s`,
-              }}
-            />
-          ))}
-        </div>
-
-        {/* Logo with glow effect */}
-        <div className={`mb-10 transition-all duration-1000 ${mounted ? 'opacity-100 scale-100' : 'opacity-0 scale-75'}`}>
-          <div className="relative">
-            <div className="absolute inset-0 bg-[#d4af37] rounded-full blur-2xl opacity-40 animate-pulse" />
-            <div className="relative w-28 h-28 rounded-full bg-gradient-to-br from-[#f4e4bc] via-[#d4af37] to-[#996515] flex items-center justify-center shadow-2xl shadow-[#d4af37]/30 border border-[#d4af37]/50">
-              <svg className="w-14 h-14 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8.25v-1.5m0 1.5c-1.355 0-2.697.056-4.024.166C6.845 8.51 6 9.473 6 10.608v2.513m6-4.87c1.355 0 2.697.055 4.024.165C17.155 8.51 18 9.473 18 10.608v2.513m-3-4.87v-1.5m-6 1.5v-1.5m12 9.75l-1.5.75a3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0 3.354 3.354 0 00-3 0 3.354 3.354 0 01-3 0L3 16.5m15-3.38a48.474 48.474 0 00-6-.37c-2.032 0-4.034.125-6 .37m12 0c.39.049.777.102 1.163.16 1.07.16 1.837 1.094 1.837 2.175v5.17c0 .62-.504 1.124-1.125 1.124H4.125A1.125 1.125 0 013 20.625v-5.17c0-1.08.768-2.014 1.837-2.174A47.78 47.78 0 016 13.12M12.265 3.11a.375.375 0 11-.53 0L12 2.845l.265.265zm-3 0a.375.375 0 11-.53 0L9 2.845l.265.265zm6 0a.375.375 0 11-.53 0L15 2.845l.265.265z" />
-              </svg>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white">
+      {/* Navigation */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/50 backdrop-blur-lg border-b border-white/10">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center">
+              <span className="text-xl font-bold text-black">N</span>
             </div>
+            <span className="text-xl font-bold">netrikxr.shop</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <Link 
+              href="/admin/login" 
+              className="px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
+            >
+              Admin Login
+            </Link>
+            <Link 
+              href="/admin" 
+              className="px-4 py-2 text-sm bg-amber-500 hover:bg-amber-600 text-black font-medium rounded-lg transition-colors"
+            >
+              Dashboard
+            </Link>
           </div>
         </div>
+      </nav>
 
-        {/* Title with animated text */}
-        <div className={`text-center mb-8 transition-all duration-1000 delay-200 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <h1 className="text-5xl md:text-6xl font-black mb-4 tracking-tight">
-            <span className="bg-gradient-to-r from-[#f4e4bc] via-[#d4af37] to-[#996515] bg-clip-text text-transparent">
-              netrikxr
-            </span>
-            <span className="text-white/90">.shop</span>
-          </h1>
-          <p className="text-gray-400 text-lg md:text-xl font-light tracking-wide">
-            Premium Digital Ordering Experience
-          </p>
-        </div>
-
-        {/* Decorative divider */}
-        <div className={`flex items-center gap-4 mb-10 transition-all duration-1000 delay-300 ${mounted ? 'opacity-100' : 'opacity-0'}`}>
-          <div className="w-16 h-px bg-gradient-to-r from-transparent to-[#d4af37]/50" />
-          <div className="w-2 h-2 rotate-45 bg-[#d4af37]" />
-          <div className="w-16 h-px bg-gradient-to-l from-transparent to-[#d4af37]/50" />
-        </div>
-
-        {/* Main card */}
-        <div className={`relative max-w-md w-full transition-all duration-1000 delay-400 ${mounted ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-          <div className="absolute inset-0 bg-gradient-to-br from-[#d4af37]/20 to-transparent rounded-3xl blur-xl" />
-          <div className="relative bg-gradient-to-br from-[#1a1a1a]/90 to-[#0d0d0d]/90 backdrop-blur-xl rounded-3xl p-8 border border-[#d4af37]/20 shadow-2xl">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-[#d4af37]/20 to-transparent flex items-center justify-center border border-[#d4af37]/30">
-                <svg className="w-8 h-8 text-[#d4af37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5zM3.75 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5zM13.5 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 0113.5 9.375v-4.5z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.5 14.625c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5a1.125 1.125 0 01-1.125-1.125v-4.5z" />
-                </svg>
+      {/* Hero Section */}
+      <section className="pt-32 pb-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20 rounded-full text-amber-400 text-sm mb-6">
+                <span className="w-2 h-2 bg-amber-400 rounded-full animate-pulse"></span>
+                Smart Restaurant Ordering
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">Scan to Order</h2>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Scan the QR code on your table to access our digital menu and place your order seamlessly.
+              <h1 className="text-5xl lg:text-6xl font-bold leading-tight mb-6">
+                QR Code
+                <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500"> Ordering </span>
+                System
+              </h1>
+              <p className="text-xl text-gray-400 mb-8 leading-relaxed">
+                Transform your restaurant with AI-powered chatbot ordering. Customers scan, order, and pay - all from their phone.
               </p>
+              <div className="flex flex-wrap gap-4">
+                <Link 
+                  href="/admin/login" 
+                  className="px-8 py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-black font-semibold rounded-xl hover:opacity-90 transition-opacity flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Get Started
+                </Link>
+                <Link 
+                  href="/order?table=1" 
+                  className="px-8 py-4 bg-white/5 border border-white/10 text-white font-semibold rounded-xl hover:bg-white/10 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                  View Demo
+                </Link>
+              </div>
             </div>
-
-            {/* Steps */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
-              {[
-                { step: '01', label: 'Scan QR', icon: 'M3.75 4.875c0-.621.504-1.125 1.125-1.125h4.5c.621 0 1.125.504 1.125 1.125v4.5c0 .621-.504 1.125-1.125 1.125h-4.5A1.125 1.125 0 013.75 9.375v-4.5z' },
-                { step: '02', label: 'Browse', icon: 'M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25' },
-                { step: '03', label: 'Enjoy', icon: 'M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
-              ].map((item, i) => (
-                <div key={i} className="text-center group">
-                  <div className="w-12 h-12 mx-auto mb-2 rounded-xl bg-[#1a1a1a] border border-[#d4af37]/20 flex items-center justify-center group-hover:border-[#d4af37]/50 group-hover:bg-[#d4af37]/10 transition-all duration-300">
-                    <svg className="w-5 h-5 text-[#d4af37]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-                    </svg>
-                  </div>
-                  <p className="text-[10px] uppercase tracking-wider text-[#d4af37]/80 font-medium">{item.step}</p>
-                  <p className="text-xs text-gray-500">{item.label}</p>
+            <div className="relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-amber-400/20 to-orange-500/20 blur-3xl rounded-full"></div>
+              <div className="relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-8 border border-white/10">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 </div>
-              ))}
-            </div>
-
-            {/* Location badge */}
-            <div className="flex items-center justify-center gap-2 text-gray-500 text-xs">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
-              </svg>
-              <span className="uppercase tracking-widest">Tampa, Florida</span>
+                <div className="space-y-4">
+                  <div className="flex gap-3">
+                    <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-black font-bold shrink-0">N</div>
+                    <div className="bg-gray-700/50 rounded-2xl rounded-tl-sm p-4 max-w-xs">
+                      <p className="text-sm">Welcome to Table 5! I&apos;m your AI waiter. What would you like to order today?</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 justify-end">
+                    <div className="bg-amber-500/20 rounded-2xl rounded-tr-sm p-4 max-w-xs">
+                      <p className="text-sm text-amber-200">I&apos;d like a Mojito and some appetizers please</p>
+                    </div>
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center shrink-0">👤</div>
+                  </div>
+                  <div className="flex gap-3">
+                    <div className="w-10 h-10 bg-amber-500 rounded-full flex items-center justify-center text-black font-bold shrink-0">N</div>
+                    <div className="bg-gray-700/50 rounded-2xl rounded-tl-sm p-4 max-w-xs">
+                      <p className="text-sm">Great choice! I&apos;ve added Mojito ($9) to your cart. Browse our menu below!</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Bottom links */}
-        <div className={`mt-12 flex flex-col items-center gap-4 transition-all duration-1000 delay-500 ${mounted ? 'opacity-100' : 'opacity-0'}`}>
-          <Link 
-            href="/admin/login" 
-            className="group flex items-center gap-2 text-gray-500 text-sm hover:text-[#d4af37] transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-            </svg>
-            Staff Access
-            <svg className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-          </Link>
-          
-          <p className="text-gray-700 text-xs">
-            &copy; {new Date().getFullYear()} netrikxr.shop. All rights reserved.
-          </p>
+      {/* How It Works */}
+      <section className="py-20 px-6 bg-black/30">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold mb-4">How It Works</h2>
+            <p className="text-gray-400 text-lg">Simple 4-step process for seamless ordering</p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {[
+              { step: '01', title: 'Scan QR Code', desc: 'Customer scans the QR code placed on their table', icon: '📱' },
+              { step: '02', title: 'Chat & Order', desc: 'AI chatbot assists with menu browsing and ordering', icon: '💬' },
+              { step: '03', title: 'Confirm Order', desc: 'Admin receives and confirms the order instantly', icon: '✅' },
+              { step: '04', title: 'Pay & Enjoy', desc: 'Pay via chatbot or cash - order details sent to WhatsApp', icon: '💳' },
+            ].map((item) => (
+              <div key={item.step} className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-amber-400/20 to-orange-500/20 rounded-2xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <div className="relative bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-2xl p-6 border border-white/5 hover:border-amber-500/30 transition-colors h-full">
+                  <div className="text-4xl mb-4">{item.icon}</div>
+                  <div className="text-amber-400 text-sm font-mono mb-2">Step {item.step}</div>
+                  <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                  <p className="text-gray-400 text-sm">{item.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
-      
-      {/* Custom styles for animations */}
-      <style jsx>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0) translateX(0); opacity: 0.4; }
-          25% { transform: translateY(-20px) translateX(10px); opacity: 0.8; }
-          50% { transform: translateY(-40px) translateX(-10px); opacity: 0.4; }
-          75% { transform: translateY(-20px) translateX(5px); opacity: 0.6; }
-        }
-      `}</style>
-    </main>
+      </section>
+
+      {/* Features */}
+      <section className="py-20 px-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl lg:text-4xl font-bold mb-4">Powerful Features</h2>
+            <p className="text-gray-400 text-lg">Everything you need to run a modern restaurant</p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[
+              { title: 'QR Code Generation', desc: 'Auto-generate unique QR codes for each table', icon: '🔳' },
+              { title: 'Real-time Orders', desc: 'Instant order notifications to admin dashboard', icon: '⚡' },
+              { title: 'AI Chatbot Waiter', desc: 'Smart chatbot handles ordering like a human waiter', icon: '🤖' },
+              { title: 'Table Management', desc: 'Track table status: available, booked, or occupied', icon: '🪑' },
+              { title: 'Menu Management', desc: 'Easy add, edit, or remove menu items', icon: '📋' },
+              { title: 'Payment Tracking', desc: 'Track cash and online payments separately', icon: '💰' },
+            ].map((feature, i) => (
+              <div key={i} className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 rounded-xl p-6 border border-white/5 hover:border-amber-500/20 transition-colors">
+                <div className="text-3xl mb-4">{feature.icon}</div>
+                <h3 className="text-lg font-semibold mb-2">{feature.title}</h3>
+                <p className="text-gray-400 text-sm">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="py-20 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-amber-400/30 to-orange-500/30 blur-3xl rounded-3xl"></div>
+            <div className="relative bg-gradient-to-br from-gray-800 to-gray-900 rounded-3xl p-12 border border-amber-500/20 text-center">
+              <h2 className="text-3xl lg:text-4xl font-bold mb-4">Ready to Transform Your Restaurant?</h2>
+              <p className="text-gray-400 text-lg mb-8">Start accepting orders through QR codes today</p>
+              <Link 
+                href="/admin/login" 
+                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-black font-semibold rounded-xl hover:opacity-90 transition-opacity"
+              >
+                Access Admin Dashboard
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="py-8 px-6 border-t border-white/10">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-lg flex items-center justify-center">
+              <span className="text-sm font-bold text-black">N</span>
+            </div>
+            <span className="font-semibold">netrikxr.shop</span>
+          </div>
+          <p className="text-gray-500 text-sm">© 2026 netrikxr.shop. All rights reserved.</p>
+        </div>
+      </footer>
+    </div>
   );
 }
