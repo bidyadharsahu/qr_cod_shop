@@ -11,10 +11,13 @@ export interface MenuItem {
 export interface RestaurantTable {
   id: number;
   table_number: number;
+  seats?: number;
   status: 'available' | 'booked' | 'occupied';
   current_order_id: string | null;
   updated_at?: string;
 }
+
+export type Table = RestaurantTable;
 
 export interface OrderItem {
   id: number;
@@ -32,7 +35,7 @@ export interface Order {
   subtotal: number;
   tip_amount: number;
   total: number;
-  status: 'pending' | 'confirmed' | 'preparing' | 'served' | 'paid' | 'cancelled';
+  status: 'pending' | 'confirmed' | 'preparing' | 'served' | 'paid' | 'completed' | 'cancelled';
   payment_method: 'card' | 'cash' | 'online' | null;
   payment_status: 'unpaid' | 'paid';
   payment_type: 'direct_cash' | 'chatbot_payment' | null;
