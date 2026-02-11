@@ -41,6 +41,7 @@ export interface Order {
   payment_type: 'direct_cash' | 'chatbot_payment' | null;
   transaction_id: string | null;
   customer_note: string | null;
+  rating: number | null;
   created_at: string;
   updated_at: string;
 }

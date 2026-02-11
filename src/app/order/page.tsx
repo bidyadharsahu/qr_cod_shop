@@ -167,20 +167,20 @@ function OrderContent() {
     const orderData = {
       table_number: parseInt(tableNumber),
       items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
-      total: subtotal,
+      subtotal: subtotal,
       tip_amount: 0,
+      total: subtotal,
       status: 'pending',
-      payment_status: 'pending',
-      receipt_id: receipt,
-      rating: null,
-      feedback: null
+      payment_status: 'unpaid',
+      receipt_id: receipt
     };
 
     const { error } = await supabase.from('orders').insert(orderData);
     setLoading(false);
 
     if (error) {
-      addBotMessage('❌ Sorry, there was an error placing your order. Please try again.', [{ label: '🔄 Try Again', value: 'checkout' }]);
+      console.error('Order error:', error);
+      addBotMessage(`❌ Error: ${error.message || 'Could not place order'}. Please try again.`, [{ label: '🔄 Try Again', value: 'checkout' }]);
       return;
     }
 
@@ -257,13 +257,14 @@ function OrderContent() {
   const handleRatingSubmit = async () => {
     if (rating === 0) return;
     
-    // Update order with rating
+    // Update order with rating and tip
     if (receiptId) {
-      await supabase.from('orders').update({ 
+      const { error } = await supabase.from('orders').update({ 
         rating, 
         tip_amount: tipAmount,
         total: total 
       }).eq('receipt_id', receiptId);
+      if (error) console.error('Rating update error:', error);
     }
     
     setShowThankYou(true);
