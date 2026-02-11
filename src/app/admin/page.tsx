@@ -239,39 +239,34 @@ export default function AdminDashboard() {
 
       {/* Header with horizontal menu */}
       <header className="bg-zinc-800 border-b border-zinc-700 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-14">
-            {/* Logo */}
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
-                <span className="text-lg font-bold text-black">N</span>
-              </div>
-              <div>
-                <p className="font-bold text-amber-400 text-sm">netrikxr.shop</p>
-                <p className="text-xs text-gray-500">Admin Panel</p>
-              </div>
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex items-center justify-between h-16">
+            {/* Site Name */}
+            <div>
+              <p className="font-bold text-amber-400 text-base">netrikxr.shop</p>
+              <p className="text-xs text-gray-500">Admin Panel</p>
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="flex items-center gap-1">
+            <nav className="flex items-center gap-2">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-base font-semibold transition-colors ${
                     activeTab === tab.id 
                       ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
                       : 'text-gray-400 hover:text-white hover:bg-zinc-700'
                   }`}
                 >
-                  <tab.icon className="w-4 h-4" />
+                  <tab.icon className="w-5 h-5" />
                   <span className="hidden sm:inline">{tab.label}</span>
                 </button>
               ))}
             </nav>
 
             {/* Right side actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <button onClick={() => setShowQRModal(true)} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors">
                 <QrCode className="w-5 h-5" />
                 <span className="hidden sm:inline text-sm">QR Codes</span>
@@ -289,79 +284,79 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto p-4 sm:p-6">
+      <main className="max-w-6xl mx-auto px-6 py-6">
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <ShoppingBag className="w-5 h-5 text-blue-400" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+                <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
+                  <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
-                <p className="text-gray-400 text-sm">Today&apos;s Orders</p>
-                <p className="text-2xl font-bold">{todayOrders.length}</p>
+                <p className="text-gray-400 text-xs">Today&apos;s Orders</p>
+                <p className="text-xl font-bold">{todayOrders.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <DollarSign className="w-5 h-5 text-green-400" />
+              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+                <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
+                  <DollarSign className="w-4 h-4 text-green-400" />
                 </div>
-                <p className="text-gray-400 text-sm">Revenue</p>
-                <p className="text-2xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
+                <p className="text-gray-400 text-xs">Revenue</p>
+                <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <Clock className="w-5 h-5 text-red-400" />
+              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+                <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
+                  <Clock className="w-4 h-4 text-red-400" />
                 </div>
-                <p className="text-gray-400 text-sm">Pending</p>
-                <p className="text-2xl font-bold">{pendingOrders}</p>
+                <p className="text-gray-400 text-xs">Pending</p>
+                <p className="text-xl font-bold">{pendingOrders}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
-                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <Users className="w-5 h-5 text-purple-400" />
+              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+                <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
+                  <Users className="w-4 h-4 text-purple-400" />
                 </div>
-                <p className="text-gray-400 text-sm">Active Tables</p>
-                <p className="text-2xl font-bold">{activeTables}/{tables.length}</p>
+                <p className="text-gray-400 text-xs">Active Tables</p>
+                <p className="text-xl font-bold">{activeTables}/{tables.length}</p>
               </div>
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
-                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <QrCode className="w-5 h-5 text-purple-400" />
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+                <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
+                  <QrCode className="w-4 h-4 text-purple-400" />
                 </div>
-                <p className="font-medium">Print QR Codes</p>
+                <p className="font-medium text-sm">Print QR Codes</p>
                 <p className="text-xs text-gray-500">For all tables</p>
               </button>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
-                <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <Plus className="w-5 h-5 text-green-400" />
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+                <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
+                  <Plus className="w-4 h-4 text-green-400" />
                 </div>
-                <p className="font-medium">Add Menu Item</p>
+                <p className="font-medium text-sm">Add Menu Item</p>
                 <p className="text-xs text-gray-500">New product</p>
               </button>
-              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
-                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <Grid3X3 className="w-5 h-5 text-blue-400" />
+              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+                <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
+                  <Grid3X3 className="w-4 h-4 text-blue-400" />
                 </div>
-                <p className="font-medium">Add Table</p>
+                <p className="font-medium text-sm">Add Table</p>
                 <p className="text-xs text-gray-500">New seating</p>
               </button>
-              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
-                <div className="w-10 h-10 bg-amber-500/20 rounded-lg flex items-center justify-center mb-3">
-                  <ShoppingBag className="w-5 h-5 text-amber-400" />
+              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+                <div className="w-8 h-8 bg-amber-500/20 rounded-md flex items-center justify-center mb-2">
+                  <ShoppingBag className="w-4 h-4 text-amber-400" />
                 </div>
-                <p className="font-medium">View Orders</p>
+                <p className="font-medium text-sm">View Orders</p>
                 <p className="text-xs text-gray-500">Manage orders</p>
               </button>
             </div>
 
             {/* Recent Orders & Tables */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Recent Orders */}
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
-                <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <h2 className="text-base font-semibold mb-3">Recent Orders</h2>
                 {orders.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">No orders yet</p>
                 ) : (
@@ -387,19 +382,19 @@ export default function AdminDashboard() {
               </div>
 
               {/* Tables Overview */}
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
-                <h2 className="text-lg font-semibold mb-4">Tables</h2>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+                <h2 className="text-base font-semibold mb-3">Tables</h2>
                 {tables.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No tables configured</p>
+                  <p className="text-gray-500 text-center py-6">No tables configured</p>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
                     {tables.map(table => (
-                      <div key={table.id} className={`aspect-square rounded-lg flex flex-col items-center justify-center text-center p-2 ${
+                      <div key={table.id} className={`aspect-square rounded-md flex flex-col items-center justify-center text-center p-2 ${
                         table.status === 'available' ? 'bg-teal-500/10 border border-teal-500/30 text-teal-400' :
                         table.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30 text-red-400' :
                         'bg-amber-500/10 border border-amber-500/30 text-amber-400'
                       }`}>
-                        <span className="text-2xl font-bold">{table.table_number}</span>
+                        <span className="text-xl font-bold">{table.table_number}</span>
                         <span className="text-xs capitalize">{table.status}</span>
                       </div>
                     ))}
@@ -413,16 +408,16 @@ export default function AdminDashboard() {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            <h1 className="text-2xl font-bold">Orders</h1>
+            <h1 className="text-xl font-bold">Orders</h1>
             {orders.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
-                <ShoppingBag className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-500">No orders yet</p>
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+                <ShoppingBag className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm">No orders yet</p>
               </div>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {orders.map(order => (
-                  <motion.div key={order.id} layout className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                  <motion.div key={order.id} layout className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
@@ -488,40 +483,40 @@ export default function AdminDashboard() {
         {activeTab === 'menu' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">Menu</h1>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium flex items-center gap-2 hover:bg-amber-400 transition-colors">
-                <Plus className="w-5 h-5" /> Add Item
+              <h1 className="text-xl font-bold">Menu</h1>
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-amber-400 transition-colors">
+                <Plus className="w-4 h-4" /> Add Item
               </button>
             </div>
             
             {menuItems.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
-                <UtensilsCrossed className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-500 mb-4">No menu items yet</p>
-                <button onClick={() => setShowMenuModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-lg font-medium">
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+                <UtensilsCrossed className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm mb-4">No menu items yet</p>
+                <button onClick={() => setShowMenuModal(true)} className="px-5 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm">
                   Add First Item
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {menuItems.map(item => (
-                  <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-xl p-4 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
-                    <div className="flex justify-between items-start mb-3">
+                  <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-lg p-3 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
+                    <div className="flex justify-between items-start mb-2">
                       <div>
                         <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-400">{item.category}</span>
-                        <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
+                        <h3 className="text-base font-semibold mt-1">{item.name}</h3>
                       </div>
-                      <p className="text-2xl font-bold text-green-400">${item.price.toFixed(2)}</p>
+                      <p className="text-xl font-bold text-green-400">${item.price.toFixed(2)}</p>
                     </div>
-                    <div className="flex gap-2 mt-4">
-                      <button onClick={() => toggleAvailability(item)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => toggleAvailability(item)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
                         {item.available ? '✓ Available' : '✗ Unavailable'}
                       </button>
-                      <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category }); setShowMenuModal(true); }} className="px-3 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg">
-                        <Edit className="w-4 h-4" />
+                      <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category }); setShowMenuModal(true); }} className="px-2 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-md">
+                        <Edit className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => deleteMenuItem(item.id)} className="px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg">
-                        <Trash2 className="w-4 h-4" />
+                      <button onClick={() => deleteMenuItem(item.id)} className="px-2 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md">
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </motion.div>
@@ -535,43 +530,43 @@ export default function AdminDashboard() {
         {activeTab === 'tables' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <div className="flex items-center justify-between">
-              <h1 className="text-2xl font-bold">Tables</h1>
-              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium flex items-center gap-2 hover:bg-amber-400 transition-colors">
-                <Plus className="w-5 h-5" /> Add Table
+              <h1 className="text-xl font-bold">Tables</h1>
+              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-amber-400 transition-colors">
+                <Plus className="w-4 h-4" /> Add Table
               </button>
             </div>
             
             {tables.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
-                <Grid3X3 className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-500 mb-4">No tables configured</p>
-                <button onClick={() => setShowAddTableModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-lg font-medium">
+              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+                <Grid3X3 className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-500 text-sm mb-4">No tables configured</p>
+                <button onClick={() => setShowAddTableModal(true)} className="px-5 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm">
                   Add First Table
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 {tables.map(table => (
-                  <motion.div key={table.id} layout className={`bg-zinc-800 border rounded-xl p-4 text-center ${
+                  <motion.div key={table.id} layout className={`bg-zinc-800 border rounded-lg p-3 text-center ${
                     table.status === 'available' ? 'border-teal-500/30' :
                     table.status === 'occupied' ? 'border-red-500/30' :
                     'border-amber-500/30'
                   }`}>
-                    <div className={`w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-3xl font-bold mb-3 ${
+                    <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center text-xl font-bold mb-2 ${
                       table.status === 'available' ? 'bg-teal-500/10 text-teal-400' :
                       table.status === 'occupied' ? 'bg-red-500/10 text-red-400' :
                       'bg-amber-500/10 text-amber-400'
                     }`}>
                       {table.table_number}
                     </div>
-                    <p className="text-sm text-gray-400 capitalize mb-3">{table.status}</p>
-                    {table.current_order_id && <p className="text-xs text-gray-500 mb-3">{table.current_order_id}</p>}
-                    <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm mb-2">
+                    <p className="text-xs text-gray-400 capitalize mb-2">{table.status}</p>
+                    {table.current_order_id && <p className="text-xs text-gray-500 mb-2">{table.current_order_id}</p>}
+                    <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs mb-2">
                       <option value="available">Available</option>
                       <option value="booked">Booked</option>
                       <option value="occupied">Occupied</option>
                     </select>
-                    <button onClick={() => deleteTable(table.id)} className="w-full px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm">
+                    <button onClick={() => deleteTable(table.id)} className="w-full px-2 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md text-xs">
                       Remove
                     </button>
                   </motion.div>
