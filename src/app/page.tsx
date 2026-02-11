@@ -2,7 +2,7 @@
 
 import { motion } from 'motion/react';
 import Link from 'next/link';
-import { Utensils, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -32,27 +32,12 @@ export default function LandingPage() {
 
       {/* Content */}
       <div className="relative z-10 flex flex-col items-center justify-center px-6 py-12">
-        
-        {/* Logo */}
-        <motion.div
-          initial={{ opacity: 0, y: -30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="mb-8"
-        >
-          <div className="relative">
-            <div className="absolute inset-0 bg-amber-500 rounded-2xl blur-xl opacity-30 animate-pulse"></div>
-            <div className="relative w-24 h-24 bg-gradient-to-br from-amber-300 via-amber-500 to-amber-700 rounded-2xl flex items-center justify-center shadow-2xl border border-amber-400/30">
-              <Utensils className="w-12 h-12 text-black" />
-            </div>
-          </div>
-        </motion.div>
 
         {/* Title */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
+          transition={{ duration: 0.8 }}
           className="text-center mb-12"
         >
           <h1 className="text-5xl md:text-7xl font-bold mb-4 bg-gradient-to-r from-amber-200 via-amber-400 to-amber-200 bg-clip-text text-transparent tracking-tight">
@@ -75,7 +60,7 @@ export default function LandingPage() {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
+          transition={{ duration: 0.8, delay: 0.4 }}
         >
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <Link
@@ -87,16 +72,6 @@ export default function LandingPage() {
               <span className="relative z-10 tracking-wide">STAFF LOGIN</span>
             </Link>
           </motion.div>
-        </motion.div>
-
-        {/* Footer */}
-        <motion.div 
-          className="absolute bottom-6 text-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1, delay: 1 }}
-        >
-          <p className="text-gray-600 text-sm">© 2026 netrikxr.shop • Tampa, Florida</p>
         </motion.div>
       </div>
     </div>

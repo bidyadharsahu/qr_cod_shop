@@ -81,6 +81,7 @@ function LoginContent() {
                   className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
                   placeholder="staff@netrikxr.shop"
                   required
+                  autoComplete="email"
                 />
               </div>
 
@@ -94,6 +95,7 @@ function LoginContent() {
                   className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-amber-500 transition-colors"
                   placeholder="Enter your password"
                   required
+                  autoComplete="current-password"
                 />
               </div>
 
