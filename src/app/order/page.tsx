@@ -141,7 +141,7 @@ function OrderContent() {
         break;
       case 'bill':
         addUserMessage('Generate bill');
-        addBotMessage('Here\'s your bill! You can download it or share via WhatsApp:', undefined, { showBill: true });
+        addBotMessage('Here\'s your bill! Please pay cash to the manager.', undefined, { showBill: true });
         break;
       case 'done':
         addUserMessage('Done');
@@ -186,10 +186,10 @@ function OrderContent() {
 
     setOrderPlaced(true);
     addBotMessage(
-      `✅ **Order Placed!**\n\nReceipt: **${receipt}**\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\nYour order has been sent to the kitchen!`,
+      `✅ **Order Placed!**\n\nReceipt: **${receipt}**\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\nYour order has been sent to the kitchen!\n\n💵 **Please pay cash to the manager when ready.**`,
       [
         { label: '➕ Order More', value: 'more' },
-        { label: '💳 Pay Now', value: 'pay' }
+        { label: '💵 Add Tip & Bill', value: 'pay' }
       ]
     );
   };
@@ -657,14 +657,13 @@ function OrderContent() {
                         </div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <button onClick={generatePDF} className="flex items-center justify-center gap-2 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl font-medium">
-                        <FileText className="w-5 h-5" /> Download PDF
-                      </button>
-                      <button onClick={shareWhatsApp} className="flex items-center justify-center gap-2 py-3 bg-green-500/10 border border-green-500/30 text-green-400 rounded-xl font-medium">
-                        <Phone className="w-5 h-5" /> WhatsApp
-                      </button>
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-center">
+                      <p className="text-amber-400 font-medium">💵 Please pay cash to the manager</p>
+                      <p className="text-xs text-gray-500 mt-1">Show this bill when paying</p>
                     </div>
+                    <button onClick={generatePDF} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl font-medium">
+                      <FileText className="w-5 h-5" /> Download PDF Bill
+                    </button>
                     <button onClick={() => handleOptionClick('done')} className="w-full py-3 bg-amber-500 text-black rounded-xl font-semibold">
                       Done
                     </button>

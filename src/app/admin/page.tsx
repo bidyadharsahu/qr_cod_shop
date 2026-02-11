@@ -9,11 +9,9 @@ import { supabase } from '@/lib/supabase';
 import type { MenuItem, Order, RestaurantTable } from '@/lib/types';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
-  LogOut, Plus, QrCode, Home, Bell, X, Check, ChefHat,
-  DollarSign, Clock, Users, Trash2, Edit, Phone
+  LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
+  DollarSign, Clock, Users, Trash2, Edit
 } from 'lucide-react';
-
-const ADMIN_WHATSAPP = '+16562145190';
 
 type User = { id: string; email?: string };
 
@@ -37,7 +35,6 @@ export default function AdminDashboard() {
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '' });
   const [tableNumberInput, setTableNumberInput] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'online'>('cash');
   
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -50,21 +47,6 @@ export default function AdminDashboard() {
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
     return 'https://qr-cod-shop.vercel.app';
-  };
-
-  // Send WhatsApp notification
-  const sendWhatsAppNotification = (order: Order, action: string) => {
-    const items = order.items?.map(i => `${i.quantity}x ${i.name}`).join(', ') || 'N/A';
-    const message = encodeURIComponent(
-      `🍽️ *${action}*\n\n` +
-      `Order: ${order.receipt_id}\n` +
-      `Table: ${order.table_number}\n` +
-      `Items: ${items}\n` +
-      `Total: $${order.total.toFixed(2)}\n` +
-      `Status: ${order.status.toUpperCase()}\n` +
-      `Payment: ${order.payment_status === 'paid' ? 'PAID' : 'PENDING'}`
-    );
-    window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${message}`, '_blank');
   };
 
   // Auth check
@@ -127,13 +109,12 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   };
 
-  // Order actions
+  // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
     await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', order.id);
     await supabase.from('restaurant_tables').update({ status: 'occupied', current_order_id: order.receipt_id }).eq('table_number', order.table_number);
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order confirmed!');
-    sendWhatsAppNotification({ ...order, status: 'confirmed' }, 'Order Confirmed');
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
@@ -144,8 +125,8 @@ export default function AdminDashboard() {
   const handlePayment = async () => {
     if (!showPaymentModal) return;
     await supabase.from('orders').update({
-      status: 'paid', payment_status: 'paid', payment_method: paymentMethod,
-      payment_type: paymentMethod === 'cash' ? 'direct_cash' : 'chatbot_payment'
+      status: 'paid', payment_status: 'paid', payment_method: 'cash',
+      payment_type: 'direct_cash'
     }).eq('id', showPaymentModal.id);
     await supabase.from('restaurant_tables').update({ status: 'available', current_order_id: null }).eq('table_number', showPaymentModal.table_number);
     showToast('Payment recorded!');
@@ -202,21 +183,21 @@ export default function AdminDashboard() {
 
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
       </div>
     );
   }
 
-  const sidebarItems = [
+  const tabs = [
     { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'orders', icon: ShoppingBag, label: 'Orders', badge: pendingOrders },
+    { id: 'orders', icon: ShoppingBag, label: 'Orders' },
     { id: 'menu', icon: UtensilsCrossed, label: 'Menu' },
     { id: 'tables', icon: Grid3X3, label: 'Tables' },
   ];
 
   return (
-    <div className="min-h-screen bg-black text-white flex">
+    <div className="min-h-screen bg-zinc-900 text-white">
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -238,7 +219,7 @@ export default function AdminDashboard() {
             initial={{ opacity: 0, scale: 0.9, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-4 right-4 z-50 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 shadow-2xl max-w-sm"
+            className="fixed top-20 right-4 z-50 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 shadow-2xl max-w-sm"
           >
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 bg-black/20 rounded-xl flex items-center justify-center">
@@ -256,375 +237,359 @@ export default function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Sidebar */}
-      <aside className="w-64 bg-gradient-to-b from-zinc-900/90 to-black/90 backdrop-blur-xl border-r border-amber-700/20 flex flex-col">
-        {/* Logo */}
-        <div className="p-6 border-b border-amber-700/20">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center">
-              <span className="text-xl font-bold text-black">N</span>
+      {/* Header with horizontal menu */}
+      <header className="bg-zinc-800 border-b border-zinc-700 sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4">
+          <div className="flex items-center justify-between h-14">
+            {/* Logo */}
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+                <span className="text-lg font-bold text-black">N</span>
+              </div>
+              <div>
+                <p className="font-bold text-amber-400 text-sm">netrikxr.shop</p>
+                <p className="text-xs text-gray-500">Admin Panel</p>
+              </div>
             </div>
-            <div>
-              <p className="font-bold text-amber-400">netrikxr.shop</p>
-              <p className="text-xs text-gray-500">Admin Panel</p>
-            </div>
-          </Link>
-        </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-4 space-y-2">
-          {sidebarItems.map(item => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id as typeof activeTab)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                activeTab === item.id 
-                  ? 'bg-gradient-to-r from-amber-500/20 to-amber-600/10 text-amber-400 border border-amber-500/30' 
-                  : 'text-gray-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <item.icon className="w-5 h-5" />
-              <span className="flex-1 text-left">{item.label}</span>
-              {item.badge && item.badge > 0 && (
-                <span className="px-2 py-0.5 bg-red-500 text-white text-xs rounded-full">{item.badge}</span>
-              )}
-            </button>
-          ))}
-        </nav>
+            {/* Horizontal Tabs */}
+            <nav className="flex items-center gap-1">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    activeTab === tab.id 
+                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                      : 'text-gray-400 hover:text-white hover:bg-zinc-700'
+                  }`}
+                >
+                  <tab.icon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{tab.label}</span>
+                </button>
+              ))}
+            </nav>
 
-        {/* Quick Actions */}
-        <div className="p-4 border-t border-amber-700/20 space-y-2">
-          <button onClick={() => setShowQRModal(true)} className="w-full flex items-center gap-3 px-4 py-3 bg-purple-500/10 border border-purple-500/30 text-purple-400 rounded-xl hover:bg-purple-500/20 transition-colors">
-            <QrCode className="w-5 h-5" />
-            <span>QR Codes</span>
-          </button>
-          <Link href="/" className="w-full flex items-center gap-3 px-4 py-3 bg-white/5 border border-white/10 text-gray-400 rounded-xl hover:bg-white/10 transition-colors">
-            <Home className="w-5 h-5" />
-            <span>View Site</span>
-          </Link>
-        </div>
-
-        {/* User */}
-        <div className="p-4 border-t border-amber-700/20">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-500/20 rounded-xl flex items-center justify-center">
-              <span className="text-amber-400 font-bold">{user?.email?.[0].toUpperCase()}</span>
+            {/* Right side actions */}
+            <div className="flex items-center gap-3">
+              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors">
+                <QrCode className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm">QR Codes</span>
+              </button>
+              <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors">
+                <LogOut className="w-5 h-5" />
+                <span className="hidden sm:inline text-sm">Log Out</span>
+              </button>
+              <div className="px-3 py-1 bg-amber-500 text-black text-sm font-medium rounded-full">
+                Admin
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-white truncate">{user?.email}</p>
-              <p className="text-xs text-gray-500">Admin</p>
-            </div>
-            <button onClick={handleLogout} className="p-2 text-gray-500 hover:text-red-400 transition-colors">
-              <LogOut className="w-5 h-5" />
-            </button>
           </div>
         </div>
-      </aside>
+      </header>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-auto">
-        <div className="p-8">
-          {/* Dashboard Tab */}
-          {activeTab === 'dashboard' && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <h1 className="text-2xl font-bold">Dashboard</h1>
-              
-              {/* Stats Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { label: "Today's Orders", value: todayOrders.length, icon: ShoppingBag, color: 'amber' },
-                  { label: "Revenue", value: `$${todayRevenue.toFixed(2)}`, icon: DollarSign, color: 'green' },
-                  { label: "Pending", value: pendingOrders, icon: Clock, color: 'red' },
-                  { label: "Active Tables", value: `${activeTables}/${tables.length}`, icon: Users, color: 'blue' },
-                ].map((stat, i) => (
-                  <motion.div 
-                    key={i}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * 0.1 }}
-                    className={`bg-gradient-to-br from-${stat.color}-500/10 to-black/50 backdrop-blur-xl border border-${stat.color}-500/20 rounded-2xl p-6`}
-                  >
-                    <div className="flex items-center justify-between mb-4">
-                      <stat.icon className={`w-8 h-8 text-${stat.color}-400`} />
+      <main className="max-w-7xl mx-auto p-4 sm:p-6">
+        {/* Dashboard Tab */}
+        {activeTab === 'dashboard' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+            {/* Stats Grid */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <ShoppingBag className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className="text-gray-400 text-sm">Today&apos;s Orders</p>
+                <p className="text-2xl font-bold">{todayOrders.length}</p>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <DollarSign className="w-5 h-5 text-green-400" />
+                </div>
+                <p className="text-gray-400 text-sm">Revenue</p>
+                <p className="text-2xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <Clock className="w-5 h-5 text-red-400" />
+                </div>
+                <p className="text-gray-400 text-sm">Pending</p>
+                <p className="text-2xl font-bold">{pendingOrders}</p>
+              </div>
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <Users className="w-5 h-5 text-purple-400" />
+                </div>
+                <p className="text-gray-400 text-sm">Active Tables</p>
+                <p className="text-2xl font-bold">{activeTables}/{tables.length}</p>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
+                <div className="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <QrCode className="w-5 h-5 text-purple-400" />
+                </div>
+                <p className="font-medium">Print QR Codes</p>
+                <p className="text-xs text-gray-500">For all tables</p>
+              </button>
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
+                <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <Plus className="w-5 h-5 text-green-400" />
+                </div>
+                <p className="font-medium">Add Menu Item</p>
+                <p className="text-xs text-gray-500">New product</p>
+              </button>
+              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
+                <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <Grid3X3 className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className="font-medium">Add Table</p>
+                <p className="text-xs text-gray-500">New seating</p>
+              </button>
+              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
+                <div className="w-10 h-10 bg-amber-500/20 rounded-lg flex items-center justify-center mb-3">
+                  <ShoppingBag className="w-5 h-5 text-amber-400" />
+                </div>
+                <p className="font-medium">View Orders</p>
+                <p className="text-xs text-gray-500">Manage orders</p>
+              </button>
+            </div>
+
+            {/* Recent Orders & Tables */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Recent Orders */}
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
+                {orders.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">No orders yet</p>
+                ) : (
+                  <div className="space-y-3">
+                    {orders.slice(0, 5).map(order => (
+                      <div key={order.id} className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg">
+                        <div>
+                          <p className="font-medium text-amber-400">{order.receipt_id}</p>
+                          <p className="text-xs text-gray-500">Table {order.table_number}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">${order.total.toFixed(2)}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            order.status === 'paid' ? 'bg-green-500/20 text-green-400' :
+                            order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                            'bg-blue-500/20 text-blue-400'
+                          }`}>{order.status}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tables Overview */}
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                <h2 className="text-lg font-semibold mb-4">Tables</h2>
+                {tables.length === 0 ? (
+                  <p className="text-gray-500 text-center py-8">No tables configured</p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {tables.map(table => (
+                      <div key={table.id} className={`aspect-square rounded-lg flex flex-col items-center justify-center text-center p-2 ${
+                        table.status === 'available' ? 'bg-teal-500/10 border border-teal-500/30 text-teal-400' :
+                        table.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30 text-red-400' :
+                        'bg-amber-500/10 border border-amber-500/30 text-amber-400'
+                      }`}>
+                        <span className="text-2xl font-bold">{table.table_number}</span>
+                        <span className="text-xs capitalize">{table.status}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Orders Tab */}
+        {activeTab === 'orders' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <h1 className="text-2xl font-bold">Orders</h1>
+            {orders.length === 0 ? (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
+                <ShoppingBag className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-500">No orders yet</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {orders.map(order => (
+                  <motion.div key={order.id} layout className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
+                      <div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                            order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-400' :
+                            order.status === 'preparing' ? 'bg-purple-500/20 text-purple-400' :
+                            order.status === 'served' ? 'bg-cyan-500/20 text-cyan-400' :
+                            order.status === 'paid' ? 'bg-green-500/20 text-green-400' :
+                            'bg-gray-500/20 text-gray-400'
+                          }`}>{order.status.toUpperCase()}</span>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                            order.payment_status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                          }`}>{order.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</span>
+                        </div>
+                        <p className="text-xl font-bold text-amber-400">{order.receipt_id}</p>
+                        <p className="text-gray-400">Table {order.table_number} • {new Date(order.created_at).toLocaleString()}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-3xl font-bold text-green-400">${order.total.toFixed(2)}</p>
+                        {order.tip_amount > 0 && <p className="text-sm text-gray-400">Tip: ${order.tip_amount.toFixed(2)}</p>}
+                      </div>
                     </div>
-                    <p className="text-3xl font-bold text-white">{stat.value}</p>
-                    <p className="text-sm text-gray-400">{stat.label}</p>
+                    
+                    <div className="flex flex-wrap gap-2 mb-4">
+                      {order.items?.map((item, idx) => (
+                        <span key={idx} className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+                          {item.quantity}x {item.name}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      {order.status === 'pending' && (
+                        <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                          <Check className="w-4 h-4" /> Confirm
+                        </button>
+                      )}
+                      {order.status === 'confirmed' && (
+                        <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                          <ChefHat className="w-4 h-4" /> Preparing
+                        </button>
+                      )}
+                      {order.status === 'preparing' && (
+                        <button onClick={() => updateOrderStatus(order.id, 'served')} className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-medium transition-colors">
+                          Served
+                        </button>
+                      )}
+                      {order.payment_status !== 'paid' && order.status !== 'pending' && (
+                        <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-lg text-sm font-medium transition-colors">
+                          Record Cash Payment
+                        </button>
+                      )}
+                    </div>
                   </motion.div>
                 ))}
               </div>
+            )}
+          </motion.div>
+        )}
 
-              {/* Quick Actions */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button onClick={() => setShowQRModal(true)} className="bg-gradient-to-br from-purple-500/10 to-purple-900/20 border border-purple-500/30 rounded-2xl p-4 text-left hover:border-purple-400/50 transition-colors">
-                  <QrCode className="w-8 h-8 text-purple-400 mb-2" />
-                  <p className="font-medium">Print QR Codes</p>
-                  <p className="text-xs text-gray-500">For all tables</p>
+        {/* Menu Tab */}
+        {activeTab === 'menu' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">Menu</h1>
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium flex items-center gap-2 hover:bg-amber-400 transition-colors">
+                <Plus className="w-5 h-5" /> Add Item
+              </button>
+            </div>
+            
+            {menuItems.length === 0 ? (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
+                <UtensilsCrossed className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-500 mb-4">No menu items yet</p>
+                <button onClick={() => setShowMenuModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-lg font-medium">
+                  Add First Item
                 </button>
-                <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="bg-gradient-to-br from-green-500/10 to-green-900/20 border border-green-500/30 rounded-2xl p-4 text-left hover:border-green-400/50 transition-colors">
-                  <Plus className="w-8 h-8 text-green-400 mb-2" />
-                  <p className="font-medium">Add Menu Item</p>
-                  <p className="text-xs text-gray-500">New product</p>
-                </button>
-                <button onClick={() => setShowAddTableModal(true)} className="bg-gradient-to-br from-blue-500/10 to-blue-900/20 border border-blue-500/30 rounded-2xl p-4 text-left hover:border-blue-400/50 transition-colors">
-                  <Grid3X3 className="w-8 h-8 text-blue-400 mb-2" />
-                  <p className="font-medium">Add Table</p>
-                  <p className="text-xs text-gray-500">New seating</p>
-                </button>
-                <a href={`https://wa.me/${ADMIN_WHATSAPP}`} target="_blank" rel="noopener noreferrer" className="bg-gradient-to-br from-emerald-500/10 to-emerald-900/20 border border-emerald-500/30 rounded-2xl p-4 text-left hover:border-emerald-400/50 transition-colors">
-                  <Phone className="w-8 h-8 text-emerald-400 mb-2" />
-                  <p className="font-medium">WhatsApp</p>
-                  <p className="text-xs text-gray-500">Open chat</p>
-                </a>
               </div>
-
-              {/* Recent Orders & Tables */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Recent Orders */}
-                <div className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-6">
-                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <ShoppingBag className="w-5 h-5 text-amber-400" />
-                    Recent Orders
-                  </h2>
-                  {orders.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No orders yet</p>
-                  ) : (
-                    <div className="space-y-3">
-                      {orders.slice(0, 5).map(order => (
-                        <div key={order.id} className="flex items-center justify-between p-3 bg-black/30 rounded-xl border border-white/5">
-                          <div>
-                            <p className="font-medium text-amber-400">{order.receipt_id}</p>
-                            <p className="text-xs text-gray-500">Table {order.table_number}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-bold">${order.total.toFixed(2)}</p>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              order.status === 'paid' ? 'bg-green-500/20 text-green-400' :
-                              order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                              'bg-blue-500/20 text-blue-400'
-                            }`}>{order.status}</span>
-                          </div>
-                        </div>
-                      ))}
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {menuItems.map(item => (
+                  <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-xl p-4 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-400">{item.category}</span>
+                        <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
+                      </div>
+                      <p className="text-2xl font-bold text-green-400">${item.price.toFixed(2)}</p>
                     </div>
-                  )}
-                </div>
-
-                {/* Tables Overview */}
-                <div className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-6">
-                  <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Grid3X3 className="w-5 h-5 text-amber-400" />
-                    Tables
-                  </h2>
-                  {tables.length === 0 ? (
-                    <p className="text-gray-500 text-center py-8">No tables configured</p>
-                  ) : (
-                    <div className="grid grid-cols-5 gap-2">
-                      {tables.map(table => (
-                        <div key={table.id} className={`aspect-square rounded-xl flex flex-col items-center justify-center text-center ${
-                          table.status === 'available' ? 'bg-green-500/10 border border-green-500/30 text-green-400' :
-                          table.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30 text-red-400' :
-                          'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                        }`}>
-                          <span className="text-lg font-bold">{table.table_number}</span>
-                          <span className="text-[10px] opacity-70">{table.status}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Orders Tab */}
-          {activeTab === 'orders' && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <h1 className="text-2xl font-bold">Orders</h1>
-              {orders.length === 0 ? (
-                <div className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-12 text-center">
-                  <ShoppingBag className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500">No orders yet</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {orders.map(order => (
-                    <motion.div key={order.id} layout className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-6">
-                      <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                              order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-400' :
-                              order.status === 'preparing' ? 'bg-purple-500/20 text-purple-400' :
-                              order.status === 'served' ? 'bg-cyan-500/20 text-cyan-400' :
-                              order.status === 'paid' ? 'bg-green-500/20 text-green-400' :
-                              'bg-gray-500/20 text-gray-400'
-                            }`}>{order.status.toUpperCase()}</span>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                              order.payment_status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
-                            }`}>{order.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</span>
-                            {order.payment_type && (
-                              <span className="px-3 py-1 rounded-full text-xs bg-gray-700 text-gray-300">
-                                {order.payment_type === 'direct_cash' ? '💵 Cash' : '💳 Online'}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xl font-bold text-amber-400">{order.receipt_id}</p>
-                          <p className="text-gray-400">Table {order.table_number} • {new Date(order.created_at).toLocaleString()}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-3xl font-bold text-green-400">${order.total.toFixed(2)}</p>
-                          {order.tip_amount > 0 && <p className="text-sm text-gray-400">Tip: ${order.tip_amount.toFixed(2)}</p>}
-                        </div>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2 mb-4">
-                        {order.items?.map((item, idx) => (
-                          <span key={idx} className="px-3 py-1.5 bg-black/30 border border-white/10 rounded-lg text-sm">
-                            {item.quantity}x {item.name}
-                          </span>
-                        ))}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        {order.status === 'pending' && (
-                          <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                            <Check className="w-4 h-4" /> Confirm
-                          </button>
-                        )}
-                        {order.status === 'confirmed' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                            <ChefHat className="w-4 h-4" /> Preparing
-                          </button>
-                        )}
-                        {order.status === 'preparing' && (
-                          <button onClick={() => updateOrderStatus(order.id, 'served')} className="px-4 py-2 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-sm font-medium transition-colors">
-                            Served
-                          </button>
-                        )}
-                        {order.payment_status !== 'paid' && order.status !== 'pending' && (
-                          <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-lg text-sm font-medium transition-colors">
-                            Record Payment
-                          </button>
-                        )}
-                        <button onClick={() => sendWhatsAppNotification(order, 'Order Update')} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                          <Phone className="w-4 h-4" /> WhatsApp
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* Menu Tab */}
-          {activeTab === 'menu' && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Menu</h1>
-                <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-medium flex items-center gap-2 hover:opacity-90 transition-opacity">
-                  <Plus className="w-5 h-5" /> Add Item
-                </button>
-              </div>
-              
-              {menuItems.length === 0 ? (
-                <div className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-12 text-center">
-                  <UtensilsCrossed className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">No menu items yet</p>
-                  <button onClick={() => setShowMenuModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-xl font-medium">
-                    Add First Item
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {menuItems.map(item => (
-                    <motion.div key={item.id} layout className={`bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border rounded-2xl p-5 ${item.available ? 'border-amber-700/20' : 'border-red-700/30 opacity-60'}`}>
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-400">{item.category}</span>
-                          <h3 className="text-lg font-semibold mt-2">{item.name}</h3>
-                        </div>
-                        <p className="text-2xl font-bold text-green-400">${item.price.toFixed(2)}</p>
-                      </div>
-                      <div className="flex gap-2 mt-4">
-                        <button onClick={() => toggleAvailability(item)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
-                          {item.available ? '✓ Available' : '✗ Unavailable'}
-                        </button>
-                        <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category }); setShowMenuModal(true); }} className="px-3 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg">
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button onClick={() => deleteMenuItem(item.id)} className="px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-
-          {/* Tables Tab */}
-          {activeTab === 'tables' && (
-            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-              <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold">Tables</h1>
-                <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-medium flex items-center gap-2 hover:opacity-90 transition-opacity">
-                  <Plus className="w-5 h-5" /> Add Table
-                </button>
-              </div>
-              
-              {tables.length === 0 ? (
-                <div className="bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border border-amber-700/20 rounded-2xl p-12 text-center">
-                  <Grid3X3 className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-4">No tables configured</p>
-                  <button onClick={() => setShowAddTableModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-xl font-medium">
-                    Add First Table
-                  </button>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                  {tables.map(table => (
-                    <motion.div key={table.id} layout className={`bg-gradient-to-br from-zinc-900/50 to-black/50 backdrop-blur-xl border rounded-2xl p-5 text-center ${
-                      table.status === 'available' ? 'border-green-500/30' :
-                      table.status === 'occupied' ? 'border-red-500/30' :
-                      'border-amber-500/30'
-                    }`}>
-                      <div className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center text-3xl font-bold mb-3 ${
-                        table.status === 'available' ? 'bg-green-500/10 text-green-400' :
-                        table.status === 'occupied' ? 'bg-red-500/10 text-red-400' :
-                        'bg-amber-500/10 text-amber-400'
-                      }`}>
-                        {table.table_number}
-                      </div>
-                      <p className="text-sm text-gray-400 capitalize mb-3">{table.status}</p>
-                      {table.current_order_id && <p className="text-xs text-gray-500 mb-3">{table.current_order_id}</p>}
-                      <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-3 py-2 bg-black/50 border border-white/10 rounded-lg text-sm mb-2">
-                        <option value="available">Available</option>
-                        <option value="booked">Booked</option>
-                        <option value="occupied">Occupied</option>
-                      </select>
-                      <button onClick={() => deleteTable(table.id)} className="w-full px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm">
-                        Remove
+                    <div className="flex gap-2 mt-4">
+                      <button onClick={() => toggleAvailability(item)} className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
+                        {item.available ? '✓ Available' : '✗ Unavailable'}
                       </button>
-                    </motion.div>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          )}
-        </div>
+                      <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category }); setShowMenuModal(true); }} className="px-3 py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-lg">
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => deleteMenuItem(item.id)} className="px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Tables Tab */}
+        {activeTab === 'tables' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">Tables</h1>
+              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium flex items-center gap-2 hover:bg-amber-400 transition-colors">
+                <Plus className="w-5 h-5" /> Add Table
+              </button>
+            </div>
+            
+            {tables.length === 0 ? (
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-12 text-center">
+                <Grid3X3 className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-500 mb-4">No tables configured</p>
+                <button onClick={() => setShowAddTableModal(true)} className="px-6 py-3 bg-amber-500 text-black rounded-lg font-medium">
+                  Add First Table
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                {tables.map(table => (
+                  <motion.div key={table.id} layout className={`bg-zinc-800 border rounded-xl p-4 text-center ${
+                    table.status === 'available' ? 'border-teal-500/30' :
+                    table.status === 'occupied' ? 'border-red-500/30' :
+                    'border-amber-500/30'
+                  }`}>
+                    <div className={`w-16 h-16 mx-auto rounded-xl flex items-center justify-center text-3xl font-bold mb-3 ${
+                      table.status === 'available' ? 'bg-teal-500/10 text-teal-400' :
+                      table.status === 'occupied' ? 'bg-red-500/10 text-red-400' :
+                      'bg-amber-500/10 text-amber-400'
+                    }`}>
+                      {table.table_number}
+                    </div>
+                    <p className="text-sm text-gray-400 capitalize mb-3">{table.status}</p>
+                    {table.current_order_id && <p className="text-xs text-gray-500 mb-3">{table.current_order_id}</p>}
+                    <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm mb-2">
+                      <option value="available">Available</option>
+                      <option value="booked">Booked</option>
+                      <option value="occupied">Occupied</option>
+                    </select>
+                    <button onClick={() => deleteTable(table.id)} className="w-full px-3 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm">
+                      Remove
+                    </button>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
       </main>
 
       {/* QR Modal */}
       <AnimatePresence>
         {showQRModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-gradient-to-br from-zinc-900 to-black border border-amber-700/30 rounded-3xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-amber-700/20 flex justify-between items-center sticky top-0 bg-zinc-900/95 backdrop-blur-xl rounded-t-3xl">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center sticky top-0 bg-zinc-800 rounded-t-2xl">
                 <h2 className="text-xl font-bold">Table QR Codes</h2>
-                <button onClick={() => setShowQRModal(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <button onClick={() => setShowQRModal(false)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -643,7 +608,7 @@ export default function AdminDashboard() {
                   </div>
                 )}
                 <div className="mt-6 flex justify-center">
-                  <button onClick={() => window.print()} className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-black rounded-xl font-medium transition-colors">
+                  <button onClick={() => window.print()} className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black rounded-lg font-medium transition-colors">
                     🖨️ Print All QR Codes
                   </button>
                 </div>
@@ -657,30 +622,30 @@ export default function AdminDashboard() {
       <AnimatePresence>
         {showMenuModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-gradient-to-br from-zinc-900 to-black border border-amber-700/30 rounded-3xl max-w-md w-full">
-              <div className="p-6 border-b border-amber-700/20 flex justify-between items-center">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-md w-full">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
                 <h2 className="text-xl font-bold">{editMenuItem ? 'Edit Menu Item' : 'Add Menu Item'}</h2>
-                <button onClick={() => { setShowMenuModal(false); setEditMenuItem(null); }} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <button onClick={() => { setShowMenuModal(false); setEditMenuItem(null); }} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Item Name</label>
-                  <input type="text" value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} className="w-full px-4 py-3 bg-black/50 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none" placeholder="e.g., Margherita Pizza" />
+                  <input type="text" value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., Margherita Pizza" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Price ($)</label>
-                  <input type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} className="w-full px-4 py-3 bg-black/50 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none" placeholder="12.99" />
+                  <input type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="12.99" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Category</label>
-                  <input type="text" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} className="w-full px-4 py-3 bg-black/50 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none" placeholder="e.g., Appetizers, Drinks, Main Course" list="cat-list" />
+                  <input type="text" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., Cocktails, Beer, Whiskey" list="cat-list" />
                   <datalist id="cat-list">
                     {[...new Set(menuItems.map(i => i.category))].map(cat => <option key={cat} value={cat} />)}
                   </datalist>
                 </div>
-                <button onClick={saveMenuItem} className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-semibold hover:opacity-90 transition-opacity">
+                <button onClick={saveMenuItem} className="w-full py-3 bg-amber-500 text-black rounded-lg font-semibold hover:bg-amber-400 transition-colors">
                   {editMenuItem ? 'Update Item' : 'Add Item'}
                 </button>
               </div>
@@ -693,19 +658,19 @@ export default function AdminDashboard() {
       <AnimatePresence>
         {showAddTableModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-gradient-to-br from-zinc-900 to-black border border-amber-700/30 rounded-3xl max-w-sm w-full">
-              <div className="p-6 border-b border-amber-700/20 flex justify-between items-center">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-sm w-full">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
                 <h2 className="text-xl font-bold">Add Table</h2>
-                <button onClick={() => setShowAddTableModal(false)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                <button onClick={() => setShowAddTableModal(false)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Table Number</label>
-                  <input type="number" value={tableNumberInput} onChange={(e) => setTableNumberInput(e.target.value)} className="w-full px-4 py-3 bg-black/50 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none" placeholder="e.g., 11" min="1" />
+                  <input type="number" value={tableNumberInput} onChange={(e) => setTableNumberInput(e.target.value)} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., 11" min="1" />
                 </div>
-                <button onClick={addTable} className="w-full py-3 bg-gradient-to-r from-amber-500 to-amber-600 text-black rounded-xl font-semibold hover:opacity-90 transition-opacity">
+                <button onClick={addTable} className="w-full py-3 bg-amber-500 text-black rounded-lg font-semibold hover:bg-amber-400 transition-colors">
                   Add Table
                 </button>
               </div>
@@ -714,31 +679,28 @@ export default function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal */}
+      {/* Payment Modal - Cash Only */}
       <AnimatePresence>
         {showPaymentModal && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-gradient-to-br from-zinc-900 to-black border border-amber-700/30 rounded-3xl max-w-sm w-full">
-              <div className="p-6 border-b border-amber-700/20 flex justify-between items-center">
-                <h2 className="text-xl font-bold">Record Payment</h2>
-                <button onClick={() => setShowPaymentModal(null)} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-sm w-full">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
+                <h2 className="text-xl font-bold">Record Cash Payment</h2>
+                <button onClick={() => setShowPaymentModal(null)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="p-6 space-y-4">
-                <div className="bg-black/30 rounded-xl p-4">
+                <div className="bg-zinc-900 rounded-xl p-4">
                   <p className="text-gray-400">Order: {showPaymentModal.receipt_id}</p>
-                  <p className="text-3xl font-bold text-green-400">${showPaymentModal.total.toFixed(2)}</p>
+                  <p className="text-gray-400">Table: {showPaymentModal.table_number}</p>
+                  <p className="text-3xl font-bold text-green-400 mt-2">${showPaymentModal.total.toFixed(2)}</p>
                 </div>
-                <div>
-                  <label className="block text-sm text-gray-400 mb-2">Payment Method</label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => setPaymentMethod('cash')} className={`py-3 rounded-xl font-medium ${paymentMethod === 'cash' ? 'bg-amber-500 text-black' : 'bg-black/30 border border-white/10'}`}>💵 Cash</button>
-                    <button onClick={() => setPaymentMethod('online')} className={`py-3 rounded-xl font-medium ${paymentMethod === 'online' ? 'bg-amber-500 text-black' : 'bg-black/30 border border-white/10'}`}>💳 Online</button>
-                  </div>
+                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+                  <p className="text-amber-400 text-center">💵 Cash payment to manager</p>
                 </div>
-                <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-xl font-semibold transition-colors">
-                  Confirm Payment
+                <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
+                  Confirm Cash Payment
                 </button>
               </div>
             </motion.div>
