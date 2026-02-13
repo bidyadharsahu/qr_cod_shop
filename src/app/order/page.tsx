@@ -670,9 +670,9 @@ function OrderContent() {
   }
 
   return (
-    <div className="h-screen h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto relative overflow-hidden">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-5 py-4 safe-area-top shadow-lg shadow-black/20">
+    <div className="h-screen h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto relative">
+      {/* Header - Fixed at top */}
+      <header className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-5 py-4 shadow-lg shadow-black/20 max-w-lg mx-auto">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
@@ -698,7 +698,7 @@ function OrderContent() {
       </header>
 
       {/* Chat Messages - Only this area scrolls */}
-      <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-5 scroll-smooth">
+      <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-5 scroll-smooth pt-20 pb-24">
         <AnimatePresence>
           {chatMessages.map((msg) => (
             <motion.div
@@ -984,8 +984,8 @@ function OrderContent() {
         <div ref={chatEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="sticky bottom-0 bg-gradient-to-t from-black via-black/99 to-black/95 backdrop-blur-xl border-t border-amber-700/25 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+      {/* Input Area - Fixed at bottom */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-gradient-to-t from-black via-black/99 to-black/95 backdrop-blur-xl border-t border-amber-700/25 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.5)] max-w-lg mx-auto">
         <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
           <input
             ref={inputRef}

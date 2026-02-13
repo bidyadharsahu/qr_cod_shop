@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS orders (
   items JSONB NOT NULL,
   subtotal DECIMAL(10,2) NOT NULL DEFAULT 0,
   tip_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
+  tax_amount DECIMAL(10,2) NOT NULL DEFAULT 0,
   total DECIMAL(10,2) NOT NULL,
   status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'preparing', 'served', 'paid', 'cancelled')),
   payment_method TEXT CHECK (payment_method IN ('card', 'cash', 'online') OR payment_method IS NULL),
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_type TEXT CHECK (payment_type IN ('direct_cash', 'chatbot_payment') OR payment_type IS NULL),
   transaction_id TEXT,
   customer_note TEXT,
+  rating INTEGER CHECK (rating >= 1 AND rating <= 5),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

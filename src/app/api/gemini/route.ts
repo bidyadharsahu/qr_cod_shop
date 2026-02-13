@@ -1,7 +1,7 @@
 // Backend API for Gemini - Keeps API key secure
 import { NextRequest, NextResponse } from 'next/server';
 
-const GEMINI_API_KEY = 'AIzaSyBqsXyHnfVU3T3ePbJBrgK1s77e8GiVuFg';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyBqsXyHnfVU3T3ePbJBrgK1s77e8GiVuFg';
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
 
 const SYSTEM_INSTRUCTION = `You are SIA, a friendly and engaging bartender assistant at netrikxr.shop.
