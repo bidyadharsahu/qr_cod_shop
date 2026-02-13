@@ -510,37 +510,62 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0);
 }
 
+/* Better container centering */
+.centered-container {
+  max-width: 1280px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+
+@media (min-width: 640px) {
+  .centered-container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .centered-container {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
 /* Improved button visibility on mobile */
 @media (max-width: 640px) {
   /* Ensure send button is clearly visible */
   button[type="submit"] {
-    min-width: 52px;
-    min-height: 48px;
+    min-width: 60px;
+    min-height: 52px;
   }
   
   /* Better touch targets */
   button, 
   [role="button"],
   input[type="submit"] {
-    min-height: 44px;
+    min-height: 48px;
   }
   
   /* Improved font sizes for mobile */
   .chat-messages {
     font-size: 15px;
+    line-height: 1.6;
   }
   
   /* Better spacing in chat bubbles */
   .bot-bubble,
   .user-bubble {
     font-size: 15px;
-    padding: 14px 16px;
+    padding: 16px;
+    line-height: 1.6;
   }
   
   /* Menu items better spacing */
   .menu-item {
     padding: 16px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
   }
   
   /* Input styling */
@@ -548,8 +573,8 @@ body {
   input[type="password"],
   input[type="email"],
   input[type="number"] {
-    font-size: 16px; /* Prevents zoom on iOS */
-    min-height: 48px;
+    font-size: 15px; /* Prevents zoom on iOS */
+    min-height: 52px;
   }
 }
 
@@ -569,18 +594,22 @@ body {
 @media (hover: none) {
   button:active,
   [role="button"]:active {
-    transform: scale(0.98);
-    opacity: 0.9;
+    transform: scale(0.97);
+    opacity: 0.95;
   }
 }
 
-/* Improved option buttons in chatbot */
-.chat-option-btn {
-  padding: 12px 18px;
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: 12px;
-  transition: all 0.2s ease;
+/* Improved option buttons in chatbot - Grid layout */
+.chat-options-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+}
+
+@media (min-width: 640px) {
+  .chat-options-grid {
+    gap: 0.75rem;
+  }
 }
 
 /* Cart button pulse animation for attention */
@@ -601,14 +630,13 @@ body {
 input:focus,
 button:focus {
   outline: none;
-  ring: 2px;
-  ring-color: rgba(245, 158, 11, 0.5);
 }
 
 /* Prevent text selection on buttons */
 button {
   -webkit-user-select: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Loading states */
@@ -624,4 +652,36 @@ button {
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
+}
+
+/* Message bubble improvements */
+.message-bubble {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.message-bubble-user {
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.15);
+}
+
+/* Admin dashboard card hover effects */
+.admin-card {
+  transition: all 0.2s ease;
+}
+
+.admin-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* Better grid spacing */
+.dashboard-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 1024px) {
+  .dashboard-grid {
+    gap: 1.5rem;
+  }
 }

@@ -271,8 +271,8 @@ export default function AdminDashboard() {
 
       {/* Header with horizontal menu */}
       <header className="bg-zinc-800 border-b border-zinc-700 sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex items-center justify-between h-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-4">
             {/* Site Name */}
             <div>
               <p className="font-bold text-amber-400 text-base">netrikxr.shop</p>
@@ -322,10 +322,10 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             {/* Mobile Clock - Only shows on small screens */}
             <div className="md:hidden bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 text-center">
               <p className="text-sm font-medium text-white">{currentDate}</p>
@@ -334,8 +334,8 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700 hover:border-zinc-600 transition-colors">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
@@ -366,8 +366,8 @@ export default function AdminDashboard() {
             </div>
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <QrCode className="w-4 h-4 text-purple-400" />
                 </div>

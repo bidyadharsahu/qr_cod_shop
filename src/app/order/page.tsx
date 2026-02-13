@@ -10,6 +10,7 @@ import {
   Send, ShoppingCart, Plus, Minus, Trash2, Star, X, Phone,
   FileText, ArrowLeft, Check, MessageCircle, UtensilsCrossed
 } from 'lucide-react';
+import { getGeminiResponse, shouldUseGemini } from '@/lib/gemini';
 
 const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
@@ -46,6 +47,8 @@ function OrderContent() {
   const [showThankYou, setShowThankYou] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +66,40 @@ function OrderContent() {
     };
     fetchMenu();
   }, []);
+
+  // Listen for order confirmation from admin
+  useEffect(() => {
+    if (!currentOrderId || !waitingForConfirmation) return;
+
+    const orderSub = supabase
+      .channel('order-confirmation')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${currentOrderId}`
+        },
+        (payload: any) => {
+          if (payload.new.status === 'confirmed') {
+            setWaitingForConfirmation(false);
+            addBotMessage(
+              `✅ **Order Confirmed!**\n\nYour order has been confirmed by our staff!\n\nReceipt: **${receiptId}**\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 **Pay cash to the manager when ready.**`,
+              [
+                { label: '➕ Order More', value: 'more' },
+                { label: '💵 Add Tip & Bill', value: 'pay' }
+              ]
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(orderSub);
+    };
+  }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, subtotal]);
 
   // Welcome message
   useEffect(() => {
@@ -272,7 +309,7 @@ function OrderContent() {
       receipt_id: receipt
     };
 
-    const { error } = await supabase.from('orders').insert(orderData);
+    const { data: insertedData, error } = await supabase.from('orders').insert(orderData).select();
     setLoading(false);
 
     if (error) {
@@ -281,23 +318,41 @@ function OrderContent() {
       return;
     }
 
+    // Store order ID for real-time confirmation listening
+    if (insertedData && insertedData[0]) {
+      setCurrentOrderId(insertedData[0].id);
+    }
+
     setOrderPlaced(true);
+    setWaitingForConfirmation(true);
+    
+    // Show "waiting for confirmation" message instead of immediate confirmation
     addBotMessage(
-      `✅ **Order Placed!**\n\nReceipt: **${receipt}**\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\nYour order has been sent to the kitchen!\n\n💵 **Please pay cash to the manager when ready.**`,
-      [
-        { label: '➕ Order More', value: 'more' },
-        { label: '💵 Add Tip & Bill', value: 'pay' }
-      ]
+      `📤 **Order Sent!**\n\nReceipt: **${receipt}**\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\n⏳ Your order has been sent to our staff for confirmation.\n\nI'll let you know as soon as it's confirmed!`,
+      []
     );
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
+  const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userInput.trim()) return;
 
     const input = userInput.toLowerCase().trim();
+    const originalInput = userInput;
     addUserMessage(userInput);
     setUserInput('');
+
+    // Try Gemini for conversational enhancement
+    if (shouldUseGemini(input)) {
+      const aiResponse = await getGeminiResponse(originalInput, `Customer is at table ${tableNumber}`);
+      if (aiResponse) {
+        addBotMessage(aiResponse, [
+          { label: '🍹 See Menu', value: 'menu' },
+          { label: '🛒 View Cart', value: 'cart' }
+        ]);
+        return;
+      }
+    }
 
     // Smart keyword-based responses - like a real bartender
     if (input.includes('hi') || input.includes('hello') || input.includes('hey')) {
@@ -593,9 +648,9 @@ function OrderContent() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto">
+    <div className="min-h-screen min-h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto relative">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-4 py-3 safe-area-top">
+      <header className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-5 py-4 safe-area-top shadow-lg shadow-black/20">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
@@ -621,16 +676,16 @@ function OrderContent() {
       </header>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scroll-smooth">
+      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5 scroll-smooth">
         <AnimatePresence>
           {chatMessages.map((msg) => (
             <motion.div
               key={msg.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} px-1`}
             >
-              <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-1' : ''}`}>
+              <div className={`max-w-[87%] ${msg.role === 'user' ? 'order-1' : ''}`}>
                 {/* Avatar */}
                 {msg.role === 'bot' && (
                   <div className="flex items-center gap-2 mb-2">
@@ -644,20 +699,20 @@ function OrderContent() {
                 {/* Message Bubble */}
                 <div className={`rounded-2xl p-4 ${
                   msg.role === 'user' 
-                    ? 'bg-amber-500 text-black rounded-br-md shadow-lg shadow-amber-500/10' 
-                    : 'bg-gradient-to-br from-zinc-800/90 to-zinc-900/90 border border-amber-700/20 rounded-bl-md shadow-lg'
+                    ? 'bg-amber-500 text-black rounded-br-sm shadow-lg shadow-amber-500/20' 
+                    : 'bg-gradient-to-br from-zinc-800/95 to-zinc-900/95 border border-amber-700/25 rounded-bl-sm shadow-xl shadow-black/40'
                 }`}>
-                  <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.6]">{msg.content}</p>
                 </div>
 
                 {/* Options */}
                 {msg.options && (
-                  <div className="flex flex-wrap gap-2 mt-3">
+                  <div className="grid grid-cols-2 gap-2.5 mt-4">
                     {msg.options.map((opt) => (
                       <button
                         key={opt.value}
                         onClick={() => handleOptionClick(opt.value)}
-                        className="px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-medium hover:bg-amber-500/20 active:scale-95 transition-all"
+                        className="px-4 py-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-[14px] font-medium hover:bg-amber-500/20 active:scale-[0.97] transition-all shadow-md"
                       >
                         {opt.label}
                       </button>
@@ -904,19 +959,20 @@ function OrderContent() {
       </div>
 
       {/* Input Area */}
-      <div className="sticky bottom-0 bg-gradient-to-t from-black via-black/98 to-transparent backdrop-blur-xl border-t border-amber-700/20 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-        <form onSubmit={handleSendMessage} className="flex gap-3">
+      <div className="sticky bottom-0 bg-gradient-to-t from-black via-black/99 to-black/95 backdrop-blur-xl border-t border-amber-700/25 px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+        <form onSubmit={handleSendMessage} className="flex gap-3 items-center">
           <input
             ref={inputRef}
             type="text"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             placeholder="Ask SIA anything..."
-            className="flex-1 px-4 py-3.5 bg-zinc-900 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none text-base placeholder-gray-500"
+            className="flex-1 px-5 py-4 bg-zinc-900 border border-amber-700/40 rounded-2xl focus:border-amber-500/60 focus:outline-none text-[15px] placeholder-gray-500 shadow-inner"
           />
           <button 
             type="submit" 
-            className="px-5 py-3.5 bg-amber-500 text-black rounded-xl hover:bg-amber-400 transition-colors active:scale-95 flex items-center justify-center min-w-[52px]"
+            disabled={!userInput.trim()}
+            className="px-6 py-4 bg-amber-500 text-black rounded-2xl hover:bg-amber-400 transition-all active:scale-95 flex items-center justify-center min-w-[60px] shadow-lg shadow-amber-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Send className="w-5 h-5" />
           </button>
