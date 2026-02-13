@@ -498,3 +498,130 @@ body {
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* ===== UI IMPROVEMENTS - RESPONSIVE FIXES ===== */
+
+/* Safe area support for modern mobile devices */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+/* Improved button visibility on mobile */
+@media (max-width: 640px) {
+  /* Ensure send button is clearly visible */
+  button[type="submit"] {
+    min-width: 52px;
+    min-height: 48px;
+  }
+  
+  /* Better touch targets */
+  button, 
+  [role="button"],
+  input[type="submit"] {
+    min-height: 44px;
+  }
+  
+  /* Improved font sizes for mobile */
+  .chat-messages {
+    font-size: 15px;
+  }
+  
+  /* Better spacing in chat bubbles */
+  .bot-bubble,
+  .user-bubble {
+    font-size: 15px;
+    padding: 14px 16px;
+  }
+  
+  /* Menu items better spacing */
+  .menu-item {
+    padding: 16px;
+    margin-bottom: 10px;
+  }
+  
+  /* Input styling */
+  input[type="text"],
+  input[type="password"],
+  input[type="email"],
+  input[type="number"] {
+    font-size: 16px; /* Prevents zoom on iOS */
+    min-height: 48px;
+  }
+}
+
+/* Full height containers considering mobile viewport */
+.full-height {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Smooth scrolling */
+.scroll-smooth {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Better hover states for touch devices */
+@media (hover: none) {
+  button:active,
+  [role="button"]:active {
+    transform: scale(0.98);
+    opacity: 0.9;
+  }
+}
+
+/* Improved option buttons in chatbot */
+.chat-option-btn {
+  padding: 12px 18px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+/* Cart button pulse animation for attention */
+@keyframes cartPulse {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
+  }
+  50% { 
+    box-shadow: 0 0 0 8px rgba(245, 158, 11, 0);
+  }
+}
+
+.cart-pulse {
+  animation: cartPulse 2s infinite;
+}
+
+/* Better focus states */
+input:focus,
+button:focus {
+  outline: none;
+  ring: 2px;
+  ring-color: rgba(245, 158, 11, 0.5);
+}
+
+/* Prevent text selection on buttons */
+button {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Loading states */
+.loading-shimmer {
+  background: linear-gradient(90deg, 
+    rgba(255,255,255,0.05) 0%, 
+    rgba(255,255,255,0.1) 50%, 
+    rgba(255,255,255,0.05) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}

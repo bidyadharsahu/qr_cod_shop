@@ -13,17 +13,19 @@ import {
   DollarSign, Clock, Users, Trash2, Edit
 } from 'lucide-react';
 
-type User = { id: string; email?: string };
-
 export default function AdminDashboard() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'menu' | 'tables'>('dashboard');
   const [notifications, setNotifications] = useState<Order[]>([]);
+  
+  // Tampa timezone clock
+  const [currentTime, setCurrentTime] = useState<string>('');
+  const [currentDate, setCurrentDate] = useState<string>('');
   
   // Modals
   const [showQRModal, setShowQRModal] = useState(false);
@@ -49,16 +51,46 @@ export default function AdminDashboard() {
     return 'https://qr-cod-shop.vercel.app';
   };
 
-  // Auth check
+  // Auth check - using sessionStorage
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { router.push('/admin/login'); return; }
-      setUser(user);
+    const checkAuth = () => {
+      const isLoggedIn = sessionStorage.getItem('admin_authenticated');
+      if (isLoggedIn !== 'true') { 
+        router.push('/admin/login'); 
+        return; 
+      }
+      setIsAuthenticated(true);
       setAuthLoading(false);
     };
     checkAuth();
   }, [router]);
+
+  // Tampa timezone clock - updates every second
+  useEffect(() => {
+    const updateClock = () => {
+      const now = new Date();
+      const options: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/New_York',
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      };
+      const timeOptions: Intl.DateTimeFormatOptions = {
+        timeZone: 'America/New_York',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      };
+      setCurrentDate(now.toLocaleDateString('en-US', options));
+      setCurrentTime(now.toLocaleTimeString('en-US', timeOptions));
+    };
+    
+    updateClock(); // Initial call
+    const interval = setInterval(updateClock, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Fetch functions
   const fetchOrders = useCallback(async () => {
@@ -78,7 +110,7 @@ export default function AdminDashboard() {
 
   // Initial fetch & realtime
   useEffect(() => {
-    if (!user) return;
+    if (!isAuthenticated) return;
     fetchOrders(); fetchMenu(); fetchTables();
 
     const ordersSub = supabase.channel('orders-rt')
@@ -102,10 +134,10 @@ export default function AdminDashboard() {
       supabase.removeChannel(menuSub);
       supabase.removeChannel(tablesSub);
     };
-  }, [user, fetchOrders, fetchMenu, fetchTables]);
+  }, [isAuthenticated, fetchOrders, fetchMenu, fetchTables]);
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_authenticated');
     router.push('/admin/login');
   };
 
@@ -247,6 +279,12 @@ export default function AdminDashboard() {
               <p className="text-xs text-gray-500">Admin Panel</p>
             </div>
 
+            {/* Tampa Timezone Clock */}
+            <div className="hidden md:flex flex-col items-center text-center">
+              <p className="text-sm font-medium text-white">{currentDate}</p>
+              <p className="text-lg font-bold text-amber-400">{currentTime} <span className="text-xs text-gray-400 font-normal">(Tampa, USA)</span></p>
+            </div>
+
             {/* Horizontal Tabs */}
             <nav className="flex items-center gap-2">
               {tabs.map(tab => (
@@ -288,6 +326,13 @@ export default function AdminDashboard() {
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            {/* Mobile Clock - Only shows on small screens */}
+            <div className="md:hidden bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 text-center">
+              <p className="text-sm font-medium text-white">{currentDate}</p>
+              <p className="text-xl font-bold text-amber-400">{currentTime}</p>
+              <p className="text-xs text-gray-400">(Tampa, USA)</p>
+            </div>
+
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">

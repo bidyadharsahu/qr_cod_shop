@@ -68,10 +68,11 @@ function OrderContent() {
   useEffect(() => {
     if (menuItems.length > 0 && chatMessages.length === 0) {
       addBotMessage(
-        `👋 Welcome to netrikxr.shop!\n\nYou're at **Table ${tableNumber}**.\n\nI'm here to help you order. What would you like to do?`,
+        `👋 Hey there! Welcome to netrikxr.shop!\n\nI'm **SIA**, your virtual bartender at **Table ${tableNumber}**.\n\nI'm here to help you order drinks and make your experience amazing. What sounds good today?`,
         [
-          { label: '📋 View Menu', value: 'menu' },
-          { label: '🛒 View Cart', value: 'cart' },
+          { label: '🍹 See Drinks Menu', value: 'menu' },
+          { label: '🎉 Party Package', value: 'party' },
+          { label: '💰 Check Prices', value: 'prices' },
           { label: '❓ Need Help', value: 'help' }
         ]
       );
@@ -101,22 +102,118 @@ function OrderContent() {
   const handleOptionClick = (value: string) => {
     switch (value) {
       case 'menu':
-        addUserMessage('Show me the menu');
-        addBotMessage('Here\'s our menu! Tap on any category to browse:', undefined, { showMenu: true });
+        addUserMessage('Show me the drinks menu');
+        addBotMessage('Awesome choice! 🍹 Here\'s what we\'ve got on tap today. Tap any category to explore, or just tell me what vibe you\'re going for!', undefined, { showMenu: true });
         break;
       case 'cart':
         addUserMessage('Show my cart');
         if (cart.length === 0) {
-          addBotMessage('Your cart is empty! Let me show you our menu.', [{ label: '📋 View Menu', value: 'menu' }]);
+          addBotMessage('Your cart is looking a bit empty! 😄 Let me help you fix that. What are you in the mood for - something refreshing, strong, or maybe a mix?', [
+            { label: '🍹 See Drinks Menu', value: 'menu' },
+            { label: '🍺 Something Cold', value: 'cold' },
+            { label: '🥃 Something Strong', value: 'strong' }
+          ]);
         } else {
-          addBotMessage(`You have ${cart.length} item(s) in your cart:`, undefined, { showCart: true });
+          addBotMessage(`Great selection! You have ${cart.length} item(s) ready to go:`, undefined, { showCart: true });
         }
         break;
       case 'help':
         addUserMessage('I need help');
         addBotMessage(
-          `Here's how to order:\n\n1️⃣ Browse the menu\n2️⃣ Tap + to add items\n3️⃣ Review your cart\n4️⃣ Place your order\n5️⃣ Add a tip if you'd like\n6️⃣ Get your bill`,
-          [{ label: '📋 View Menu', value: 'menu' }]
+          `No worries, I've got you covered! Here's the quick rundown:\n\n1️⃣ Browse our menu - I'll show you the good stuff\n2️⃣ Tap + to add what catches your eye\n3️⃣ Review your picks in the cart\n4️⃣ Place your order when ready\n5️⃣ Add a tip if you'd like to show some love\n6️⃣ Get your bill and you're all set!\n\nWhat would you like to start with?`,
+          [
+            { label: '🍹 Show Menu', value: 'menu' },
+            { label: '💬 Talk to SIA', value: 'recommend' }
+          ]
+        );
+        break;
+      case 'party':
+        addUserMessage('Tell me about party packages');
+        addBotMessage(
+          `🎉 Party time! I love it!\n\nAre you celebrating something special today? Birthday, promotion, or just because it's a great day?\n\nTell me:\n• How many people in your group?\n• What's the vibe - classy, wild, or chill?\n\nI'll put together some perfect recommendations!`,
+          [
+            { label: '🎂 Birthday Party', value: 'birthday' },
+            { label: '👔 Work Celebration', value: 'celebration' },
+            { label: '😎 Just Vibing', value: 'casual' }
+          ]
+        );
+        break;
+      case 'prices':
+        addUserMessage('Show me prices');
+        addBotMessage(
+          `💰 Great question! Here's a quick rundown:\n\nOur menu has something for every budget. Most drinks range from affordable classics to premium selections.\n\nWant me to show you:\n• 🏷️ Best value picks\n• 🍹 Full menu with prices\n• ⭐ Today's specials`,
+          [
+            { label: '🏷️ Best Value', value: 'value' },
+            { label: '🍹 Full Menu', value: 'menu' }
+          ]
+        );
+        break;
+      case 'birthday':
+        addUserMessage('Birthday party');
+        addBotMessage(
+          `🎂 Happy Birthday vibes! Let's make it memorable!\n\nFor birthdays, I'd recommend:\n• A round of shots to kick things off\n• Some signature cocktails\n• A bottle if you're going big!\n\nHow many people are celebrating?`,
+          [{ label: '🍹 See Menu', value: 'menu' }]
+        );
+        break;
+      case 'celebration':
+        addUserMessage('Work celebration');
+        addBotMessage(
+          `👔 Congrats on whatever you're celebrating!\n\nFor office celebrations, classics work great:\n• Whiskey for the distinguished\n• Wine for the refined\n• Cocktails for the adventurous\n\nLet me show you what we've got!`,
+          [{ label: '🍹 See Menu', value: 'menu' }]
+        );
+        break;
+      case 'casual':
+        addUserMessage('Just hanging out');
+        addBotMessage(
+          `😎 Nothing wrong with that! Sometimes the best nights are unplanned.\n\nWhat's calling your name - beer, cocktails, or something stronger to get things started?`,
+          [
+            { label: '🍺 Beers', value: 'menu' },
+            { label: '🍸 Cocktails', value: 'menu' },
+            { label: '🥃 Spirits', value: 'menu' }
+          ]
+        );
+        break;
+      case 'value':
+        addUserMessage('Show me best value options');
+        addBotMessage(
+          `🏷️ Smart choice! Here are great picks that won't break the bank.\n\nCheck out our menu - I've sorted the best value options for you. Happy hour favorites and classic pours!`,
+          undefined, 
+          { showMenu: true }
+        );
+        break;
+      case 'cold':
+        addUserMessage('Something cold');
+        addBotMessage(
+          `🧊 Ice cold coming up! Perfect for cooling down.\n\nWe've got refreshing beers, frozen cocktails, and chilled spirits. What catches your eye?`,
+          undefined, 
+          { showMenu: true }
+        );
+        break;
+      case 'strong':
+        addUserMessage('Something strong');
+        addBotMessage(
+          `🥃 I like your style! Going for the good stuff.\n\nWhiskey, rum, vodka, or a strong cocktail? Let's find your poison!`,
+          undefined, 
+          { showMenu: true }
+        );
+        break;
+      case 'recommend':
+        addUserMessage('What do you recommend?');
+        addBotMessage(
+          `Great question! Here's what's popular tonight:\n\n🔥 **Hot picks:**\n• Classic cocktails are always a hit\n• Our craft beers are flying off the taps\n• Premium whiskey for the connoisseurs\n\nWhat sounds good? Or tell me your mood and I'll suggest something perfect!`,
+          [
+            { label: '🍹 Show Menu', value: 'menu' },
+            { label: '😌 Relaxed', value: 'relaxed' },
+            { label: '🎊 Celebrating', value: 'party' }
+          ]
+        );
+        break;
+      case 'relaxed':
+        addUserMessage('Feeling relaxed');
+        addBotMessage(
+          `😌 Perfect chill vibes! For a relaxed evening, I'd suggest:\n\n• A smooth beer to sip on\n• A classic cocktail - nothing too crazy\n• A nice glass of wine\n\nLet's find your perfect match!`,
+          undefined, 
+          { showMenu: true }
         );
         break;
       case 'checkout':
@@ -124,28 +221,28 @@ function OrderContent() {
         break;
       case 'more':
         addUserMessage('I want to order more');
-        addBotMessage('No problem! Here\'s the menu:', undefined, { showMenu: true });
+        addBotMessage('Coming right up! 🍹 Here\'s the menu - go ahead and add whatever looks good!', undefined, { showMenu: true });
         break;
       case 'pay':
         addUserMessage('Pay now');
-        addBotMessage('Would you like to add a tip for our staff?', undefined, { showTip: true });
+        addBotMessage('Almost done! 💰 Would you like to add a tip for our hardworking staff?', undefined, { showTip: true });
         break;
       case 'skip_tip':
         setSelectedTip(0);
         addUserMessage('No tip');
-        addBotMessage('No worries! Ready to generate your bill?', [{ label: '📄 Get Bill', value: 'bill' }]);
+        addBotMessage('No problem at all! Ready to wrap things up?', [{ label: '📄 Get My Bill', value: 'bill' }]);
         break;
       case 'confirm_tip':
         addUserMessage(`Tip: ${selectedTip}%`);
-        addBotMessage(`Great! ${selectedTip}% tip added. Ready for your bill?`, [{ label: '📄 Get Bill', value: 'bill' }]);
+        addBotMessage(`You're awesome! 🙏 ${selectedTip}% tip added. Ready for your bill?`, [{ label: '📄 Get My Bill', value: 'bill' }]);
         break;
       case 'bill':
         addUserMessage('Generate bill');
-        addBotMessage('Here\'s your bill! Please pay cash to the manager.', undefined, { showBill: true });
+        addBotMessage('Here\'s your bill! 🧾 Please pay cash to the manager when ready. Thanks for hanging out with us!', undefined, { showBill: true });
         break;
       case 'done':
         addUserMessage('Done');
-        addBotMessage('Please rate your experience!', undefined, { showRating: true });
+        addBotMessage('One last thing! How was everything tonight? Your feedback means the world to us! ⭐', undefined, { showRating: true });
         break;
       default:
         break;
@@ -202,22 +299,113 @@ function OrderContent() {
     addUserMessage(userInput);
     setUserInput('');
 
-    if (input.includes('menu') || input.includes('order') || input.includes('food')) {
-      addBotMessage('Here\'s our menu:', undefined, { showMenu: true });
-    } else if (input.includes('cart') || input.includes('basket')) {
+    // Smart keyword-based responses - like a real bartender
+    if (input.includes('hi') || input.includes('hello') || input.includes('hey')) {
+      addBotMessage(
+        `Hey there! 👋 I'm SIA, your bartender tonight! What can I get for you? Something refreshing, or are we going all out today?`,
+        [
+          { label: '🍹 See Menu', value: 'menu' },
+          { label: '💬 Recommend Something', value: 'recommend' }
+        ]
+      );
+    } else if (input.includes('drink') || input.includes('thirsty') || input.includes('beverage')) {
+      addBotMessage(
+        `🍹 Coming right up! What kind of drink are you in the mood for?\n\n• Something cold and refreshing?\n• A classic cocktail?\n• Beer or wine?\n• Something stronger?`,
+        [
+          { label: '🧊 Cold Drinks', value: 'cold' },
+          { label: '🍸 Cocktails', value: 'menu' },
+          { label: '🥃 Strong Stuff', value: 'strong' }
+        ]
+      );
+    } else if (input.includes('party') || input.includes('celebrate') || input.includes('celebration') || input.includes('group')) {
+      handleOptionClick('party');
+    } else if (input.includes('price') || input.includes('cost') || input.includes('expensive') || input.includes('cheap') || input.includes('affordable')) {
+      handleOptionClick('prices');
+    } else if (input.includes('recommend') || input.includes('suggest') || input.includes('best') || input.includes('popular') || input.includes('favorite')) {
+      handleOptionClick('recommend');
+    } else if (input.includes('beer') || input.includes('brew') || input.includes('ale') || input.includes('lager')) {
+      addBotMessage(
+        `🍺 A beer lover! Great choice. We've got craft beers, imports, and classic favorites.\n\nWant to see what's on tap?`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('cocktail') || input.includes('mixed')) {
+      addBotMessage(
+        `🍸 Cocktails - my specialty! We've got classics like Mojitos, Margaritas, and some house specials.\n\nWhat's your vibe - fruity, strong, or classic?`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('whiskey') || input.includes('bourbon') || input.includes('scotch') || input.includes('rum') || input.includes('vodka') || input.includes('tequila')) {
+      addBotMessage(
+        `🥃 A person of fine taste! Let me show you our spirits collection. We've got some great picks!`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('wine')) {
+      addBotMessage(
+        `🍷 Wine it is! Red, white, or rosé? Check out our selection:`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('shot') || input.includes('shots')) {
+      addBotMessage(
+        `🔥 Shots! Let's get this started! We've got tequila, vodka, whiskey shots and more. How many are we doing?`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('water') || input.includes('soda') || input.includes('juice') || input.includes('non-alcohol') || input.includes('soft drink')) {
+      addBotMessage(
+        `No problem! We've got non-alcoholic options too - water, sodas, juices, and mocktails. What sounds good?`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('birthday')) {
+      handleOptionClick('birthday');
+    } else if (input.includes('relax') || input.includes('chill') || input.includes('calm')) {
+      handleOptionClick('relaxed');
+    } else if (input.includes('strong') || input.includes('kick') || input.includes('powerful')) {
+      handleOptionClick('strong');
+    } else if (input.includes('cold') || input.includes('refresh') || input.includes('cool')) {
+      handleOptionClick('cold');
+    } else if (input.includes('menu') || input.includes('order') || input.includes('food') || input.includes('what do you have')) {
+      addBotMessage('Here\'s our full menu! 🍹 Take your pick:', undefined, { showMenu: true });
+    } else if (input.includes('cart') || input.includes('basket') || input.includes('my order')) {
       handleOptionClick('cart');
-    } else if (input.includes('checkout') || input.includes('place order') || input.includes('confirm')) {
+    } else if (input.includes('checkout') || input.includes('place order') || input.includes('confirm') || input.includes('done ordering')) {
       handleCheckout();
     } else if (input.includes('help') || input.includes('how')) {
       handleOptionClick('help');
-    } else if (input.includes('pay') || input.includes('bill')) {
+    } else if (input.includes('pay') || input.includes('bill') || input.includes('check')) {
       handleOptionClick('pay');
-    } else {
+    } else if (input.includes('thank') || input.includes('thanks') || input.includes('awesome') || input.includes('great')) {
       addBotMessage(
-        'I understand you want to: ' + userInput + '\n\nHere\'s what I can help with:',
+        `You're welcome! 😊 That's what I'm here for. Anything else I can help you with?`,
         [
-          { label: '📋 View Menu', value: 'menu' },
+          { label: '🍹 More Drinks', value: 'menu' },
           { label: '🛒 View Cart', value: 'cart' },
+          { label: '✅ I\'m Good', value: 'checkout' }
+        ]
+      );
+    } else if (input.includes('special') || input.includes('deal') || input.includes('discount') || input.includes('offer')) {
+      addBotMessage(
+        `Great question! 🌟 Check out our menu for today's specials and popular picks. Some items are flying off the shelf tonight!`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else if (input.includes('quick') || input.includes('fast') || input.includes('hurry') || input.includes('rush')) {
+      addBotMessage(
+        `Got it - let's be quick! 🏃 Here's the menu, tap what you want and hit checkout. I'll make sure it's ready fast!`,
+        undefined, 
+        { showMenu: true }
+      );
+    } else {
+      // Smart fallback - still helpful
+      addBotMessage(
+        `I hear you! Let me help with that. Here's what I can do for you:`,
+        [
+          { label: '🍹 See Menu', value: 'menu' },
+          { label: '🛒 View Cart', value: 'cart' },
+          { label: '💬 Get Recommendations', value: 'recommend' },
           { label: '✅ Checkout', value: 'checkout' }
         ]
       );
@@ -373,55 +561,58 @@ function OrderContent() {
   // Thank You Screen
   if (showThankYou) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      <div className="min-h-screen min-h-[100dvh] bg-black flex items-center justify-center p-6">
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
+          className="text-center max-w-sm mx-auto"
         >
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring' }}
-            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mx-auto mb-6"
+            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mx-auto mb-8"
           >
             <Check className="w-12 h-12 text-black" />
           </motion.div>
-          <h1 className="text-3xl font-bold text-white mb-2">Thank You!</h1>
-          <p className="text-gray-400 mb-2">You rated us {rating} star{rating > 1 ? 's' : ''}</p>
-          <div className="flex justify-center gap-1 mb-6">
+          <h1 className="text-4xl font-bold text-white mb-4">Thank You!</h1>
+          <p className="text-gray-400 text-lg mb-4">You rated us {rating} star{rating > 1 ? 's' : ''}</p>
+          <div className="flex justify-center gap-2 mb-8">
             {[1,2,3,4,5].map(i => (
               <Star key={i} className={`w-8 h-8 ${i <= rating ? 'text-amber-400 fill-amber-400' : 'text-gray-600'}`} />
             ))}
           </div>
-          <p className="text-gray-500 mb-8">We hope to see you again soon!</p>
-          <p className="text-sm text-gray-600">netrikxr.shop • Tampa, Florida</p>
+          <p className="text-gray-500 text-base mb-10">We hope to see you again soon!</p>
+          <div className="pt-6 border-t border-white/10">
+            <p className="text-sm text-gray-600">netrikxr.shop</p>
+            <p className="text-xs text-gray-700 mt-1">Tampa, Florida</p>
+          </div>
         </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col max-w-lg mx-auto">
+    <div className="min-h-screen min-h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto">
       {/* Header */}
-      <header className="sticky top-0 z-10 bg-gradient-to-b from-black to-black/95 backdrop-blur-xl border-b border-amber-700/20 p-4">
+      <header className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-4 py-3 safe-area-top">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center">
+            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
               <span className="text-lg font-bold text-black">N</span>
             </div>
             <div>
-              <p className="font-bold text-amber-400">netrikxr.shop</p>
-              <p className="text-xs text-gray-500">Table {tableNumber}</p>
+              <p className="font-bold text-amber-400 text-base">netrikxr.shop</p>
+              <p className="text-xs text-gray-500">Table {tableNumber} • SIA</p>
             </div>
           </div>
           <button 
             onClick={() => handleOptionClick('cart')}
-            className="relative p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl"
+            className="relative p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl hover:bg-amber-500/20 transition-colors active:scale-95"
           >
             <ShoppingCart className="w-5 h-5 text-amber-400" />
             {cart.length > 0 && (
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center">
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-xs flex items-center justify-center font-bold shadow-lg">
                 {cart.reduce((sum, i) => sum + i.quantity, 0)}
               </span>
             )}
@@ -430,7 +621,7 @@ function OrderContent() {
       </header>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 scroll-smooth">
         <AnimatePresence>
           {chatMessages.map((msg) => (
             <motion.div
@@ -446,17 +637,17 @@ function OrderContent() {
                     <div className="w-6 h-6 bg-amber-500 rounded-full flex items-center justify-center">
                       <MessageCircle className="w-3 h-3 text-black" />
                     </div>
-                    <span className="text-xs text-gray-500">Assistant</span>
+                    <span className="text-xs text-amber-400 font-medium">SIA</span>
                   </div>
                 )}
                 
                 {/* Message Bubble */}
                 <div className={`rounded-2xl p-4 ${
                   msg.role === 'user' 
-                    ? 'bg-amber-500 text-black rounded-br-md' 
-                    : 'bg-gradient-to-br from-zinc-800/80 to-zinc-900/80 border border-amber-700/20 rounded-bl-md'
+                    ? 'bg-amber-500 text-black rounded-br-md shadow-lg shadow-amber-500/10' 
+                    : 'bg-gradient-to-br from-zinc-800/90 to-zinc-900/90 border border-amber-700/20 rounded-bl-md shadow-lg'
                 }`}>
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.content}</p>
                 </div>
 
                 {/* Options */}
@@ -466,7 +657,7 @@ function OrderContent() {
                       <button
                         key={opt.value}
                         onClick={() => handleOptionClick(opt.value)}
-                        className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm hover:bg-amber-500/20 transition-colors"
+                        className="px-4 py-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 text-sm font-medium hover:bg-amber-500/20 active:scale-95 transition-all"
                       >
                         {opt.label}
                       </button>
@@ -478,10 +669,10 @@ function OrderContent() {
                 {msg.showMenu && (
                   <div className="mt-4 space-y-3">
                     {/* Categories */}
-                    <div className="flex flex-wrap gap-2">
+                    <div className="flex flex-wrap gap-2 pb-2">
                       <button
                         onClick={() => setSelectedCategory(null)}
-                        className={`px-3 py-1.5 rounded-full text-xs ${!selectedCategory ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-gray-300'}`}
+                        className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${!selectedCategory ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'}`}
                       >
                         All
                       </button>
@@ -489,7 +680,7 @@ function OrderContent() {
                         <button
                           key={cat}
                           onClick={() => setSelectedCategory(cat)}
-                          className={`px-3 py-1.5 rounded-full text-xs ${selectedCategory === cat ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-gray-300'}`}
+                          className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${selectedCategory === cat ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'}`}
                         >
                           {cat}
                         </button>
@@ -497,30 +688,31 @@ function OrderContent() {
                     </div>
                     
                     {/* Menu Items */}
-                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                    <div className="space-y-2 max-h-72 overflow-y-auto rounded-xl">
                       {menuItems
                         .filter(i => !selectedCategory || i.category === selectedCategory)
                         .map(item => {
                           const inCart = cart.find(c => c.id === item.id);
                           return (
-                            <div key={item.id} className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl">
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium truncate">{item.name}</p>
-                                <p className="text-sm text-amber-400">${item.price.toFixed(2)}</p>
+                            <div key={item.id} className="flex items-center justify-between p-4 bg-black/50 border border-white/5 rounded-xl hover:border-amber-500/20 transition-colors">
+                              <div className="flex-1 min-w-0 mr-3">
+                                <p className="font-medium text-base truncate">{item.name}</p>
+                                <p className="text-sm text-amber-400 font-semibold">${item.price.toFixed(2)}</p>
                               </div>
                               {inCart ? (
                                 <div className="flex items-center gap-2">
-                                  <button onClick={() => updateQuantity(item.id, -1)} className="w-8 h-8 bg-zinc-700 rounded-lg flex items-center justify-center">
+                                  <button onClick={() => updateQuantity(item.id, -1)} className="w-10 h-10 bg-zinc-700 rounded-lg flex items-center justify-center active:scale-95 transition-transform">
                                     <Minus className="w-4 h-4" />
                                   </button>
-                                  <span className="w-6 text-center">{inCart.quantity}</span>
-                                  <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 bg-amber-500 text-black rounded-lg flex items-center justify-center">
+                                  <span className="w-8 text-center font-bold text-lg">{inCart.quantity}</span>
+                                  <button onClick={() => updateQuantity(item.id, 1)} className="w-10 h-10 bg-amber-500 text-black rounded-lg flex items-center justify-center active:scale-95 transition-transform">
                                     <Plus className="w-4 h-4" />
                                   </button>
                                 </div>
                               ) : (
-                                <button onClick={() => addToCart(item)} className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-sm hover:bg-amber-500/20">
+                                <button onClick={() => addToCart(item)} className="px-5 py-2.5 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-xl text-sm font-medium hover:bg-amber-500/20 active:scale-95 transition-all flex items-center gap-2">
                                   <Plus className="w-4 h-4" />
+                                  <span>Add</span>
                                 </button>
                               )}
                             </div>
@@ -529,7 +721,7 @@ function OrderContent() {
                     </div>
                     
                     {cart.length > 0 && (
-                      <button onClick={() => handleOptionClick('cart')} className="w-full py-3 bg-amber-500 text-black rounded-xl font-semibold">
+                      <button onClick={() => handleOptionClick('cart')} className="w-full py-3.5 bg-amber-500 text-black rounded-xl font-bold text-base active:scale-[0.98] transition-transform shadow-lg shadow-amber-500/20">
                         View Cart ({cart.reduce((s, i) => s + i.quantity, 0)} items) • ${subtotal.toFixed(2)}
                       </button>
                     )}
@@ -540,36 +732,36 @@ function OrderContent() {
                 {msg.showCart && cart.length > 0 && (
                   <div className="mt-4 space-y-3">
                     {cart.map(item => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-black/40 border border-white/5 rounded-xl">
-                        <div className="flex-1">
-                          <p className="font-medium">{item.name}</p>
+                      <div key={item.id} className="flex items-center justify-between p-4 bg-black/50 border border-white/5 rounded-xl">
+                        <div className="flex-1 mr-3">
+                          <p className="font-medium text-base">{item.name}</p>
                           <p className="text-sm text-gray-400">${item.price.toFixed(2)} each</p>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => updateQuantity(item.id, -1)} className="w-8 h-8 bg-zinc-700 rounded-lg flex items-center justify-center">
+                          <button onClick={() => updateQuantity(item.id, -1)} className="w-10 h-10 bg-zinc-700 rounded-lg flex items-center justify-center active:scale-95 transition-transform">
                             <Minus className="w-4 h-4" />
                           </button>
-                          <span className="w-6 text-center">{item.quantity}</span>
-                          <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 bg-amber-500 text-black rounded-lg flex items-center justify-center">
+                          <span className="w-8 text-center font-bold text-lg">{item.quantity}</span>
+                          <button onClick={() => updateQuantity(item.id, 1)} className="w-10 h-10 bg-amber-500 text-black rounded-lg flex items-center justify-center active:scale-95 transition-transform">
                             <Plus className="w-4 h-4" />
                           </button>
-                          <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center">
+                          <button onClick={() => removeFromCart(item.id)} className="w-10 h-10 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center active:scale-95 transition-transform ml-1">
                             <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       </div>
                     ))}
-                    <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
-                      <div className="flex justify-between text-lg font-bold">
+                    <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                      <div className="flex justify-between text-xl font-bold">
                         <span>Total</span>
                         <span className="text-amber-400">${subtotal.toFixed(2)}</span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 border border-amber-500/30 text-amber-400 rounded-xl font-medium">
+                    <div className="flex gap-3">
+                      <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3.5 border border-amber-500/30 text-amber-400 rounded-xl font-medium text-base active:scale-[0.98] transition-transform">
                         <Plus className="w-4 h-4 inline mr-1" /> Add More
                       </button>
-                      <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 bg-amber-500 text-black rounded-xl font-semibold disabled:opacity-50">
+                      <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3.5 bg-amber-500 text-black rounded-xl font-bold text-base disabled:opacity-50 active:scale-[0.98] transition-transform shadow-lg shadow-amber-500/20">
                         {loading ? 'Placing...' : 'Place Order'}
                       </button>
                     </div>
@@ -579,14 +771,15 @@ function OrderContent() {
                 {/* Tip Selection */}
                 {msg.showTip && (
                   <div className="mt-4 space-y-3">
+                    <p className="text-sm text-gray-400 text-center mb-2">Select tip amount</p>
                     <div className="grid grid-cols-5 gap-2">
                       {TIP_OPTIONS.map(tip => (
                         <button
                           key={tip}
                           onClick={() => handleTipSelect(tip)}
-                          className={`py-3 rounded-xl text-sm font-medium transition-colors ${
+                          className={`py-3.5 rounded-xl text-sm font-bold transition-all active:scale-95 ${
                             selectedTip === tip 
-                              ? 'bg-amber-500 text-black' 
+                              ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/20' 
                               : 'bg-zinc-800 text-gray-300 hover:bg-zinc-700'
                           }`}
                         >
@@ -595,15 +788,15 @@ function OrderContent() {
                       ))}
                     </div>
                     {selectedTip > 0 && (
-                      <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl">
-                        <p className="text-green-400 text-center">Tip: ${(subtotal * selectedTip / 100).toFixed(2)}</p>
+                      <div className="p-4 bg-green-500/10 border border-green-500/30 rounded-xl">
+                        <p className="text-green-400 text-center font-medium text-base">Tip: ${(subtotal * selectedTip / 100).toFixed(2)}</p>
                       </div>
                     )}
-                    <div className="flex gap-2">
-                      <button onClick={() => handleOptionClick('skip_tip')} className="flex-1 py-3 border border-white/10 text-gray-400 rounded-xl">
+                    <div className="flex gap-3">
+                      <button onClick={() => handleOptionClick('skip_tip')} className="flex-1 py-3.5 border border-white/10 text-gray-400 rounded-xl font-medium active:scale-[0.98] transition-transform">
                         Skip
                       </button>
-                      <button onClick={() => handleOptionClick('confirm_tip')} className="flex-1 py-3 bg-amber-500 text-black rounded-xl font-semibold">
+                      <button onClick={() => handleOptionClick('confirm_tip')} className="flex-1 py-3.5 bg-amber-500 text-black rounded-xl font-bold active:scale-[0.98] transition-transform shadow-lg shadow-amber-500/20">
                         Confirm Tip
                       </button>
                     </div>
@@ -711,19 +904,19 @@ function OrderContent() {
       </div>
 
       {/* Input Area */}
-      <div className="sticky bottom-0 bg-gradient-to-t from-black to-black/95 backdrop-blur-xl border-t border-amber-700/20 p-4">
-        <form onSubmit={handleSendMessage} className="flex gap-2">
+      <div className="sticky bottom-0 bg-gradient-to-t from-black via-black/98 to-transparent backdrop-blur-xl border-t border-amber-700/20 px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <form onSubmit={handleSendMessage} className="flex gap-3">
           <input
             ref={inputRef}
             type="text"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 px-4 py-3 bg-zinc-900 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none text-sm"
+            placeholder="Ask SIA anything..."
+            className="flex-1 px-4 py-3.5 bg-zinc-900 border border-amber-700/30 rounded-xl focus:border-amber-500/50 focus:outline-none text-base placeholder-gray-500"
           />
           <button 
             type="submit" 
-            className="px-4 py-3 bg-amber-500 text-black rounded-xl hover:bg-amber-400 transition-colors"
+            className="px-5 py-3.5 bg-amber-500 text-black rounded-xl hover:bg-amber-400 transition-colors active:scale-95 flex items-center justify-center min-w-[52px]"
           >
             <Send className="w-5 h-5" />
           </button>
