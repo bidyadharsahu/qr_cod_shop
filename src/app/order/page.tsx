@@ -11,6 +11,7 @@ import {
   FileText, ArrowLeft, Check, MessageCircle, UtensilsCrossed
 } from 'lucide-react';
 import { getGeminiResponse, shouldUseGemini } from '@/lib/gemini';
+import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 
 const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
@@ -54,8 +55,8 @@ function OrderContent() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const tipAmount = subtotal * (selectedTip / 100);
-  const total = subtotal + tipAmount;
+  const calculation = calculateOrderTotal(subtotal, selectedTip);
+  const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
 
   // Initial fetch
@@ -67,7 +68,7 @@ function OrderContent() {
     fetchMenu();
   }, []);
 
-  // Listen for order confirmation from admin
+  // Listen for order confirmation/cancellation from admin
   useEffect(() => {
     if (!currentOrderId || !waitingForConfirmation) return;
 
@@ -89,6 +90,16 @@ function OrderContent() {
               [
                 { label: '➕ Order More', value: 'more' },
                 { label: '💵 Add Tip & Bill', value: 'pay' }
+              ]
+            );
+          } else if (payload.new.status === 'cancelled') {
+            setWaitingForConfirmation(false);
+            setCurrentOrderId(null);
+            addBotMessage(
+              `❌ **Order Update**\n\nSorry, this item is currently unavailable. Please choose another option.\n\nWould you like to see the menu again or try something else?`,
+              [
+                { label: '🍹 Show Menu', value: 'menu' },
+                { label: '💬 Get Recommendation', value: 'recommend' }
               ]
             );
           }
@@ -303,7 +314,8 @@ function OrderContent() {
       items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
       subtotal: subtotal,
       tip_amount: 0,
-      total: subtotal,
+      tax_amount: calculation.taxAmount,
+      total: calculation.total,
       status: 'pending',
       payment_status: 'unpaid',
       receipt_id: receipt
@@ -342,9 +354,13 @@ function OrderContent() {
     addUserMessage(userInput);
     setUserInput('');
 
-    // Try Gemini for conversational enhancement
+    // Try Gemini for conversational enhancement (backend API)
     if (shouldUseGemini(input)) {
-      const aiResponse = await getGeminiResponse(originalInput, `Customer is at table ${tableNumber}`);
+      const aiResponse = await getGeminiResponse(
+        originalInput, 
+        `Customer is at table ${tableNumber}`,
+        menuItems
+      );
       if (aiResponse) {
         addBotMessage(aiResponse, [
           { label: '🍹 See Menu', value: 'menu' },
@@ -500,12 +516,14 @@ function OrderContent() {
   const handleRatingSubmit = async () => {
     if (rating === 0) return;
     
-    // Update order with rating and tip
+    // Update order with rating, tip, tax, and final total
     if (receiptId) {
+      const finalCalculation = calculateOrderTotal(subtotal, selectedTip);
       const { error } = await supabase.from('orders').update({ 
         rating, 
-        tip_amount: tipAmount,
-        total: total 
+        tip_amount: finalCalculation.tipAmount,
+        tax_amount: finalCalculation.taxAmount,
+        total: finalCalculation.total 
       }).eq('receipt_id', receiptId);
       if (error) console.error('Rating update error:', error);
     }
@@ -578,6 +596,10 @@ function OrderContent() {
       doc.text(`$${tipAmount.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
     }
     
+    y += 7;
+    doc.text('Tax (3%):', 100, y);
+    doc.text(`$${taxAmount.toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
+    
     y += 10;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
@@ -616,11 +638,11 @@ function OrderContent() {
   // Thank You Screen
   if (showThankYou) {
     return (
-      <div className="min-h-screen min-h-[100dvh] bg-black flex items-center justify-center p-6">
+      <div className="min-h-screen h-screen h-[100dvh] bg-black flex items-center justify-center p-6 overflow-hidden">
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center max-w-sm mx-auto"
+          className="text-center max-w-sm w-full"
         >
           <motion.div
             initial={{ scale: 0 }}
@@ -648,7 +670,7 @@ function OrderContent() {
   }
 
   return (
-    <div className="min-h-screen min-h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto relative">
+    <div className="h-screen h-[100dvh] bg-black text-white flex flex-col max-w-lg mx-auto relative overflow-hidden">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-gradient-to-b from-black via-black/98 to-black/95 backdrop-blur-xl border-b border-amber-700/20 px-5 py-4 safe-area-top shadow-lg shadow-black/20">
         <div className="flex items-center justify-between">
@@ -675,8 +697,8 @@ function OrderContent() {
         </div>
       </header>
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5 scroll-smooth">
+      {/* Chat Messages - Only this area scrolls */}
+      <div className="flex-1 overflow-y-auto overscroll-contain px-5 py-5 space-y-5 scroll-smooth">
         <AnimatePresence>
           {chatMessages.map((msg) => (
             <motion.div
@@ -899,7 +921,11 @@ function OrderContent() {
                             <span>${tipAmount.toFixed(2)}</span>
                           </div>
                         )}
-                        <div className="flex justify-between text-xl font-bold pt-2">
+                        <div className="flex justify-between text-gray-400">
+                          <span>Tax (3%)</span>
+                          <span>${taxAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xl font-bold pt-2 border-t border-white/10">
                           <span>Total</span>
                           <span className="text-amber-400">${total.toFixed(2)}</span>
                         </div>

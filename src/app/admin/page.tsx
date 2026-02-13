@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
-import type { MenuItem, Order, RestaurantTable } from '@/lib/types';
+import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
@@ -32,6 +32,7 @@ export default function AdminDashboard() {
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
+  const [paymentModalData, setPaymentModalData] = useState<Order | null>(null);
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
   
   // Forms
@@ -136,10 +137,37 @@ export default function AdminDashboard() {
     };
   }, [isAuthenticated, fetchOrders, fetchMenu, fetchTables]);
 
-  const handleLogout = () => {
-    sessionStorage.removeItem('admin_authenticated');
-    router.push('/admin/login');
-  };
+  // Real-time payment modal updates
+  useEffect(() => {
+    if (!showPaymentModal) {
+      setPaymentModalData(null);
+      return;
+    }
+
+    // Set initial data
+    setPaymentModalData(showPaymentModal);
+
+    // Listen for real-time updates to this specific order
+    const paymentSub = supabase
+      .channel(`order-payment-${showPaymentModal.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'orders',
+          filter: `id=eq.${showPaymentModal.id}`
+        },
+        (payload: any) => {
+          setPaymentModalData(payload.new as Order);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(paymentSub);
+    };
+  }, [showPaymentModal]);
 
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
@@ -147,6 +175,12 @@ export default function AdminDashboard() {
     await supabase.from('restaurant_tables').update({ status: 'occupied', current_order_id: order.receipt_id }).eq('table_number', order.table_number);
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order confirmed!');
+  };
+
+  const cancelOrder = async (order: Order) => {
+    await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', order.id);
+    setNotifications(prev => prev.filter(n => n.id !== order.id));
+    showToast('Order cancelled', 'error');
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
@@ -497,9 +531,14 @@ export default function AdminDashboard() {
 
                     <div className="flex flex-wrap gap-2">
                       {order.status === 'pending' && (
-                        <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                          <Check className="w-4 h-4" /> Confirm
-                        </button>
+                        <>
+                          <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                            <Check className="w-4 h-4" /> Confirm
+                          </button>
+                          <button onClick={() => cancelOrder(order)} className="px-4 py-2 bg-red-500 hover:bg-red-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                            <X className="w-4 h-4" /> Cancel
+                          </button>
+                        </>
                       )}
                       {order.status === 'confirmed' && (
                         <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
@@ -719,9 +758,9 @@ export default function AdminDashboard() {
         )}
       </AnimatePresence>
 
-      {/* Payment Modal - Cash Only */}
+      {/* Payment Modal - Cash Only with Real-time Updates */}
       <AnimatePresence>
-        {showPaymentModal && (
+        {showPaymentModal && paymentModalData && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-sm w-full">
               <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
@@ -731,13 +770,32 @@ export default function AdminDashboard() {
                 </button>
               </div>
               <div className="p-6 space-y-4">
-                <div className="bg-zinc-900 rounded-xl p-4">
-                  <p className="text-gray-400">Order: {showPaymentModal.receipt_id}</p>
-                  <p className="text-gray-400">Table: {showPaymentModal.table_number}</p>
-                  <p className="text-3xl font-bold text-green-400 mt-2">${showPaymentModal.total.toFixed(2)}</p>
+                <div className="bg-zinc-900 rounded-xl p-4 space-y-2">
+                  <p className="text-gray-400 text-sm">Order: {paymentModalData.receipt_id}</p>
+                  <p className="text-gray-400 text-sm">Table: {paymentModalData.table_number}</p>
+                  <div className="border-t border-zinc-700 pt-3 mt-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Subtotal:</span>
+                      <span className="text-white">${paymentModalData.subtotal.toFixed(2)}</span>
+                    </div>
+                    {paymentModalData.tip_amount > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Tip:</span>
+                        <span className="text-green-400">${paymentModalData.tip_amount.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">Tax (3%):</span>
+                      <span className="text-white">${(paymentModalData.tax_amount || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-700">
+                      <span className="text-white">Total:</span>
+                      <span className="text-amber-400">${paymentModalData.total.toFixed(2)}</span>
+                    </div>
+                  </div>
                 </div>
                 <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
-                  <p className="text-amber-400 text-center">💵 Cash payment to manager</p>
+                  <p className="text-amber-400 text-center text-sm">💵 Cash payment to manager</p>
                 </div>
                 <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
                   Confirm Cash Payment

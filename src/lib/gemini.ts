@@ -1,59 +1,22 @@
 // Gemini API Integration for conversational enhancement only
 // Does NOT control ordering logic - only enhances conversation
+// API calls go through backend to keep API key secure
 
-const GEMINI_API_KEY = 'AIzaSyBqsXyHnfVU3T3ePbJBrgK1s77e8GiVuFg';
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent';
-
-const SYSTEM_INSTRUCTION = `You are SIA, a friendly and engaging bartender assistant at netrikxr.shop.
-
-Your role:
-- Be conversational, warm, and helpful
-- Ask follow-up questions to understand customer preferences
-- Suggest drinks based on mood, occasion, and taste
-- Recommend party packages for groups
-- Keep responses SHORT (2-3 sentences max)
-- Use emojis sparingly but effectively
-- Be professional yet fun
-
-You CANNOT:
-- Take orders (ordering system handles that)
-- Show menus (system does that)
-- Process payments
-- Change any system functionality
-
-Remember: You're here to chat and recommend. The ordering flow is handled by the system.`;
-
-export async function getGeminiResponse(userMessage: string, context?: string): Promise<string> {
+export async function getGeminiResponse(
+  userMessage: string, 
+  context?: string,
+  menuItems?: Array<{ id: number; name: string; available: boolean }>
+): Promise<string> {
   try {
-    const prompt = `${SYSTEM_INSTRUCTION}\n\n${context ? `Context: ${context}\n\n` : ''}Customer says: "${userMessage}"\n\nRespond as SIA (short, friendly, conversational):`;
-
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
+    const response = await fetch('/api/gemini', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: prompt
-          }]
-        }],
-        generationConfig: {
-          temperature: 0.9,
-          topK: 40,
-          topP: 0.95,
-          maxOutputTokens: 150,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
+        message: userMessage,
+        context,
+        menuItems: menuItems?.filter(item => item.available)
       })
     });
 
@@ -63,8 +26,7 @@ export async function getGeminiResponse(userMessage: string, context?: string): 
     }
 
     const data = await response.json();
-    const aiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return aiResponse.trim();
+    return data.response || '';
   } catch (error) {
     console.error('Gemini API error:', error);
     return '';
