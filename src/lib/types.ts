@@ -34,6 +34,7 @@ export interface Order {
   items: OrderItem[];
   subtotal: number;
   tip_amount: number;
+  tax_amount: number;
   total: number;
   status: 'pending' | 'confirmed' | 'preparing' | 'served' | 'paid' | 'completed' | 'cancelled';
   payment_method: 'card' | 'cash' | 'online' | null;

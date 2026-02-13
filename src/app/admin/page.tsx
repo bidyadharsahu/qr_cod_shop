@@ -7,6 +7,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
+import type { Order, MenuItem, RestaurantTable } from '@/lib/types';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
