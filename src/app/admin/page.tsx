@@ -170,6 +170,11 @@ export default function AdminDashboard() {
     };
   }, [showPaymentModal]);
 
+  const handleLogout = () => {
+    sessionStorage.removeItem('admin_authenticated');
+    router.push('/admin/login');
+  };
+
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
     await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', order.id);
