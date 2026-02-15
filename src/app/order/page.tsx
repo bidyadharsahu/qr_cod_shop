@@ -373,29 +373,40 @@ function OrderContent() {
       return;
     }
 
-    // Handle item ordering
-    if (response.matchedItem && response.matchedItem.available) {
-      const item = response.matchedItem;
-      const qty = response.entities.quantity || 1;
-      
-      // Add to cart
-      setCart(prev => {
-        const existing = prev.find(i => i.id === item.id);
-        if (existing) {
-          return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
-        }
-        return [...prev, { ...item, quantity: qty }];
-      });
+    // Handle item ordering - new format with matchedItems array
+    if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
+      // Add all matched items to cart
+      for (const matched of response.matchedItems) {
+        const item = matched.item;
+        const qty = matched.quantity || 1;
+        
+        setCart(prev => {
+          const existing = prev.find(i => i.id === item.id);
+          if (existing) {
+            return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
+          }
+          return [...prev, { ...item, quantity: qty }];
+        });
+      }
 
-      const prefText = response.entities.preference ? ` (${response.entities.preference})` : '';
       addBotMessage(
-        `Got it 👍 Adding ${qty}x ${item.name}${prefText} to your cart.\n\nWant anything else?`,
+        response.message,
         [
           { label: '🍹 More Drinks', value: 'menu' },
           { label: '🛒 View Cart', value: 'cart' },
           { label: '✅ Checkout', value: 'checkout' }
         ]
       );
+      return;
+    }
+    
+    // Handle clear cart action
+    if (response.action === 'clear_cart') {
+      setCart([]);
+      addBotMessage(response.message, [
+        { label: '🍹 See Menu', value: 'menu' },
+        { label: '💬 Recommend', value: 'recommend' }
+      ]);
       return;
     }
 
