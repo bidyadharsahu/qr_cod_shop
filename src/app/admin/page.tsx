@@ -211,40 +211,67 @@ export default function AdminDashboard() {
       showToast('Please fill all fields', 'error'); return;
     }
     const data = { name: menuForm.name.trim(), price: parseFloat(menuForm.price), category: menuForm.category.trim(), available: true };
-    if (editMenuItem) {
-      await supabase.from('menu_items').update(data).eq('id', editMenuItem.id);
-    } else {
-      await supabase.from('menu_items').insert(data);
+    try {
+      if (editMenuItem) {
+        const { error } = await supabase.from('menu_items').update(data).eq('id', editMenuItem.id);
+        if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
+      } else {
+        const { error } = await supabase.from('menu_items').insert(data);
+        if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
+      }
+      showToast(editMenuItem ? 'Item updated!' : 'Item added!');
+      setShowMenuModal(false); setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' });
+      fetchMenu(); // Refresh data
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
     }
-    showToast(editMenuItem ? 'Item updated!' : 'Item added!');
-    setShowMenuModal(false); setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' });
   };
 
   const deleteMenuItem = async (id: number) => {
-    await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Item deleted');
+    fetchMenu();
   };
 
   const toggleAvailability = async (item: MenuItem) => {
-    await supabase.from('menu_items').update({ available: !item.available }).eq('id', item.id);
+    const { error } = await supabase.from('menu_items').update({ available: !item.available }).eq('id', item.id);
+    if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
+    fetchMenu();
   };
 
   // Table actions
   const addTable = async () => {
     const num = parseInt(tableNumberInput);
     if (isNaN(num) || num <= 0) { showToast('Invalid table number', 'error'); return; }
-    const { error } = await supabase.from('restaurant_tables').insert({ table_number: num, status: 'available' });
-    if (error?.message.includes('duplicate')) { showToast('Table already exists', 'error'); return; }
-    showToast('Table added!'); setTableNumberInput(''); setShowAddTableModal(false);
+    try {
+      const { error } = await supabase.from('restaurant_tables').insert({ table_number: num, status: 'available' });
+      if (error) {
+        if (error.message.includes('duplicate') || error.code === '23505') {
+          showToast('Table already exists', 'error');
+        } else {
+          showToast(`Error: ${error.message}`, 'error');
+        }
+        return;
+      }
+      showToast('Table added!'); setTableNumberInput(''); setShowAddTableModal(false);
+      fetchTables();
+    } catch (err: any) {
+      showToast(`Error: ${err.message}`, 'error');
+    }
   };
 
   const deleteTable = async (id: number) => {
-    await supabase.from('restaurant_tables').delete().eq('id', id);
+    const { error } = await supabase.from('restaurant_tables').delete().eq('id', id);
+    if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Table deleted');
+    fetchTables();
   };
 
   const updateTableStatus = async (id: number, status: string) => {
-    await supabase.from('restaurant_tables').update({ status }).eq('id', id);
+    const { error } = await supabase.from('restaurant_tables').update({ status }).eq('id', id);
+    if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
+    fetchTables();
   };
 
   // Stats
@@ -291,19 +318,27 @@ export default function AdminDashboard() {
             initial={{ opacity: 0, scale: 0.9, y: -20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: -20 }}
-            className="fixed top-20 right-4 z-50 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl p-4 shadow-2xl max-w-sm"
+            className="fixed top-20 right-4 z-50 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl p-5 shadow-2xl max-w-md border-2 border-white/20"
           >
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-black/20 rounded-xl flex items-center justify-center">
-                <Bell className="w-6 h-6 text-black" />
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center animate-pulse">
+                  <Bell className="w-7 h-7 text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-white text-lg">🔔 New Order!</p>
+                  <p className="text-sm text-white/80">Table {notifications[0].table_number}</p>
+                  <p className="text-xs text-white/60 font-mono">{notifications[0].receipt_id}</p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className="font-bold text-black">New Order!</p>
-                <p className="text-sm text-black/70">Table {notifications[0].table_number} • {notifications[0].receipt_id}</p>
+              <div className="flex gap-2">
+                <button onClick={() => cancelOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-bold">
+                  ✕ Cancel
+                </button>
+                <button onClick={() => confirmOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-white hover:bg-gray-100 text-green-600 rounded-lg transition-colors text-sm font-bold">
+                  ✓ Confirm
+                </button>
               </div>
-              <button onClick={() => confirmOrder(notifications[0])} className="px-4 py-2 bg-black text-white rounded-lg hover:bg-gray-900 transition-colors text-sm font-medium">
-                Confirm
-              </button>
             </div>
           </motion.div>
         )}

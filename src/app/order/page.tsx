@@ -59,13 +59,29 @@ function OrderContent() {
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
 
-  // Initial fetch
+  // Initial fetch + real-time menu sync
   useEffect(() => {
     const fetchMenu = async () => {
       const { data } = await supabase.from('menu_items').select('*').eq('available', true).order('category');
       if (data) setMenuItems(data as MenuItem[]);
     };
     fetchMenu();
+
+    // Real-time menu updates
+    const menuSub = supabase
+      .channel('menu-realtime-order')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'menu_items' },
+        () => {
+          fetchMenu();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(menuSub);
+    };
   }, []);
 
   // Listen for order confirmation/cancellation from admin
@@ -583,13 +599,13 @@ function OrderContent() {
         <motion.div 
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center max-w-sm w-full"
+          className="text-center w-full max-w-sm mx-auto flex flex-col items-center"
         >
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring' }}
-            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mx-auto mb-8"
+            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mb-8"
           >
             <Check className="w-12 h-12 text-black" />
           </motion.div>
@@ -601,7 +617,7 @@ function OrderContent() {
             ))}
           </div>
           <p className="text-gray-500 text-base mb-10">We hope to see you again soon!</p>
-          <div className="pt-6 border-t border-white/10">
+          <div className="pt-6 border-t border-white/10 w-full">
             <p className="text-sm text-gray-600">netrikxr.shop</p>
             <p className="text-xs text-gray-700 mt-1">Tampa, Florida</p>
           </div>
@@ -652,9 +668,9 @@ function OrderContent() {
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.2 }}
-                className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <div className={`max-w-[85%] ${msg.role === 'user' ? 'order-1' : ''}`}>
+                <div className={`${msg.role === 'user' ? 'max-w-[75%]' : 'max-w-[85%]'}`}>
                   {/* Bot Avatar */}
                   {msg.role === 'bot' && (
                     <div className="flex items-center gap-2 mb-1.5">
@@ -666,12 +682,12 @@ function OrderContent() {
                   )}
                   
                   {/* Message Bubble */}
-                  <div className={`rounded-2xl px-4 py-3 ${
+                  <div className={`rounded-2xl px-4 py-2.5 ${
                     msg.role === 'user' 
-                      ? 'bg-amber-500 text-black rounded-br-md' 
-                      : 'bg-zinc-900 border border-zinc-800 rounded-bl-md'
+                      ? 'bg-amber-500 text-black rounded-br-sm ml-auto' 
+                      : 'bg-zinc-900 border border-zinc-800 rounded-bl-sm'
                   }`}>
-                    <p className="text-[15px] leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    <p className={`leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium' : 'text-[15px]'}`}>{msg.content}</p>
                   </div>
 
                   {/* Quick Options */}
