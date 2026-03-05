@@ -2,7 +2,7 @@
   "name": "Netrik XR Shop",
   "short_name": "NetrikXR",
   "description": "Premium QR Code Ordering - Scan, Order, Enjoy",
-  "start_url": "/order?table=1",
+  "start_url": "/order",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#0a0a0a",

@@ -34,8 +34,28 @@ interface ChatMessage {
 
 function OrderContent() {
   const searchParams = useSearchParams();
-  const tableNumber = searchParams.get('table') || '1';
   
+  // Table number: URL param > localStorage > default '1'
+  const tableParam = searchParams.get('table');
+  const [tableNumber, setTableNumber] = useState(() => {
+    if (tableParam) return tableParam;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('netrikxr-table') || '1';
+    }
+    return '1';
+  });
+
+  // Persist table number to localStorage whenever it changes
+  useEffect(() => {
+    if (tableParam) {
+      localStorage.setItem('netrikxr-table', tableParam);
+      setTableNumber(tableParam);
+    } else {
+      const saved = localStorage.getItem('netrikxr-table');
+      if (saved) setTableNumber(saved);
+    }
+  }, [tableParam]);
+
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -51,6 +71,8 @@ function OrderContent() {
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
+  const [canInstallPWA, setCanInstallPWA] = useState(false);
+  const [isStandalone, setIsStandalone] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -70,6 +92,32 @@ function OrderContent() {
     return () => {
       window.removeEventListener('online', goOnline);
       window.removeEventListener('offline', goOffline);
+    };
+  }, []);
+
+  // Detect PWA install availability and standalone mode
+  useEffect(() => {
+    const standalone = 
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true;
+    setIsStandalone(standalone);
+
+    // Check if install prompt is already available
+    if ((window as any).__pwaInstallPrompt) {
+      setCanInstallPWA(true);
+    }
+
+    // Listen for install prompt becoming available
+    const handleInstallAvailable = () => setCanInstallPWA(true);
+    window.addEventListener('pwa-install-available', handleInstallAvailable);
+
+    // Listen for app installed (clear install state)
+    const handleInstalled = () => setCanInstallPWA(false);
+    window.addEventListener('appinstalled', handleInstalled);
+
+    return () => {
+      window.removeEventListener('pwa-install-available', handleInstallAvailable);
+      window.removeEventListener('appinstalled', handleInstalled);
     };
   }, []);
 
@@ -152,20 +200,32 @@ function OrderContent() {
     };
   }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, subtotal]);
 
-  // Welcome message
+  // Welcome message - show install prompt if available, otherwise normal welcome
   useEffect(() => {
     if (menuItems.length > 0 && chatMessages.length === 0) {
-      addBotMessage(
-        `Hey there! 👋 Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.\n\nWhat can I get you tonight?`,
-        [
-          { label: '🍹 See Menu', value: 'menu' },
-          { label: '🎉 Party Package', value: 'party' },
-          { label: '💬 Recommend', value: 'recommend' },
-          { label: '❓ Help', value: 'help' }
-        ]
-      );
+      if (canInstallPWA && !isStandalone) {
+        // Show install prompt first
+        addBotMessage(
+          `Hey there! 👋 Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
+          [
+            { label: '📲 Install App', value: 'install_app' },
+            { label: '⏭️ Skip, Order Now', value: 'skip_install' }
+          ]
+        );
+      } else {
+        // Normal welcome (already installed or install not available)
+        addBotMessage(
+          `Hey there! 👋 Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.\n\nWhat can I get you tonight?`,
+          [
+            { label: '🍹 See Menu', value: 'menu' },
+            { label: '🎉 Party Package', value: 'party' },
+            { label: '💬 Recommend', value: 'recommend' },
+            { label: '❓ Help', value: 'help' }
+          ]
+        );
+      }
     }
-  }, [menuItems, tableNumber, chatMessages.length]);
+  }, [menuItems, tableNumber, chatMessages.length, canInstallPWA, isStandalone]);
 
   // Auto scroll
   useEffect(() => {
@@ -189,8 +249,60 @@ function OrderContent() {
     setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content }]);
   };
 
+  // Handle PWA install from chatbot
+  const handlePWAInstall = async () => {
+    const doInstall = (window as any).__pwaDoInstall;
+    if (!doInstall) {
+      addBotMessage(
+        `Hmm, install isn't available right now. Let's get you ordering instead! 🍹`,
+        [
+          { label: '🍹 See Menu', value: 'menu' },
+          { label: '💬 Recommend', value: 'recommend' }
+        ]
+      );
+      return;
+    }
+
+    addBotMessage(`📲 Installing... Tap "Install" on the popup!`);
+    
+    const accepted = await doInstall();
+    if (accepted) {
+      setCanInstallPWA(false);
+      addBotMessage(
+        `🎉 App installed! Redirecting you now...\n\nIf it doesn't open automatically, check your home screen for "Netrik XR".`
+      );
+      // Redirect handled by appinstalled event in pwa-register.tsx
+    } else {
+      addBotMessage(
+        `No worries! You can always install later. Let's get you ordering! 🍹`,
+        [
+          { label: '🍹 See Menu', value: 'menu' },
+          { label: '🎉 Party Package', value: 'party' },
+          { label: '💬 Recommend', value: 'recommend' },
+          { label: '❓ Help', value: 'help' }
+        ]
+      );
+    }
+  };
+
   const handleOptionClick = (value: string) => {
     switch (value) {
+      case 'install_app':
+        addUserMessage('Install the app');
+        handlePWAInstall();
+        return;
+      case 'skip_install':
+        addUserMessage('Skip, let me order');
+        addBotMessage(
+          `No problem! What can I get you tonight? 🍹`,
+          [
+            { label: '🍹 See Menu', value: 'menu' },
+            { label: '🎉 Party Package', value: 'party' },
+            { label: '💬 Recommend', value: 'recommend' },
+            { label: '❓ Help', value: 'help' }
+          ]
+        );
+        break;
       case 'menu':
         addUserMessage('Show me the menu');
         addBotMessage('Here\'s what we\'ve got tonight! 🍹 Tap any category or just tell me what you\'re feeling.', undefined, { showMenu: true });

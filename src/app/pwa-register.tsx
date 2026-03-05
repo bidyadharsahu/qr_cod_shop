@@ -72,7 +72,10 @@ export default function PWARegister() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e);
-      // Show install banner after a short delay
+      // Expose globally so the chatbot can trigger install
+      (window as any).__pwaInstallPrompt = e;
+      window.dispatchEvent(new CustomEvent('pwa-install-available'));
+      // Show install banner after a short delay (fallback for non-order pages)
       setTimeout(() => {
         if (!isInStandaloneMode) {
           setShowInstallBanner(true);
@@ -82,11 +85,31 @@ export default function PWARegister() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // Track successful install
+    // Expose global install function for chatbot
+    (window as any).__pwaDoInstall = async () => {
+      const prompt = (window as any).__pwaInstallPrompt;
+      if (!prompt) return false;
+      prompt.prompt();
+      const result = await prompt.userChoice;
+      return result.outcome === 'accepted';
+    };
+
+    // Track successful install - auto-redirect to open in standalone mode
     const handleAppInstalled = () => {
       setShowInstallBanner(false);
       setInstallPrompt(null);
-      console.log('[PWA] App installed successfully');
+      (window as any).__pwaInstallPrompt = null;
+      console.log('[PWA] App installed successfully - redirecting to standalone');
+      
+      // Build URL with persisted table number
+      const table = localStorage.getItem('netrikxr-table') || '1';
+      const targetUrl = `${window.location.origin}/order?table=${table}`;
+      
+      // Short delay to let the install animation complete, then redirect
+      // This will open the URL in the newly installed standalone PWA
+      setTimeout(() => {
+        window.location.href = targetUrl;
+      }, 800);
     };
     window.addEventListener('appinstalled', handleAppInstalled);
 
