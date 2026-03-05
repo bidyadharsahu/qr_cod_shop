@@ -94,22 +94,36 @@ export default function PWARegister() {
       return result.outcome === 'accepted';
     };
 
-    // Track successful install - auto-redirect to open in standalone mode
+    // Track successful install - aggressively redirect to open in standalone PWA
     const handleAppInstalled = () => {
       setShowInstallBanner(false);
       setInstallPrompt(null);
       (window as any).__pwaInstallPrompt = null;
-      console.log('[PWA] App installed successfully - redirecting to standalone');
+      console.log('[PWA] App installed successfully');
       
-      // Build URL with persisted table number
-      const table = localStorage.getItem('netrikxr-table') || '1';
+      // Read table from cookie (most reliable cross-context)
+      const cookieMatch = document.cookie.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
+      const table = cookieMatch ? decodeURIComponent(cookieMatch[1]) : (localStorage.getItem('netrikxr-table') || '1');
       const targetUrl = `${window.location.origin}/order?table=${table}`;
       
-      // Short delay to let the install animation complete, then redirect
-      // This will open the URL in the newly installed standalone PWA
+      // Dispatch event so chatbot can show message
+      window.dispatchEvent(new CustomEvent('pwa-installed', { detail: { table, targetUrl } }));
+      
+      // Strategy: Multiple attempts to open in standalone PWA
+      // 1) Short delay for install animation, then try window.open (triggers link capturing on Android)
       setTimeout(() => {
-        window.location.href = targetUrl;
-      }, 800);
+        // Try opening a new window — on Android Chrome with an installed PWA,
+        // this opens in the standalone app instead of Chrome
+        const opened = window.open(targetUrl, '_blank');
+        
+        // 2) Fallback: force full-page redirect after another delay
+        // On newer Chrome, navigating within PWA scope triggers "open in app"
+        setTimeout(() => {
+          if (!opened || opened.closed) {
+            window.location.replace(targetUrl);
+          }
+        }, 1500);
+      }, 500);
     };
     window.addEventListener('appinstalled', handleAppInstalled);
 

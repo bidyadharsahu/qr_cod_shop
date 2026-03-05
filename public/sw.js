@@ -1,8 +1,8 @@
-// Netrik XR Shop - Service Worker v2
+// Netrik XR Shop - Service Worker v3
 // Provides offline caching while NEVER interfering with Supabase/real-time
 
-const CACHE_NAME = 'netrikxr-v2';
-const DYNAMIC_CACHE = 'netrikxr-dynamic-v2';
+const CACHE_NAME = 'netrikxr-v3';
+const DYNAMIC_CACHE = 'netrikxr-dynamic-v3';
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
@@ -76,6 +76,19 @@ self.addEventListener('fetch', (event) => {
 
   const { request } = event;
   const url = new URL(request.url);
+
+  // For navigation to /order without a table param, inject table from cookie
+  if (request.mode === 'navigate' && url.pathname === '/order' && !url.searchParams.has('table')) {
+    const cookieHeader = request.headers.get('cookie') || '';
+    const tableMatch = cookieHeader.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
+    if (tableMatch) {
+      const table = decodeURIComponent(tableMatch[1]);
+      const redirectUrl = new URL(url);
+      redirectUrl.searchParams.set('table', table);
+      event.respondWith(Response.redirect(redirectUrl.toString(), 302));
+      return;
+    }
+  }
 
   // For navigation requests (page loads) - network first, offline fallback
   if (request.mode === 'navigate') {

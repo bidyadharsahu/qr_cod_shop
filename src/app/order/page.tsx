@@ -34,26 +34,37 @@ interface ChatMessage {
 
 function OrderContent() {
   const searchParams = useSearchParams();
-  
-  // Table number: URL param > localStorage > default '1'
   const tableParam = searchParams.get('table');
-  const [tableNumber, setTableNumber] = useState(() => {
-    if (tableParam) return tableParam;
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('netrikxr-table') || '1';
-    }
-    return '1';
-  });
 
-  // Persist table number to localStorage whenever it changes
+  // Helper: read table from cookie
+  const getTableFromCookie = (): string | null => {
+    if (typeof document === 'undefined') return null;
+    const match = document.cookie.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  };
+
+  // Helper: save table to both localStorage and cookie
+  const persistTable = (table: string) => {
+    try {
+      localStorage.setItem('netrikxr-table', table);
+    } catch (_) {}
+    // Set cookie accessible by service worker, expires in 30 days
+    document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
+  };
+
+  // Table number: URL param > cookie > localStorage > '1'
+  const [tableNumber, setTableNumber] = useState('1');
+
+  // On mount and when URL param changes, resolve the real table number
   useEffect(() => {
+    let resolved = '1';
     if (tableParam) {
-      localStorage.setItem('netrikxr-table', tableParam);
-      setTableNumber(tableParam);
+      resolved = tableParam;
     } else {
-      const saved = localStorage.getItem('netrikxr-table');
-      if (saved) setTableNumber(saved);
+      resolved = getTableFromCookie() || localStorage.getItem('netrikxr-table') || '1';
     }
+    setTableNumber(resolved);
+    persistTable(resolved);
   }, [tableParam]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -115,9 +126,20 @@ function OrderContent() {
     const handleInstalled = () => setCanInstallPWA(false);
     window.addEventListener('appinstalled', handleInstalled);
 
+    // Listen for our custom pwa-installed event with redirect info
+    const handlePWAInstalled = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.targetUrl) {
+        // Store the open-app URL so we can show an "Open App" button
+        sessionStorage.setItem('netrikxr-open-url', detail.targetUrl);
+      }
+    };
+    window.addEventListener('pwa-installed', handlePWAInstalled);
+
     return () => {
       window.removeEventListener('pwa-install-available', handleInstallAvailable);
       window.removeEventListener('appinstalled', handleInstalled);
+      window.removeEventListener('pwa-installed', handlePWAInstalled);
     };
   }, []);
 
@@ -253,25 +275,42 @@ function OrderContent() {
   const handlePWAInstall = async () => {
     const doInstall = (window as any).__pwaDoInstall;
     if (!doInstall) {
-      addBotMessage(
-        `Hmm, install isn't available right now. Let's get you ordering instead! 🍹`,
-        [
-          { label: '🍹 See Menu', value: 'menu' },
-          { label: '💬 Recommend', value: 'recommend' }
-        ]
-      );
+      // Check iOS
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        addBotMessage(
+          `📲 To install on iPhone:\n\n1. Tap the Share button ⎙ at the bottom\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add"\n\nThen open "Netrik XR" from your home screen! 🎉`,
+          [
+            { label: '✅ Done, Order Now', value: 'skip_install' }
+          ]
+        );
+      } else {
+        addBotMessage(
+          `Hmm, install isn't available right now. Let's get you ordering instead! 🍹`,
+          [
+            { label: '🍹 See Menu', value: 'menu' },
+            { label: '💬 Recommend', value: 'recommend' }
+          ]
+        );
+      }
       return;
     }
 
-    addBotMessage(`📲 Installing... Tap "Install" on the popup!`);
+    addBotMessage(`📲 Installing... Tap "Install" on the popup that appears!`);
     
     const accepted = await doInstall();
     if (accepted) {
       setCanInstallPWA(false);
+      // Persist table before redirect
+      const table = tableNumber;
+      document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
+      
       addBotMessage(
-        `🎉 App installed! Redirecting you now...\n\nIf it doesn't open automatically, check your home screen for "Netrik XR".`
+        `🎉 App installed! Opening now...\n\nIf it doesn't open automatically, look for "Netrik XR" on your home screen and tap it!`,
+        [
+          { label: '🚀 Open App', value: 'open_installed_app' }
+        ]
       );
-      // Redirect handled by appinstalled event in pwa-register.tsx
     } else {
       addBotMessage(
         `No worries! You can always install later. Let's get you ordering! 🍹`,
@@ -290,6 +329,17 @@ function OrderContent() {
       case 'install_app':
         addUserMessage('Install the app');
         handlePWAInstall();
+        return;
+      case 'open_installed_app':
+        addUserMessage('Open the app');
+        {
+          const table = tableNumber;
+          const url = `${window.location.origin}/order?table=${table}`;
+          // Try to open in standalone PWA
+          window.open(url, '_blank');
+          // Fallback: full redirect
+          setTimeout(() => window.location.replace(url), 1000);
+        }
         return;
       case 'skip_install':
         addUserMessage('Skip, let me order');
