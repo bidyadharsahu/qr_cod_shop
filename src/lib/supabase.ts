@@ -16,7 +16,18 @@ export function getSupabase(): SupabaseClient {
         'placeholder-key',
       );
     } else {
-      _supabase = createClient(supabaseUrl, supabaseAnonKey);
+      _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+        realtime: {
+          params: {
+            eventsPerSecond: 10,
+          },
+        },
+        global: {
+          headers: {
+            'X-Client-Info': 'netrikxr-pwa',
+          },
+        },
+      });
     }
   }
   return _supabase;

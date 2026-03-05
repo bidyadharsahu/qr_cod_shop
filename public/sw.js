@@ -1,18 +1,17 @@
-// Netrik XR Shop - Service Worker
-// Provides offline caching, background sync, and native app experience
+// Netrik XR Shop - Service Worker v2
+// Provides offline caching while NEVER interfering with Supabase/real-time
 
-const CACHE_NAME = 'netrikxr-v1';
-const DYNAMIC_CACHE = 'netrikxr-dynamic-v1';
+const CACHE_NAME = 'netrikxr-v2';
+const DYNAMIC_CACHE = 'netrikxr-dynamic-v2';
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
-  '/',
-  '/order',
   '/manifest.json',
   '/apple-touch-icon.png',
   '/favicon.png',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
+  '/offline.html',
 ];
 
 // Install - cache static assets
@@ -45,45 +44,70 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// Helper: check if a URL should NEVER be handled by the service worker
+function shouldBypass(request) {
+  const url = new URL(request.url);
+
+  // 1. NEVER touch non-GET requests (POST, PATCH, DELETE = Supabase mutations)
+  if (request.method !== 'GET') return true;
+
+  // 2. NEVER touch Supabase (REST, Realtime, WebSocket, Auth, Storage)
+  if (url.hostname.includes('supabase')) return true;
+
+  // 3. NEVER touch WebSocket upgrade requests
+  if (request.headers.get('Upgrade') === 'websocket') return true;
+
+  // 4. NEVER touch chrome-extension or non-http(s) protocols
+  if (!url.protocol.startsWith('http')) return true;
+
+  // 5. NEVER touch API routes (Next.js API endpoints if any)
+  if (url.pathname.startsWith('/api/')) return true;
+
+  // 6. NEVER touch _next/data (Next.js data fetching for dynamic pages)
+  if (url.pathname.startsWith('/_next/data/')) return true;
+
+  return false;
+}
+
 // Fetch strategy: Network first, fallback to cache
 self.addEventListener('fetch', (event) => {
+  // Bypass everything that should go straight to network
+  if (shouldBypass(event.request)) return;
+
   const { request } = event;
   const url = new URL(request.url);
 
-  // Skip non-GET requests
-  if (request.method !== 'GET') return;
-
-  // Skip Supabase API calls - always go to network for real-time data
-  if (url.hostname.includes('supabase')) return;
-
-  // Skip Chrome extension requests
-  if (url.protocol === 'chrome-extension:') return;
-
-  // For navigation requests (page loads) - network first
+  // For navigation requests (page loads) - network first, offline fallback
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request)
         .then((response) => {
-          const cloned = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, cloned));
+          // Only cache successful responses
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, cloned));
+          }
           return response;
         })
         .catch(() => {
           return caches.match(request).then((cached) => {
-            return cached || caches.match('/');
+            return cached || caches.match('/offline.html');
           });
         })
     );
     return;
   }
 
-  // For static assets (_next/static) - cache first
+  // For static assets (_next/static) - cache first (immutable hashed files)
   if (url.pathname.startsWith('/_next/static/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
-        return cached || fetch(request).then((response) => {
-          const cloned = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+        if (cached) return cached;
+        return fetch(request).then((response) => {
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, cloned));
+          }
           return response;
         });
       })
@@ -91,17 +115,19 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For images and other assets - stale while revalidate
+  // For images and icons - stale while revalidate
   if (request.destination === 'image' || url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
-        const fetchPromise = fetch(request).then((response) => {
-          const cloned = response.clone();
-          caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, cloned));
+        const networkFetch = fetch(request).then((response) => {
+          if (response.ok) {
+            const cloned = response.clone();
+            caches.open(DYNAMIC_CACHE).then((cache) => cache.put(request, cloned));
+          }
           return response;
         }).catch(() => cached);
-        
-        return cached || fetchPromise;
+
+        return cached || networkFetch;
       })
     );
     return;

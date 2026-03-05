@@ -23,6 +23,11 @@ export default function PWARegister() {
         .then((registration) => {
           console.log('[PWA] Service Worker registered:', registration.scope);
           
+          // Check for updates periodically (every 60s)
+          setInterval(() => {
+            registration.update();
+          }, 60000);
+
           // Check for updates
           registration.addEventListener('updatefound', () => {
             const newWorker = registration.installing;
@@ -40,6 +45,29 @@ export default function PWARegister() {
         });
     }
 
+    // Handle app visibility changes (important for PWA returning from background)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[PWA] App returned to foreground');
+        // The Supabase realtime channels will auto-reconnect,
+        // but we can dispatch a custom event for components to refresh
+        window.dispatchEvent(new CustomEvent('pwa-resume'));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Handle online/offline events
+    const handleOnline = () => {
+      console.log('[PWA] Back online');
+      window.dispatchEvent(new CustomEvent('pwa-online'));
+    };
+    const handleOffline = () => {
+      console.log('[PWA] Gone offline');
+      window.dispatchEvent(new CustomEvent('pwa-offline'));
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
     // Capture the install prompt (Android/Chrome)
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -55,14 +83,19 @@ export default function PWARegister() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     // Track successful install
-    window.addEventListener('appinstalled', () => {
+    const handleAppInstalled = () => {
       setShowInstallBanner(false);
       setInstallPrompt(null);
       console.log('[PWA] App installed successfully');
-    });
+    };
+    window.addEventListener('appinstalled', handleAppInstalled);
 
     return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 

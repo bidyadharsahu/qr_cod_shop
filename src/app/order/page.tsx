@@ -50,6 +50,7 @@ function OrderContent() {
   const [loading, setLoading] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -58,6 +59,19 @@ function OrderContent() {
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
+
+  // Track online/offline state
+  useEffect(() => {
+    setIsOnline(navigator.onLine);
+    const goOnline = () => setIsOnline(true);
+    const goOffline = () => setIsOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   // Initial fetch + real-time menu sync
   useEffect(() => {
@@ -79,8 +93,18 @@ function OrderContent() {
       )
       .subscribe();
 
+    // Re-fetch when app returns from background (PWA resume)
+    const handleResume = () => {
+      console.log('[Order] PWA resumed, re-fetching menu...');
+      fetchMenu();
+    };
+    window.addEventListener('pwa-resume', handleResume);
+    window.addEventListener('pwa-online', handleResume);
+
     return () => {
       supabase.removeChannel(menuSub);
+      window.removeEventListener('pwa-resume', handleResume);
+      window.removeEventListener('pwa-online', handleResume);
     };
   }, []);
 
@@ -291,6 +315,11 @@ function OrderContent() {
   const handleCheckout = async () => {
     if (cart.length === 0) {
       addBotMessage('Your cart is empty! Add some items first.', [{ label: '📋 View Menu', value: 'menu' }]);
+      return;
+    }
+
+    if (!navigator.onLine) {
+      addBotMessage('📡 You\'re offline! Please check your internet connection and try again.', [{ label: '🔄 Try Again', value: 'checkout' }]);
       return;
     }
 
@@ -646,6 +675,19 @@ function OrderContent() {
       {/* FIXED HEADER - Native App Style */}
       {/* ========================================== */}
       <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b border-amber-500/20 px-4 py-3 z-50">
+        {/* Offline indicator */}
+        {!isOnline && (
+          <div className="bg-red-500/20 border border-red-500/40 rounded-lg px-3 py-1.5 mb-2 text-center">
+            <p className="text-red-400 text-[12px] font-medium">📡 No internet connection</p>
+          </div>
+        )}
+        {/* Waiting for confirmation indicator */}
+        {waitingForConfirmation && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 mb-2 flex items-center justify-center gap-2">
+            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
+            <p className="text-amber-400 text-[12px] font-medium">Waiting for staff confirmation...</p>
+          </div>
+        )}
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">

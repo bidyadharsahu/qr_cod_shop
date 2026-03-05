@@ -71,8 +71,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
+        <PWARegister />
         <Suspense fallback={<Loading />}>
-          <PWARegister />
           {children}
         </Suspense>
       </body>
