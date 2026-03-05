@@ -685,3 +685,260 @@ button {
     gap: 1.5rem;
   }
 }
+
+/* ===== PWA / MOBILE APP STYLES ===== */
+
+/* PWA Install Banner */
+.pwa-install-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(135deg, #1a1a1a 0%, #111111 100%);
+  border-top: 1px solid rgba(212, 175, 55, 0.3);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  animation: slideUpBanner 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes slideUpBanner {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+.pwa-install-content {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.pwa-install-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.pwa-install-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.pwa-install-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.pwa-install-text strong {
+  display: block;
+  color: var(--gold-light);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pwa-install-text p {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 12px;
+  margin: 0;
+}
+
+.pwa-install-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.pwa-install-btn {
+  background: linear-gradient(135deg, var(--gold) 0%, var(--gold-dark) 100%);
+  color: #0a0a0a;
+  border: none;
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.pwa-install-btn:active {
+  transform: scale(0.95);
+}
+
+.pwa-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 18px;
+  padding: 4px 8px;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* ===== STANDALONE MODE (installed app) ===== */
+
+/* When running as installed PWA - hide browser elements, adjust safe areas */
+@media all and (display-mode: standalone) {
+  body {
+    /* Prevent overscroll/bounce on iOS */
+    overscroll-behavior-y: none;
+    /* Ensure full height accounting for notch */
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  /* Add status bar spacer at top */
+  .chat-container {
+    padding-top: env(safe-area-inset-top, 0);
+  }
+
+  /* Adjust input area for bottom safe area (home indicator on iPhone) */
+  .safe-bottom {
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  /* Remove any browser-like appearance */
+  a[target="_blank"]::after {
+    display: none;
+  }
+
+  /* Smoother transitions in standalone */
+  * {
+    -webkit-touch-callout: none;
+  }
+
+  /* Prevent text selection on UI elements (app-like feel) */
+  button, .chip, .menu-item, .qty-btn {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
+/* iOS standalone specific */
+@supports (-webkit-touch-callout: none) {
+  @media all and (display-mode: standalone) {
+    /* Extra padding for iOS status bar */
+    .safe-top {
+      padding-top: calc(env(safe-area-inset-top, 44px));
+    }
+
+    /* Fix iOS rubber band scrolling */
+    .chat-messages {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Prevent iOS bounce on main container */
+    html {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+  }
+}
+
+/* ===== NATIVE APP FEEL ENHANCEMENTS ===== */
+
+/* Smooth page transitions */
+.page-transition {
+  animation: pageEnter 0.3s ease-out;
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Haptic-like feedback on button press */
+@media (hover: none) and (pointer: coarse) {
+  .chip:active,
+  .luxury-btn:active,
+  .menu-item:active,
+  .qty-btn:active {
+    transform: scale(0.96);
+    transition: transform 0.1s ease;
+  }
+}
+
+/* Bottom sheet style modal (mobile native feel) */
+@media (max-width: 768px) {
+  .modal-content {
+    border-radius: 20px 20px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 16px);
+  }
+}
+
+/* Pull indicator for bottom sheets */
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  margin: 8px auto 12px;
+}
+
+/* Status bar area for standalone */
+.status-bar-spacer {
+  height: env(safe-area-inset-top, 0);
+  background: var(--background);
+  width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* Splash screen fade out */
+.splash-fade {
+  animation: splashFade 0.5s ease-out 0.3s forwards;
+}
+
+@keyframes splashFade {
+  to {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* Prevent double-tap zoom (native app feel) */
+* {
+  touch-action: manipulation;
+}
+
+/* Disable long-press context menu on images/links (app feel) */
+img, a {
+  -webkit-touch-callout: none;
+}
+
+/* Smooth momentum scrolling everywhere */
+.chat-messages,
+.modal-content,
+[style*="overflow"] {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* iOS notch support for landscape */
+@media (orientation: landscape) {
+  .chat-container {
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
+  }
+}

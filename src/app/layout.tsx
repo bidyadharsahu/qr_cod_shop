@@ -1,10 +1,55 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
+import PWARegister from "./pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "netrikxr.shop - Premium Digital Ordering",
+  title: "Netrik XR Shop",
   description: "Scan, Order, Enjoy - Your premium digital ordering experience",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Netrik XR",
+    startupImage: [
+      {
+        url: "/icons/icon-512x512.png",
+      },
+    ],
+  },
+  formatDetection: {
+    telephone: false,
+  },
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+    "application-name": "Netrik XR",
+    "msapplication-TileColor": "#0a0a0a",
+    "msapplication-TileImage": "/icons/icon-144x144.png",
+    "msapplication-tap-highlight": "no",
+  },
+  icons: {
+    icon: [
+      { url: "/favicon.png", type: "image/png", sizes: "32x32" },
+      { url: "/icons/icon-192x192.png", type: "image/png", sizes: "192x192" },
+      { url: "/icons/icon-512x512.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+    { media: "(prefers-color-scheme: light)", color: "#0a0a0a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 function Loading() {
@@ -27,6 +72,7 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased">
         <Suspense fallback={<Loading />}>
+          <PWARegister />
           {children}
         </Suspense>
       </body>

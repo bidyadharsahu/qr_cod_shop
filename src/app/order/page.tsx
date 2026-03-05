@@ -639,27 +639,30 @@ function OrderContent() {
 
   return (
     <div className="fixed inset-0 bg-black text-white flex flex-col">
+      {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
+      <div className="status-bar-spacer" />
+
       {/* ========================================== */}
-      {/* FIXED HEADER - App-like */}
+      {/* FIXED HEADER - Native App Style */}
       {/* ========================================== */}
-      <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b border-amber-500/20 px-4 py-3 safe-area-top z-50">
+      <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b border-amber-500/20 px-4 py-3 z-50">
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
-              <span className="text-lg font-bold text-black">N</span>
+              <img src="/icons/icon-96x96.png" alt="N" className="w-7 h-7 rounded-md" />
             </div>
             <div>
-              <p className="font-semibold text-amber-400 text-[15px] leading-tight">netrikxr.shop</p>
-              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA</p>
+              <p className="font-semibold text-amber-400 text-[15px] leading-tight">Netrik XR</p>
+              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Bartender</p>
             </div>
           </div>
           <button 
             onClick={() => handleOptionClick('cart')}
-            className="relative p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl active:scale-95 transition-transform"
+            className={`relative p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl active:scale-95 transition-transform ${cart.length > 0 ? 'cart-pulse' : ''}`}
           >
             <ShoppingCart className="w-5 h-5 text-amber-400" />
             {cart.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold">
+              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold animate-bounce-subtle">
                 {cart.reduce((sum, i) => sum + i.quantity, 0)}
               </span>
             )}
@@ -969,9 +972,9 @@ function OrderContent() {
       </div>
 
       {/* ========================================== */}
-      {/* FIXED INPUT BAR - Always visible at bottom */}
+      {/* FIXED INPUT BAR - Native App Style */}
       {/* ========================================== */}
-      <div className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-area-bottom">
+      <div className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-bottom">
         <form onSubmit={handleSendMessage} className="flex gap-3 max-w-lg mx-auto">
           <input
             ref={inputRef}
@@ -979,7 +982,10 @@ function OrderContent() {
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             placeholder="Ask SIA anything..."
-            className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:border-amber-500/50 focus:outline-none text-[15px] placeholder-gray-500"
+            className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:border-amber-500/50 focus:outline-none text-[16px] placeholder-gray-500"
+            enterKeyHint="send"
+            autoComplete="off"
+            autoCorrect="on"
           />
           <button 
             type="submit" 
