@@ -6,10 +6,12 @@ import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { MenuItem } from '@/lib/types';
 import { processChatMessage } from '@/lib/chatbot';
+import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
-  FileText, Check, MessageCircle, Download
+  FileText, Check, MessageCircle, Download, 
+  Heart, PhoneCall, Clock, Sparkles, Flame
 } from 'lucide-react';
 import { calculateOrderTotal } from '@/lib/calculations';
 
@@ -36,7 +38,7 @@ function OrderContent() {
   const searchParams = useSearchParams();
   const tableParam = searchParams.get('table');
 
-  // Helper: read table from cookie
+  // Helper: read table from cookie (synchronous, works in all browsers)
   const getTableFromCookie = (): string | null => {
     if (typeof document === 'undefined') return null;
     const match = document.cookie.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
@@ -45,27 +47,30 @@ function OrderContent() {
 
   // Helper: save table to both localStorage and cookie
   const persistTable = (table: string) => {
-    try {
-      localStorage.setItem('netrikxr-table', table);
-    } catch (_) {}
-    // Set cookie accessible by service worker, expires in 30 days
+    try { localStorage.setItem('netrikxr-table', table); } catch (_) {}
     document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
   };
 
   // Table number: URL param > cookie > localStorage > '1'
-  const [tableNumber, setTableNumber] = useState('1');
-
-  // On mount and when URL param changes, resolve the real table number
-  useEffect(() => {
-    let resolved = '1';
-    if (tableParam) {
-      resolved = tableParam;
-    } else {
-      resolved = getTableFromCookie() || localStorage.getItem('netrikxr-table') || '1';
+  // Initialize synchronously so table is correct on first render
+  const [tableNumber, setTableNumber] = useState(() => {
+    if (tableParam) return tableParam;
+    if (typeof document !== 'undefined') {
+      const fromCookie = getTableFromCookie();
+      if (fromCookie) return fromCookie;
+      try { return localStorage.getItem('netrikxr-table') || '1'; } catch (_) {}
     }
-    setTableNumber(resolved);
-    persistTable(resolved);
-  }, [tableParam]);
+    return '1';
+  });
+
+  // When URL param changes (new QR scan), update and persist
+  useEffect(() => {
+    if (tableParam && tableParam !== tableNumber) {
+      setTableNumber(tableParam);
+    }
+    // Always persist current table
+    persistTable(tableParam || tableNumber);
+  }, [tableParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -84,6 +89,16 @@ function OrderContent() {
   const [isOnline, setIsOnline] = useState(true);
   const [canInstallPWA, setCanInstallPWA] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const [theme, setTheme] = useState<AppTheme>(() => getCurrentTheme());
+  const [favorites, setFavorites] = useState<number[]>(() => {
+    if (typeof window !== 'undefined') {
+      try { return JSON.parse(localStorage.getItem('netrikxr-favorites') || '[]'); } catch { return []; }
+    }
+    return [];
+  });
+  const [callingWaiter, setCallingWaiter] = useState(false);
+  const [estimatedWait, setEstimatedWait] = useState<number | null>(null);
+  const [orderCount, setOrderCount] = useState(0);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -105,6 +120,46 @@ function OrderContent() {
       window.removeEventListener('offline', goOffline);
     };
   }, []);
+
+  // Apply occasion-based theme on mount
+  useEffect(() => {
+    const currentTheme = getCurrentTheme();
+    setTheme(currentTheme);
+    applyTheme(currentTheme);
+  }, []);
+
+  // Persist favorites
+  useEffect(() => {
+    try { localStorage.setItem('netrikxr-favorites', JSON.stringify(favorites)); } catch (_) {}
+  }, [favorites]);
+
+  // Toggle favorite
+  const toggleFavorite = (itemId: number) => {
+    setFavorites(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
+  };
+
+  // Call waiter function
+  const callWaiter = async () => {
+    if (callingWaiter) return;
+    setCallingWaiter(true);
+    try {
+      await supabase.from('orders').insert({
+        table_number: parseInt(tableNumber),
+        items: [{ id: 0, name: 'WAITER CALL', quantity: 1, price: 0 }],
+        subtotal: 0, tip_amount: 0, tax_amount: 0, total: 0,
+        status: 'pending', payment_status: 'unpaid',
+        receipt_id: `CALL-${tableNumber}-${Date.now().toString().slice(-4)}`,
+        customer_note: 'Customer is calling for a waiter'
+      });
+      addBotMessage('🔔 Waiter has been notified! Someone will be at your table shortly.', [
+        { label: '🍹 See Menu', value: 'menu' },
+        { label: '💬 Chat with SIA', value: 'recommend' }
+      ]);
+    } catch { 
+      addBotMessage('❌ Could not call waiter. Please try again.', []);
+    }
+    setTimeout(() => setCallingWaiter(false), 10000); // Cooldown
+  };
 
   // Detect PWA install availability and standalone mode
   useEffect(() => {
@@ -222,24 +277,29 @@ function OrderContent() {
     };
   }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, subtotal]);
 
-  // Welcome message - show install prompt if available, otherwise normal welcome
+  // Welcome message - show install prompt if available, otherwise themed welcome
   useEffect(() => {
     if (menuItems.length > 0 && chatMessages.length === 0) {
+      // Count previous orders from this table (for loyalty feature)
+      const storedCount = parseInt(localStorage.getItem('netrikxr-order-count') || '0');
+      setOrderCount(storedCount);
+      const loyaltyMsg = storedCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${storedCount} time${storedCount > 1 ? 's' : ''} with us!` : '';
+
       if (canInstallPWA && !isStandalone) {
-        // Show install prompt first
         addBotMessage(
-          `Hey there! 👋 Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
+          `Hey there! ${theme.emoji} Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.${loyaltyMsg}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
           [
             { label: '📲 Install App', value: 'install_app' },
             { label: '⏭️ Skip, Order Now', value: 'skip_install' }
           ]
         );
       } else {
-        // Normal welcome (already installed or install not available)
         addBotMessage(
-          `Hey there! 👋 Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.\n\nWhat can I get you tonight?`,
+          `Hey there! ${theme.emoji} Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.${loyaltyMsg}\n\n${theme.greeting}`,
           [
             { label: '🍹 See Menu', value: 'menu' },
+            { label: '🔥 Popular', value: 'popular' },
+            { label: '❤️ Favorites', value: 'favorites' },
             { label: '🎉 Party Package', value: 'party' },
             { label: '💬 Recommend', value: 'recommend' },
             { label: '❓ Help', value: 'help' }
@@ -247,7 +307,7 @@ function OrderContent() {
         );
       }
     }
-  }, [menuItems, tableNumber, chatMessages.length, canInstallPWA, isStandalone]);
+  }, [menuItems, tableNumber, chatMessages.length, canInstallPWA, isStandalone]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto scroll
   useEffect(() => {
@@ -279,9 +339,15 @@ function OrderContent() {
       const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
       if (isIOS) {
         addBotMessage(
-          `📲 To install on iPhone:\n\n1. Tap the Share button ⎙ at the bottom\n2. Scroll down and tap "Add to Home Screen"\n3. Tap "Add"\n\nThen open "Netrik XR" from your home screen! 🎉`,
+          `📲 **Install on iPhone:**\n\n` +
+          `1️⃣ Tap the **Share** button ⬆️ (bottom center of Safari)\n` +
+          `2️⃣ Scroll down → tap **"Add to Home Screen"**\n` +
+          `3️⃣ Tap **"Add"** in the top right\n\n` +
+          `Then open **"Netrik XR"** from your home screen — it'll work just like a real app! 🎉\n\n` +
+          `💡 Your table number (${tableNumber}) is saved automatically.`,
           [
-            { label: '✅ Done, Order Now', value: 'skip_install' }
+            { label: '✅ Done! Let me order', value: 'skip_install' },
+            { label: '🍹 Skip & See Menu', value: 'menu' }
           ]
         );
       } else {
@@ -344,14 +410,53 @@ function OrderContent() {
       case 'skip_install':
         addUserMessage('Skip, let me order');
         addBotMessage(
-          `No problem! What can I get you tonight? 🍹`,
+          `No problem! ${theme.greeting} 🍹`,
           [
             { label: '🍹 See Menu', value: 'menu' },
+            { label: '🔥 Popular', value: 'popular' },
+            { label: '❤️ Favorites', value: 'favorites' },
             { label: '🎉 Party Package', value: 'party' },
             { label: '💬 Recommend', value: 'recommend' },
             { label: '❓ Help', value: 'help' }
           ]
         );
+        break;
+      case 'popular':
+        addUserMessage('Show popular items');
+        {
+          const popularItems = menuItems.slice(0, 5);
+          const popularList = popularItems.map((item, i) => `${i + 1}. ${item.name} - $${item.price.toFixed(2)}`).join('\n');
+          addBotMessage(
+            `🔥 Most Popular Tonight:\n\n${popularList}\n\nTap "See Menu" to browse everything or tell me what you want!`,
+            [
+              { label: '🍹 Full Menu', value: 'menu' },
+              { label: '💬 Recommend', value: 'recommend' },
+              { label: '🛒 View Cart', value: 'cart' }
+            ]
+          );
+        }
+        break;
+      case 'favorites':
+        addUserMessage('Show my favorites');
+        {
+          const favItems = menuItems.filter(item => favorites.includes(item.id));
+          if (favItems.length === 0) {
+            addBotMessage(
+              `❤️ You haven't saved any favorites yet!\n\nBrowse the menu and tap the heart icon to save your go-to drinks.`,
+              [
+                { label: '🍹 See Menu', value: 'menu' },
+                { label: '💬 Recommend', value: 'recommend' }
+              ]
+            );
+          } else {
+            addBotMessage(`❤️ Your favorite drinks:`, undefined, { showMenu: true });
+            setSelectedCategory(null); // Reset filter to show all (favs will be highlighted)
+          }
+        }
+        break;
+      case 'call_waiter':
+        addUserMessage('Call waiter');
+        callWaiter();
         break;
       case 'menu':
         addUserMessage('Show me the menu');
@@ -519,9 +624,20 @@ function OrderContent() {
     setOrderPlaced(true);
     setWaitingForConfirmation(true);
     
+    // Increment order count for loyalty
+    const newCount = orderCount + 1;
+    setOrderCount(newCount);
+    try { localStorage.setItem('netrikxr-order-count', newCount.toString()); } catch (_) {}
+    
+    // Estimate wait time (3-8 min based on items)
+    const waitMin = Math.min(3 + cart.reduce((s, i) => s + i.quantity, 0), 12);
+    setEstimatedWait(waitMin);
+
     addBotMessage(
-      `📤 Order Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\n⏳ Waiting for staff confirmation...`,
-      []
+      `📤 Order Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
+      [
+        { label: '🔔 Call Waiter', value: 'call_waiter' }
+      ]
     );
   };
 
@@ -807,7 +923,8 @@ function OrderContent() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.2, type: 'spring' }}
-            className="w-24 h-24 bg-gradient-to-br from-amber-400 to-amber-600 rounded-full flex items-center justify-center mb-8"
+            className="w-24 h-24 rounded-full flex items-center justify-center mb-8"
+            style={{ background: `linear-gradient(to bottom right, ${theme.primary}, ${theme.primaryDark})` }}
           >
             <Check className="w-12 h-12 text-black" />
           </motion.div>
@@ -815,7 +932,7 @@ function OrderContent() {
           <p className="text-gray-400 text-lg mb-4">You rated us {rating} star{rating > 1 ? 's' : ''}</p>
           <div className="flex justify-center gap-2 mb-8">
             {[1,2,3,4,5].map(i => (
-              <Star key={i} className={`w-8 h-8 ${i <= rating ? 'text-amber-400 fill-amber-400' : 'text-gray-600'}`} />
+              <Star key={i} className={`w-8 h-8 ${i <= rating ? 'fill-current' : 'text-gray-600'}`} style={i <= rating ? { color: theme.primary } : {}} />
             ))}
           </div>
           <p className="text-gray-500 text-base mb-10">We hope to see you again soon!</p>
@@ -836,7 +953,7 @@ function OrderContent() {
       {/* ========================================== */}
       {/* FIXED HEADER - Native App Style */}
       {/* ========================================== */}
-      <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b border-amber-500/20 px-4 py-3 z-50">
+      <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b px-4 py-3 z-50" style={{ borderColor: `${theme.primary}33` }}>
         {/* Offline indicator */}
         {!isOnline && (
           <div className="bg-red-500/20 border border-red-500/40 rounded-lg px-3 py-1.5 mb-2 text-center">
@@ -845,32 +962,56 @@ function OrderContent() {
         )}
         {/* Waiting for confirmation indicator */}
         {waitingForConfirmation && (
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-1.5 mb-2 flex items-center justify-center gap-2">
-            <div className="w-2 h-2 bg-amber-400 rounded-full animate-pulse" />
-            <p className="text-amber-400 text-[12px] font-medium">Waiting for staff confirmation...</p>
+          <div className="rounded-lg px-3 py-1.5 mb-2 flex items-center justify-center gap-2" style={{ background: `${theme.primary}1a`, borderColor: `${theme.primary}4d`, borderWidth: 1, borderStyle: 'solid' }}>
+            <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: theme.primary }} />
+            <p className="text-[12px] font-medium" style={{ color: theme.primary }}>
+              {estimatedWait ? `⏱️ ~${estimatedWait} min wait • ` : ''}Waiting for staff confirmation...
+            </p>
+          </div>
+        )}
+        {/* Theme occasion badge */}
+        {theme.id !== 'default' && (
+          <div className="text-center mb-1">
+            <span className="text-[11px] px-3 py-0.5 rounded-full" style={{ background: `${theme.primary}1a`, color: theme.primary }}>
+              {theme.emoji} {theme.name}
+            </span>
           </div>
         )}
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-amber-400 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, boxShadow: `0 4px 15px ${theme.primary}33` }}>
               <img src="/icons/icon-96x96.png" alt="N" className="w-7 h-7 rounded-md" />
             </div>
             <div>
-              <p className="font-semibold text-amber-400 text-[15px] leading-tight">Netrik XR</p>
+              <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>Netrik XR</p>
               <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Bartender</p>
             </div>
           </div>
-          <button 
-            onClick={() => handleOptionClick('cart')}
-            className={`relative p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl active:scale-95 transition-transform ${cart.length > 0 ? 'cart-pulse' : ''}`}
-          >
-            <ShoppingCart className="w-5 h-5 text-amber-400" />
-            {cart.length > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold animate-bounce-subtle">
-                {cart.reduce((sum, i) => sum + i.quantity, 0)}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Call Waiter button */}
+            <button 
+              onClick={callWaiter}
+              disabled={callingWaiter}
+              className="p-2.5 rounded-xl active:scale-95 transition-all disabled:opacity-40"
+              style={{ background: `${theme.accent || theme.primary}1a`, border: `1px solid ${theme.accent || theme.primary}4d` }}
+              title="Call Waiter"
+            >
+              <PhoneCall className="w-4 h-4" style={{ color: theme.accent || theme.primary }} />
+            </button>
+            {/* Cart button */}
+            <button 
+              onClick={() => handleOptionClick('cart')}
+              className={`relative p-2.5 rounded-xl active:scale-95 transition-transform ${cart.length > 0 ? 'cart-pulse' : ''}`}
+              style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}
+            >
+              <ShoppingCart className="w-5 h-5" style={{ color: theme.primary }} />
+              {cart.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-[10px] flex items-center justify-center font-bold animate-bounce-subtle">
+                  {cart.reduce((sum, i) => sum + i.quantity, 0)}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -892,19 +1033,21 @@ function OrderContent() {
                   {/* Bot Avatar */}
                   {msg.role === 'bot' && (
                     <div className="flex items-center gap-2 mb-1.5">
-                      <div className="w-6 h-6 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center">
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` }}>
                         <MessageCircle className="w-3 h-3 text-black" />
                       </div>
-                      <span className="text-[11px] text-amber-400/80 font-medium">SIA</span>
+                      <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>SIA</span>
                     </div>
                   )}
                   
                   {/* Message Bubble */}
-                  <div className={`rounded-2xl px-4 py-2.5 ${
-                    msg.role === 'user' 
-                      ? 'bg-amber-500 text-black rounded-br-sm ml-auto' 
-                      : 'bg-zinc-900 border border-zinc-800 rounded-bl-sm'
-                  }`}>
+                  <div 
+                    className={`rounded-2xl px-4 py-2.5 ${msg.role === 'user' ? 'rounded-br-sm ml-auto' : 'rounded-bl-sm'}`}
+                    style={msg.role === 'user' 
+                      ? { background: theme.userBubbleBg, color: '#000' }
+                      : { background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }
+                    }
+                  >
                     <p className={`leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium' : 'text-[15px]'}`}>{msg.content}</p>
                   </div>
 
@@ -915,7 +1058,8 @@ function OrderContent() {
                         <button
                           key={opt.value}
                           onClick={() => handleOptionClick(opt.value)}
-                          className="px-3.5 py-2 bg-zinc-900 border border-amber-500/30 rounded-xl text-amber-400 text-[13px] font-medium active:scale-95 transition-transform"
+                          className="px-3.5 py-2 bg-zinc-900 rounded-xl text-[13px] font-medium active:scale-95 transition-transform"
+                          style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}
                         >
                           {opt.label}
                         </button>
@@ -932,7 +1076,8 @@ function OrderContent() {
                       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         <button
                           onClick={() => setSelectedCategory(null)}
-                          className={`flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-medium transition-all ${!selectedCategory ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-gray-400'}`}
+                          className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-medium transition-all"
+                          style={!selectedCategory ? { background: theme.primary, color: '#000' } : { background: '#27272a', color: '#9ca3af' }}
                         >
                           All
                         </button>
@@ -940,7 +1085,8 @@ function OrderContent() {
                           <button
                             key={cat}
                             onClick={() => setSelectedCategory(cat)}
-                            className={`flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-medium transition-all whitespace-nowrap ${selectedCategory === cat ? 'bg-amber-500 text-black' : 'bg-zinc-800 text-gray-400'}`}
+                            className="flex-shrink-0 px-4 py-2 rounded-full text-[13px] font-medium transition-all whitespace-nowrap"
+                            style={selectedCategory === cat ? { background: theme.primary, color: '#000' } : { background: '#27272a', color: '#9ca3af' }}
                           >
                             {cat}
                           </button>
@@ -948,16 +1094,28 @@ function OrderContent() {
                       </div>
                       
                       {/* Menu Items */}
-                      <div className="space-y-2 max-h-64 overflow-y-auto rounded-xl">
+                      <div className="space-y-2 max-h-72 overflow-y-auto rounded-xl">
                         {menuItems
                           .filter(i => !selectedCategory || i.category === selectedCategory)
-                          .map(item => {
+                          .map((item, idx) => {
                             const inCart = cart.find(c => c.id === item.id);
+                            const isFav = favorites.includes(item.id);
                             return (
                               <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
-                                <div className="flex-1 min-w-0 mr-3">
-                                  <p className="font-medium text-[14px] truncate">{item.name}</p>
-                                  <p className="text-[13px] text-amber-400 font-semibold">${item.price.toFixed(2)}</p>
+                                <div className="flex-1 min-w-0 mr-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="font-medium text-[14px] truncate">{item.name}</p>
+                                    {idx < 3 && <Flame className="w-3.5 h-3.5 flex-shrink-0 text-orange-400" />}
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-[13px] font-semibold" style={{ color: theme.primary }}>${item.price.toFixed(2)}</p>
+                                    <button 
+                                      onClick={() => toggleFavorite(item.id)} 
+                                      className="active:scale-110 transition-transform"
+                                    >
+                                      <Heart className={`w-3.5 h-3.5 ${isFav ? 'text-red-400 fill-red-400' : 'text-gray-600'}`} />
+                                    </button>
+                                  </div>
                                 </div>
                                 {inCart ? (
                                   <div className="flex items-center gap-1.5">
@@ -965,12 +1123,12 @@ function OrderContent() {
                                       <Minus className="w-4 h-4" />
                                     </button>
                                     <span className="w-6 text-center font-bold text-[14px]">{inCart.quantity}</span>
-                                    <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 bg-amber-500 text-black rounded-lg flex items-center justify-center active:scale-95">
+                                    <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 text-black rounded-lg flex items-center justify-center active:scale-95" style={{ background: theme.primary }}>
                                       <Plus className="w-4 h-4" />
                                     </button>
                                   </div>
                                 ) : (
-                                  <button onClick={() => addToCart(item)} className="px-4 py-2 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-[13px] font-medium active:scale-95 flex items-center gap-1.5">
+                                  <button onClick={() => addToCart(item)} className="px-4 py-2 rounded-lg text-[13px] font-medium active:scale-95 flex items-center gap-1.5" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d`, color: theme.primary }}>
                                     <Plus className="w-4 h-4" />
                                     Add
                                   </button>
@@ -981,7 +1139,7 @@ function OrderContent() {
                       </div>
                       
                       {cart.length > 0 && (
-                        <button onClick={() => handleOptionClick('cart')} className="w-full py-3 bg-amber-500 text-black rounded-xl font-bold text-[14px] active:scale-[0.98] transition-transform">
+                        <button onClick={() => handleOptionClick('cart')} className="w-full py-3 text-black rounded-xl font-bold text-[14px] active:scale-[0.98] transition-transform" style={{ background: theme.primary }}>
                           View Cart ({cart.reduce((s, i) => s + i.quantity, 0)}) • ${subtotal.toFixed(2)}
                         </button>
                       )}
@@ -1004,7 +1162,7 @@ function OrderContent() {
                               <Minus className="w-4 h-4" />
                             </button>
                             <span className="w-6 text-center font-bold text-[14px]">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 bg-amber-500 text-black rounded-lg flex items-center justify-center active:scale-95">
+                            <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 text-black rounded-lg flex items-center justify-center active:scale-95" style={{ background: theme.primary }}>
                               <Plus className="w-4 h-4" />
                             </button>
                             <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center active:scale-95 ml-1">
@@ -1013,17 +1171,17 @@ function OrderContent() {
                           </div>
                         </div>
                       ))}
-                      <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                      <div className="p-3 rounded-xl" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
                         <div className="flex justify-between text-lg font-bold">
                           <span>Total</span>
-                          <span className="text-amber-400">${subtotal.toFixed(2)}</span>
+                          <span style={{ color: theme.primary }}>${subtotal.toFixed(2)}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 border border-amber-500/30 text-amber-400 rounded-xl font-medium text-[14px] active:scale-[0.98]">
+                        <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 rounded-xl font-medium text-[14px] active:scale-[0.98]" style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}>
                           <Plus className="w-4 h-4 inline mr-1" /> Add More
                         </button>
-                        <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 bg-amber-500 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]">
+                        <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]" style={{ background: theme.primary }}>
                           {loading ? 'Placing...' : 'Place Order'}
                         </button>
                       </div>
@@ -1043,9 +1201,10 @@ function OrderContent() {
                             onClick={() => handleTipSelect(tip)}
                             className={`py-3 rounded-xl text-[14px] font-bold active:scale-95 transition-all ${
                               selectedTip === tip 
-                                ? 'bg-amber-500 text-black' 
+                                ? 'text-black' 
                                 : 'bg-zinc-800 text-gray-400'
                             }`}
+                            style={selectedTip === tip ? { background: theme.primary } : {}}
                           >
                             {tip}%
                           </button>
@@ -1060,7 +1219,7 @@ function OrderContent() {
                         <button onClick={() => handleOptionClick('skip_tip')} className="flex-1 py-3 border border-zinc-700 text-gray-400 rounded-xl font-medium active:scale-[0.98]">
                           Skip
                         </button>
-                        <button onClick={() => handleOptionClick('confirm_tip')} className="flex-1 py-3 bg-amber-500 text-black rounded-xl font-bold active:scale-[0.98]">
+                        <button onClick={() => handleOptionClick('confirm_tip')} className="flex-1 py-3 text-black rounded-xl font-bold active:scale-[0.98]" style={{ background: theme.primary }}>
                           Confirm
                         </button>
                       </div>
@@ -1072,9 +1231,9 @@ function OrderContent() {
                   {/* ========================================== */}
                   {msg.showBill && (
                     <div className="mt-4 space-y-3">
-                      <div className="bg-zinc-900 border border-amber-500/30 rounded-2xl p-4">
+                      <div className="bg-zinc-900 rounded-2xl p-4" style={{ border: `1px solid ${theme.primary}4d` }}>
                         <div className="text-center border-b border-zinc-800 pb-3 mb-3">
-                          <h3 className="text-lg font-bold text-amber-400">netrikxr.shop</h3>
+                          <h3 className="text-lg font-bold" style={{ color: theme.primary }}>netrikxr.shop</h3>
                           <p className="text-[11px] text-gray-500">Tampa, Florida</p>
                         </div>
                         <div className="space-y-1.5 text-[13px] mb-3">
@@ -1116,17 +1275,17 @@ function OrderContent() {
                           </div>
                           <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-800">
                             <span>Total</span>
-                            <span className="text-amber-400">${total.toFixed(2)}</span>
+                            <span style={{ color: theme.primary }}>${total.toFixed(2)}</span>
                           </div>
                         </div>
                       </div>
-                      <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-center">
-                        <p className="text-amber-400 font-medium text-[14px]">💵 Pay cash to the manager</p>
+                      <div className="rounded-xl p-3 text-center" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
+                        <p className="font-medium text-[14px]" style={{ color: theme.primary }}>💵 Pay cash to the manager</p>
                       </div>
                       <button onClick={generatePDF} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl font-medium text-[14px]">
                         <Download className="w-4 h-4" /> Download PDF
                       </button>
-                      <button onClick={() => handleOptionClick('done')} className="w-full py-3 bg-amber-500 text-black rounded-xl font-bold text-[14px]">
+                      <button onClick={() => handleOptionClick('done')} className="w-full py-3 text-black rounded-xl font-bold text-[14px]" style={{ background: theme.primary }}>
                         Done
                       </button>
                     </div>
@@ -1150,9 +1309,10 @@ function OrderContent() {
                             <Star 
                               className={`w-10 h-10 transition-colors ${
                                 i <= (hoverRating || rating) 
-                                  ? 'text-amber-400 fill-amber-400' 
+                                  ? 'fill-current' 
                                   : 'text-gray-600'
-                              }`} 
+                              }`}
+                              style={i <= (hoverRating || rating) ? { color: theme.primary } : {}}
                             />
                           </button>
                         ))}
@@ -1160,7 +1320,8 @@ function OrderContent() {
                       {rating > 0 && (
                         <button 
                           onClick={handleRatingSubmit}
-                          className="w-full py-3 bg-amber-500 text-black rounded-xl font-bold text-[14px]"
+                          className="w-full py-3 text-black rounded-xl font-bold text-[14px]"
+                          style={{ background: theme.primary }}
                         >
                           Submit Rating
                         </button>
@@ -1186,7 +1347,8 @@ function OrderContent() {
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             placeholder="Ask SIA anything..."
-            className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:border-amber-500/50 focus:outline-none text-[16px] placeholder-gray-500"
+            className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:outline-none text-[16px] placeholder-gray-500"
+            style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
             enterKeyHint="send"
             autoComplete="off"
             autoCorrect="on"
@@ -1194,7 +1356,8 @@ function OrderContent() {
           <button 
             type="submit" 
             disabled={!userInput.trim()}
-            className="w-12 h-12 bg-amber-500 text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
+            className="w-12 h-12 text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
+            style={{ background: theme.primary }}
           >
             <Send className="w-5 h-5" />
           </button>
@@ -1225,7 +1388,7 @@ export default function OrderPage() {
   return (
     <Suspense fallback={
       <div className="fixed inset-0 bg-black flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: '#f59e0b' }}></div>
       </div>
     }>
       <OrderContent />

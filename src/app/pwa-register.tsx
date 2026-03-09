@@ -161,6 +161,7 @@ export default function PWARegister() {
 
   // Check if iOS (show different message since iOS doesn't support beforeinstallprompt)
   const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const isSafari = typeof window !== 'undefined' && /Safari/.test(navigator.userAgent) && !/CriOS|Chrome/.test(navigator.userAgent);
   
   return (
     <div className="pwa-install-banner">
@@ -171,7 +172,7 @@ export default function PWARegister() {
         <div className="pwa-install-text">
           <strong>Install Netrik XR</strong>
           {isIOS ? (
-            <p>Tap <span style={{ fontSize: '16px' }}>⎙</span> Share then &quot;Add to Home Screen&quot;</p>
+            <p>Tap <span style={{ fontSize: '18px' }}>⬆</span> Share then <strong>&quot;Add to Home Screen&quot;</strong></p>
           ) : (
             <p>Get the full app experience</p>
           )}

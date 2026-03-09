@@ -1,8 +1,9 @@
-// Netrik XR Shop - Service Worker v3
+// Netrik XR Shop - Service Worker v4
 // Provides offline caching while NEVER interfering with Supabase/real-time
+// v4: Better iOS Safari compatibility, improved table redirect
 
-const CACHE_NAME = 'netrikxr-v3';
-const DYNAMIC_CACHE = 'netrikxr-dynamic-v3';
+const CACHE_NAME = 'netrikxr-v4';
+const DYNAMIC_CACHE = 'netrikxr-dynamic-v4';
 
 // Static assets to cache on install
 const STATIC_ASSETS = [

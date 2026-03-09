@@ -82,7 +82,7 @@
       "name": "Start Ordering",
       "short_name": "Order",
       "description": "Open the ordering chatbot",
-      "url": "/order?table=1",
+      "url": "/order",
       "icons": [
         {
           "src": "/icons/icon-96x96.png",

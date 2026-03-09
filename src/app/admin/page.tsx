@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
+import { getCurrentTheme, type AppTheme } from '@/lib/themes';
 import type { Order, MenuItem, RestaurantTable } from '@/lib/types';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
-  DollarSign, Clock, Users, Trash2, Edit
+  DollarSign, Clock, Users, Trash2, Edit, Search,
+  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -27,6 +29,17 @@ export default function AdminDashboard() {
   // Tampa timezone clock
   const [currentTime, setCurrentTime] = useState<string>('');
   const [currentDate, setCurrentDate] = useState<string>('');
+  
+  // Theme
+  const [theme, setTheme] = useState<AppTheme>(getCurrentTheme());
+  
+  // Waiter calls
+  const [waiterCalls, setWaiterCalls] = useState<Order[]>([]);
+  
+  // Order filtering
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
+  const [orderTableFilter, setOrderTableFilter] = useState<string>('all');
   
   // Modals
   const [showQRModal, setShowQRModal] = useState(false);
@@ -279,11 +292,57 @@ export default function AdminDashboard() {
   const todayRevenue = orders.filter(o => o.payment_status === 'paid' && new Date(o.created_at).toDateString() === new Date().toDateString()).reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
   const activeTables = tables.filter(t => t.status !== 'available').length;
+  
+  // Estimated wait time based on pending/preparing orders
+  const estimatedWaitMinutes = useMemo(() => {
+    const activeOrders = orders.filter(o => ['pending', 'confirmed', 'preparing'].includes(o.status));
+    return Math.max(5, activeOrders.length * 8); // ~8 min per active order, min 5
+  }, [orders]);
+
+  // Separate waiter calls from regular orders
+  useEffect(() => {
+    const calls = orders.filter(o => o.receipt_id?.startsWith('CALL-') && o.status === 'pending');
+    setWaiterCalls(calls);
+  }, [orders]);
+
+  // Filtered orders (excluding waiter calls for the orders list)
+  const filteredOrders = useMemo(() => {
+    let filtered = orders.filter(o => !o.receipt_id?.startsWith('CALL-'));
+    
+    if (orderStatusFilter !== 'all') {
+      filtered = filtered.filter(o => o.status === orderStatusFilter);
+    }
+    if (orderTableFilter !== 'all') {
+      filtered = filtered.filter(o => o.table_number.toString() === orderTableFilter);
+    }
+    if (orderSearch.trim()) {
+      const q = orderSearch.toLowerCase();
+      filtered = filtered.filter(o => 
+        o.receipt_id?.toLowerCase().includes(q) ||
+        o.table_number.toString().includes(q) ||
+        o.items?.some(item => item.name.toLowerCase().includes(q))
+      );
+    }
+    return filtered;
+  }, [orders, orderStatusFilter, orderTableFilter, orderSearch]);
+
+  // Dismiss waiter call
+  const dismissWaiterCall = async (call: Order) => {
+    await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', call.id);
+    showToast('Waiter call acknowledged');
+  };
+
+  // Update theme on mount & every minute
+  useEffect(() => {
+    setTheme(getCurrentTheme());
+    const interval = setInterval(() => setTheme(getCurrentTheme()), 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (authLoading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: '#f59e0b' }}></div>
       </div>
     );
   }
@@ -307,6 +366,42 @@ export default function AdminDashboard() {
             className={`fixed top-4 left-1/2 z-50 px-6 py-3 rounded-xl shadow-2xl ${toast.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}
           >
             {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Waiter Call Alerts */}
+      <AnimatePresence>
+        {waiterCalls.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="fixed top-20 left-4 z-50 space-y-2 max-w-sm"
+          >
+            {waiterCalls.map(call => (
+              <motion.div 
+                key={call.id}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-4 shadow-2xl border-2 border-white/20"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center animate-bounce">
+                    <PhoneCall className="w-6 h-6 text-orange-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="font-bold text-white text-sm">🔔 Waiter Needed!</p>
+                    <p className="text-white/90 text-lg font-bold">Table {call.table_number}</p>
+                    <p className="text-white/60 text-xs">{new Date(call.created_at).toLocaleTimeString()}</p>
+                  </div>
+                  <button onClick={() => dismissWaiterCall(call)} className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold transition-colors">
+                    ✓ On it
+                  </button>
+                </div>
+              </motion.div>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
@@ -346,49 +441,64 @@ export default function AdminDashboard() {
 
       {/* Header with horizontal menu */}
       <header className="bg-zinc-800 border-b border-zinc-700 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
             {/* Site Name */}
-            <div>
-              <p className="font-bold text-amber-400 text-base">netrikxr.shop</p>
+            <div className="flex-shrink-0">
+              <p className="font-bold text-base" style={{ color: theme.primary }}>netrikxr.shop</p>
               <p className="text-xs text-gray-500">Admin Panel</p>
             </div>
 
             {/* Tampa Timezone Clock */}
             <div className="hidden md:flex flex-col items-center text-center">
               <p className="text-sm font-medium text-white">{currentDate}</p>
-              <p className="text-lg font-bold text-amber-400">{currentTime} <span className="text-xs text-gray-400 font-normal">(Tampa, USA)</span></p>
+              <p className="text-lg font-bold" style={{ color: theme.primary }}>{currentTime} <span className="text-xs text-gray-400 font-normal">(Tampa, USA)</span></p>
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="flex items-center gap-2">
+            <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-base font-semibold transition-colors ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-sm sm:text-base font-semibold transition-colors whitespace-nowrap ${
                     activeTab === tab.id 
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30' 
+                      ? 'text-white' 
                       : 'text-gray-400 hover:text-white hover:bg-zinc-700'
                   }`}
+                  style={activeTab === tab.id ? { background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}4d` } : {}}
                 >
-                  <tab.icon className="w-5 h-5" />
+                  <tab.icon className="w-4 h-4 sm:w-5 sm:h-5" />
                   <span className="hidden sm:inline">{tab.label}</span>
+                  {tab.id === 'orders' && pendingOrders > 0 && (
+                    <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-500 text-white">{pendingOrders}</span>
+                  )}
                 </button>
               ))}
             </nav>
 
             {/* Right side actions */}
-            <div className="flex items-center gap-4">
-              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors">
+            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+              {/* Theme badge */}
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}33` }}>
+                <Sparkles className="w-3 h-3" />
+                {theme.occasion === 'default' ? 'Classic' : theme.name}
+              </div>
+              {waiterCalls.length > 0 && (
+                <div className="relative">
+                  <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
+                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center">{waiterCalls.length}</span>
+                </div>
+              )}
+              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
                 <QrCode className="w-5 h-5" />
-                <span className="hidden sm:inline text-sm">QR Codes</span>
+                <span className="hidden lg:inline text-sm">QR Codes</span>
               </button>
-              <button onClick={handleLogout} className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors">
+              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
                 <LogOut className="w-5 h-5" />
-                <span className="hidden sm:inline text-sm">Log Out</span>
+                <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
-              <div className="px-3 py-1 bg-amber-500 text-black text-sm font-medium rounded-full">
+              <div className="px-3 py-1 text-black text-sm font-medium rounded-full" style={{ background: theme.primary }}>
                 Admin
               </div>
             </div>
@@ -401,44 +511,78 @@ export default function AdminDashboard() {
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-            {/* Mobile Clock - Only shows on small screens */}
-            <div className="md:hidden bg-gradient-to-r from-amber-500/10 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 text-center">
+            {/* Mobile Clock & Theme - Only shows on small screens */}
+            <div className="md:hidden rounded-xl p-4 text-center" style={{ background: `linear-gradient(to right, ${theme.primary}1a, ${theme.primaryDark || theme.primary}1a)`, border: `1px solid ${theme.primary}4d` }}>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <Sparkles className="w-4 h-4" style={{ color: theme.primary }} />
+                <span className="text-xs font-medium" style={{ color: theme.primary }}>{theme.name} Theme</span>
+              </div>
               <p className="text-sm font-medium text-white">{currentDate}</p>
-              <p className="text-xl font-bold text-amber-400">{currentTime}</p>
+              <p className="text-xl font-bold" style={{ color: theme.primary }}>{currentTime}</p>
               <p className="text-xs text-gray-400">(Tampa, USA)</p>
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700 hover:border-zinc-600 transition-colors">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 hover:border-zinc-600 transition-colors">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Today&apos;s Orders</p>
                 <p className="text-xl font-bold">{todayOrders.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <DollarSign className="w-4 h-4 text-green-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Revenue</p>
                 <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
               </div>
-              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
                 <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
                   <Clock className="w-4 h-4 text-red-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Pending</p>
                 <p className="text-xl font-bold">{pendingOrders}</p>
               </div>
-              <div className="bg-zinc-800 rounded-lg p-3 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <Users className="w-4 h-4 text-purple-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Active Tables</p>
                 <p className="text-xl font-bold">{activeTables}/{tables.length}</p>
               </div>
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
+                <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
+                  <Clock className="w-4 h-4" style={{ color: theme.primary }} />
+                </div>
+                <p className="text-gray-400 text-xs">Est. Wait</p>
+                <p className="text-xl font-bold" style={{ color: theme.primary }}>{estimatedWaitMinutes}m</p>
+              </div>
             </div>
+
+            {/* Waiter Calls Banner */}
+            {waiterCalls.length > 0 && (
+              <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
+                  <h3 className="font-bold text-orange-400">Active Waiter Calls ({waiterCalls.length})</h3>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {waiterCalls.map(call => (
+                    <div key={call.id} className="flex items-center justify-between bg-zinc-900/60 border border-orange-500/20 rounded-lg px-3 py-2">
+                      <div>
+                        <p className="font-bold text-white">Table {call.table_number}</p>
+                        <p className="text-xs text-gray-400">{new Date(call.created_at).toLocaleTimeString()}</p>
+                      </div>
+                      <button onClick={() => dismissWaiterCall(call)} className="px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded text-xs font-medium transition-colors">
+                        ✓
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Quick Actions */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -464,8 +608,8 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500">New seating</p>
               </button>
               <button onClick={() => setActiveTab('orders')} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
-                <div className="w-8 h-8 bg-amber-500/20 rounded-md flex items-center justify-center mb-2">
-                  <ShoppingBag className="w-4 h-4 text-amber-400" />
+                <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
+                  <ShoppingBag className="w-4 h-4" style={{ color: theme.primary }} />
                 </div>
                 <p className="font-medium text-sm">View Orders</p>
                 <p className="text-xs text-gray-500">Manage orders</p>
@@ -484,7 +628,7 @@ export default function AdminDashboard() {
                     {orders.slice(0, 5).map(order => (
                       <div key={order.id} className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg">
                         <div>
-                          <p className="font-medium text-amber-400">{order.receipt_id}</p>
+                          <p className="font-medium" style={{ color: theme.primary }}>{order.receipt_id}</p>
                           <p className="text-xs text-gray-500">Table {order.table_number}</p>
                         </div>
                         <div className="text-right">
@@ -513,7 +657,8 @@ export default function AdminDashboard() {
                         table.status === 'available' ? 'bg-teal-500/10 border border-teal-500/30 text-teal-400' :
                         table.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30 text-red-400' :
                         'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                      }`}>
+                      }`}
+                      style={table.status !== 'available' && table.status !== 'occupied' ? { background: `${theme.primary}1a`, borderColor: `${theme.primary}4d`, color: theme.primary } : {}}>
                         <span className="text-xl font-bold">{table.table_number}</span>
                         <span className="text-xs capitalize">{table.status}</span>
                       </div>
@@ -528,15 +673,61 @@ export default function AdminDashboard() {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            <h1 className="text-xl font-bold">Orders</h1>
-            {orders.length === 0 ? (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <h1 className="text-xl font-bold">Orders</h1>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-gray-400">Est. wait:</span>
+                <span className="font-bold" style={{ color: theme.primary }}>{estimatedWaitMinutes} min</span>
+              </div>
+            </div>
+
+            {/* Search & Filters */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  placeholder="Search orders..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+              <select  
+                value={orderStatusFilter}
+                onChange={(e) => setOrderStatusFilter(e.target.value)}
+                className="px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none"
+              >
+                <option value="all">All Status</option>
+                <option value="pending">Pending</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="preparing">Preparing</option>
+                <option value="served">Served</option>
+                <option value="paid">Paid</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+              <select
+                value={orderTableFilter}
+                onChange={(e) => setOrderTableFilter(e.target.value)}
+                className="px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none"
+              >
+                <option value="all">All Tables</option>
+                {tables.map(t => (
+                  <option key={t.id} value={t.table_number.toString()}>Table {t.table_number}</option>
+                ))}
+              </select>
+            </div>
+
+            <p className="text-xs text-gray-500">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found</p>
+
+            {filteredOrders.length === 0 ? (
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
                 <ShoppingBag className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm">No orders yet</p>
               </div>
             ) : (
               <div className="space-y-3">
-                {orders.map(order => (
+                {filteredOrders.map(order => (
                   <motion.div key={order.id} layout className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
@@ -553,7 +744,7 @@ export default function AdminDashboard() {
                             order.payment_status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                           }`}>{order.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</span>
                         </div>
-                        <p className="text-xl font-bold text-amber-400">{order.receipt_id}</p>
+                        <p className="text-xl font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
                         <p className="text-gray-400">Table {order.table_number} • {new Date(order.created_at).toLocaleString()}</p>
                       </div>
                       <div className="text-right">
@@ -592,7 +783,7 @@ export default function AdminDashboard() {
                         </button>
                       )}
                       {order.payment_status !== 'paid' && order.status !== 'pending' && (
-                        <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-black rounded-lg text-sm font-medium transition-colors">
+                        <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 text-black rounded-lg text-sm font-medium transition-colors" style={{ background: theme.primary }}>
                           Record Cash Payment
                         </button>
                       )}
@@ -609,7 +800,7 @@ export default function AdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <div className="flex items-center justify-between">
               <h1 className="text-xl font-bold">Menu</h1>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-amber-400 transition-colors">
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
                 <Plus className="w-4 h-4" /> Add Item
               </button>
             </div>
@@ -618,7 +809,7 @@ export default function AdminDashboard() {
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
                 <UtensilsCrossed className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm mb-4">No menu items yet</p>
-                <button onClick={() => setShowMenuModal(true)} className="px-5 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm">
+                <button onClick={() => setShowMenuModal(true)} className="px-5 py-2 text-black rounded-lg font-medium text-sm" style={{ background: theme.primary }}>
                   Add First Item
                 </button>
               </div>
@@ -628,7 +819,7 @@ export default function AdminDashboard() {
                   <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-lg p-3 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="px-2 py-0.5 bg-amber-500/10 border border-amber-500/20 rounded text-xs text-amber-400">{item.category}</span>
+                        <span className="px-2 py-0.5 rounded text-xs" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}33`, color: theme.primary }}>{item.category}</span>
                         <h3 className="text-base font-semibold mt-1">{item.name}</h3>
                       </div>
                       <p className="text-xl font-bold text-green-400">${item.price.toFixed(2)}</p>
@@ -656,7 +847,7 @@ export default function AdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <div className="flex items-center justify-between">
               <h1 className="text-xl font-bold">Tables</h1>
-              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm flex items-center gap-2 hover:bg-amber-400 transition-colors">
+              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
                 <Plus className="w-4 h-4" /> Add Table
               </button>
             </div>
@@ -665,7 +856,7 @@ export default function AdminDashboard() {
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
                 <Grid3X3 className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm mb-4">No tables configured</p>
-                <button onClick={() => setShowAddTableModal(true)} className="px-5 py-2 bg-amber-500 text-black rounded-lg font-medium text-sm">
+                <button onClick={() => setShowAddTableModal(true)} className="px-5 py-2 text-black rounded-lg font-medium text-sm" style={{ background: theme.primary }}>
                   Add First Table
                 </button>
               </div>
@@ -728,7 +919,7 @@ export default function AdminDashboard() {
                   </div>
                 )}
                 <div className="mt-6 flex justify-center">
-                  <button onClick={() => window.print()} className="px-6 py-3 bg-amber-500 hover:bg-amber-400 text-black rounded-lg font-medium transition-colors">
+                  <button onClick={() => window.print()} className="px-6 py-3 text-black rounded-lg font-medium transition-colors" style={{ background: theme.primary }}>
                     🖨️ Print All QR Codes
                   </button>
                 </div>
@@ -752,20 +943,20 @@ export default function AdminDashboard() {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Item Name</label>
-                  <input type="text" value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., Margherita Pizza" />
+                  <input type="text" value={menuForm.name} onChange={(e) => setMenuForm({ ...menuForm, name: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none" placeholder="e.g., Margherita Pizza" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Price ($)</label>
-                  <input type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="12.99" />
+                  <input type="number" step="0.01" value={menuForm.price} onChange={(e) => setMenuForm({ ...menuForm, price: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none" placeholder="12.99" />
                 </div>
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Category</label>
-                  <input type="text" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., Cocktails, Beer, Whiskey" list="cat-list" />
+                  <input type="text" value={menuForm.category} onChange={(e) => setMenuForm({ ...menuForm, category: e.target.value })} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none" placeholder="e.g., Cocktails, Beer, Whiskey" list="cat-list" />
                   <datalist id="cat-list">
                     {[...new Set(menuItems.map(i => i.category))].map(cat => <option key={cat} value={cat} />)}
                   </datalist>
                 </div>
-                <button onClick={saveMenuItem} className="w-full py-3 bg-amber-500 text-black rounded-lg font-semibold hover:bg-amber-400 transition-colors">
+                <button onClick={saveMenuItem} className="w-full py-3 text-black rounded-lg font-semibold transition-colors" style={{ background: theme.primary }}>
                   {editMenuItem ? 'Update Item' : 'Add Item'}
                 </button>
               </div>
@@ -788,9 +979,9 @@ export default function AdminDashboard() {
               <div className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm text-gray-400 mb-2">Table Number</label>
-                  <input type="number" value={tableNumberInput} onChange={(e) => setTableNumberInput(e.target.value)} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-amber-500 focus:outline-none" placeholder="e.g., 11" min="1" />
+                  <input type="number" value={tableNumberInput} onChange={(e) => setTableNumberInput(e.target.value)} className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none" placeholder="e.g., 11" min="1" />
                 </div>
-                <button onClick={addTable} className="w-full py-3 bg-amber-500 text-black rounded-lg font-semibold hover:bg-amber-400 transition-colors">
+                <button onClick={addTable} className="w-full py-3 text-black rounded-lg font-semibold transition-colors" style={{ background: theme.primary }}>
                   Add Table
                 </button>
               </div>
@@ -831,12 +1022,12 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex justify-between text-lg font-bold pt-2 border-t border-zinc-700">
                       <span className="text-white">Total:</span>
-                      <span className="text-amber-400">${paymentModalData.total.toFixed(2)}</span>
+                      <span style={{ color: theme.primary }}>${paymentModalData.total.toFixed(2)}</span>
                     </div>
                   </div>
                 </div>
-                <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
-                  <p className="text-amber-400 text-center text-sm">💵 Cash payment to manager</p>
+                <div className="rounded-xl p-4" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
+                  <p className="text-center text-sm" style={{ color: theme.primary }}>💵 Cash payment to manager</p>
                 </div>
                 <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
                   Confirm Cash Payment
