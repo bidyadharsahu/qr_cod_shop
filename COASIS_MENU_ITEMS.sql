@@ -14,20 +14,12 @@ INSERT INTO menu_items (name, price, category, available) VALUES
   ('Crispy Chilli Garlic Shrimp', 14.00, 'Appetizers', true),
   ('Fried Lobster Bites', 32.00, 'Appetizers', true),
   ('Steak & Cheese Egg Rolls', 14.00, 'Appetizers', true),
-  ('Cajun Seafood Dip', 18.00, 'Appetizers', true)
-ON CONFLICT (name) DO UPDATE SET
-  price = EXCLUDED.price,
-  category = EXCLUDED.category,
-  available = EXCLUDED.available;
+  ('Cajun Seafood Dip', 18.00, 'Appetizers', true);
 
 -- ======== SALADS ========
 INSERT INTO menu_items (name, price, category, available) VALUES
   ('Grilled Caesar Salad', 14.00, 'Salads', true),
-  ('Coasis House Salad', 14.00, 'Salads', true)
-ON CONFLICT (name) DO UPDATE SET
-  price = EXCLUDED.price,
-  category = EXCLUDED.category,
-  available = EXCLUDED.available;
+  ('Coasis House Salad', 14.00, 'Salads', true);
 
 -- ======== MAIN DISHES ========
 INSERT INTO menu_items (name, price, category, available) VALUES
@@ -39,28 +31,16 @@ INSERT INTO menu_items (name, price, category, available) VALUES
   ('Salmon & Crab Fried Rice', 38.00, 'Mains', true),
   ('Lobster & Crab Fried Rice', 42.00, 'Mains', true),
   ('Seafood Trio', 42.00, 'Mains', true),
-  ('Garlic Alfredo Pasta', 22.00, 'Mains', true)
-ON CONFLICT (name) DO UPDATE SET
-  price = EXCLUDED.price,
-  category = EXCLUDED.category,
-  available = EXCLUDED.available;
+  ('Garlic Alfredo Pasta', 22.00, 'Mains', true);
 
 -- ======== SANDWICHES ========
 INSERT INTO menu_items (name, price, category, available) VALUES
   ('Salmon Sandwich', 22.00, 'Sandwiches', true),
-  ('Coasis Burger', 18.00, 'Sandwiches', true)
-ON CONFLICT (name) DO UPDATE SET
-  price = EXCLUDED.price,
-  category = EXCLUDED.category,
-  available = EXCLUDED.available;
+  ('Coasis Burger', 18.00, 'Sandwiches', true);
 
 -- ======== DESSERTS ========
 INSERT INTO menu_items (name, price, category, available) VALUES
-  ('Dessert Special', 10.00, 'Desserts', true)
-ON CONFLICT (name) DO UPDATE SET
-  price = EXCLUDED.price,
-  category = EXCLUDED.category,
-  available = EXCLUDED.available;
+  ('Dessert Special', 10.00, 'Desserts', true);
 
 -- Verify inserted items
 SELECT * FROM menu_items ORDER BY category, name;
