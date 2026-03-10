@@ -35,6 +35,15 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+      {
+        source: "/manifest-admin.json",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400",
+          },
+        ],
+      },
     ];
   },
 };

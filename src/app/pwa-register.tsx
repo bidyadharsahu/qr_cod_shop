@@ -101,13 +101,21 @@ export default function PWARegister() {
       (window as any).__pwaInstallPrompt = null;
       console.log('[PWA] App installed successfully');
       
-      // Read table from cookie (most reliable cross-context)
-      const cookieMatch = document.cookie.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
-      const table = cookieMatch ? decodeURIComponent(cookieMatch[1]) : (localStorage.getItem('netrikxr-table') || '1');
-      const targetUrl = `${window.location.origin}/order?table=${table}`;
+      // Detect which app was installed based on current page
+      const isAdminPage = window.location.pathname.startsWith('/admin');
       
-      // Dispatch event so chatbot can show message
-      window.dispatchEvent(new CustomEvent('pwa-installed', { detail: { table, targetUrl } }));
+      let targetUrl: string;
+      if (isAdminPage) {
+        targetUrl = `${window.location.origin}/admin`;
+      } else {
+        // Read table from cookie (most reliable cross-context)
+        const cookieMatch = document.cookie.match(/(?:^|;\s*)netrikxr-table=([^;]*)/);
+        const table = cookieMatch ? decodeURIComponent(cookieMatch[1]) : (localStorage.getItem('netrikxr-table') || '1');
+        targetUrl = `${window.location.origin}/order?table=${table}`;
+      }
+      
+      // Dispatch event so chatbot/admin can show message
+      window.dispatchEvent(new CustomEvent('pwa-installed', { detail: { targetUrl, isAdmin: isAdminPage } }));
       
       // Strategy: Multiple attempts to open in standalone PWA
       // 1) Short delay for install animation, then try window.open (triggers link capturing on Android)
@@ -161,16 +169,17 @@ export default function PWARegister() {
 
   // Check if iOS (show different message since iOS doesn't support beforeinstallprompt)
   const isIOS = typeof window !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
-  const isSafari = typeof window !== 'undefined' && /Safari/.test(navigator.userAgent) && !/CriOS|Chrome/.test(navigator.userAgent);
+  const isAdminPage = typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+  const appName = isAdminPage ? 'Coasis Admin' : 'Coasis';
   
   return (
     <div className="pwa-install-banner">
       <div className="pwa-install-content">
         <div className="pwa-install-icon">
-          <img src="/icons/icon-96x96.png" alt="Netrik XR" width={40} height={40} />
+          <img src="/icons/icon-96x96.png" alt={appName} width={40} height={40} />
         </div>
         <div className="pwa-install-text">
-          <strong>Install Netrik XR</strong>
+          <strong>Install {appName}</strong>
           {isIOS ? (
             <p>Tap <span style={{ fontSize: '18px' }}>⬆</span> Share then <strong>&quot;Add to Home Screen&quot;</strong></p>
           ) : (

@@ -345,7 +345,7 @@ function OrderContent() {
           `1️⃣ Tap the **Share** button ⬆️ (bottom center of Safari)\n` +
           `2️⃣ Scroll down → tap **"Add to Home Screen"**\n` +
           `3️⃣ Tap **"Add"** in the top right\n\n` +
-          `Then open **"Netrik XR"** from your home screen — it'll work just like a real app! 🎉\n\n` +
+          `Then open **"Coasis"** from your home screen — it'll work just like a real app! 🎉\n\n` +
           `💡 Your table number (${tableNumber}) is saved automatically.`,
           [
             { label: '✅ Done! Let me order', value: 'skip_install' },
@@ -374,7 +374,7 @@ function OrderContent() {
       document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
       
       addBotMessage(
-        `🎉 App installed! Opening now...\n\nIf it doesn't open automatically, look for "Netrik XR" on your home screen and tap it!`,
+        `🎉 App installed! Opening now...\n\nIf it doesn't open automatically, look for "Coasis" on your home screen and tap it!`,
         [
           { label: '🚀 Open App', value: 'open_installed_app' }
         ]

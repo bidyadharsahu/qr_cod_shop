@@ -4,13 +4,13 @@ import PWARegister from "./pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Netrik XR Shop",
-  description: "Scan, Order, Enjoy - Your premium digital ordering experience",
+  title: "Coasis - Order",
+  description: "Coasis Restaurant Bar & Suites - Scan, Order, Enjoy",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Netrik XR",
+    title: "Coasis",
     startupImage: [
       {
         url: "/icons/icon-512x512.png",
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
-    "application-name": "Netrik XR",
+    "application-name": "Coasis",
     "msapplication-TileColor": "#0a0a0a",
     "msapplication-TileImage": "/icons/icon-144x144.png",
     "msapplication-tap-highlight": "no",

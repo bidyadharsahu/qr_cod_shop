@@ -1,11 +1,11 @@
 {
-  "name": "Coasis - Order",
-  "short_name": "Coasis",
-  "description": "Coasis Restaurant Bar & Suites - Scan, Order, Enjoy",
-  "id": "/order",
-  "start_url": "/order",
+  "name": "Coasis Admin Panel",
+  "short_name": "Coasis Admin",
+  "description": "Restaurant Admin Dashboard - Manage orders, menu, and tables",
+  "id": "/admin",
+  "start_url": "/admin",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "scope": "/",
@@ -14,7 +14,7 @@
     "client_mode": "navigate-existing"
   },
   "prefer_related_applications": false,
-  "categories": ["food", "shopping", "lifestyle"],
+  "categories": ["business", "productivity"],
   "icons": [
     {
       "src": "/icons/icon-72x72.png",
@@ -77,13 +77,12 @@
       "purpose": "maskable"
     }
   ],
-  "screenshots": [],
   "shortcuts": [
     {
-      "name": "Start Ordering",
-      "short_name": "Order",
-      "description": "Open the ordering chatbot",
-      "url": "/order",
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Open admin dashboard",
+      "url": "/admin",
       "icons": [
         {
           "src": "/icons/icon-96x96.png",
