@@ -297,7 +297,7 @@ const INTENT_PATTERNS: Record<IntentType, string[]> = {
   GREETING: ['hi', 'hello', 'hey', 'bro', 'boss', 'waiter', 'yo', 'whats up', "what's up", 'sup', 'hola', 'howdy', 'good morning', 'good evening', 'good afternoon'],
   VIEW_MENU: ['show menu', 'see menu', 'full menu', 'what do you have', 'available items', 'what can i get', 'let me see', 'whatcha got', 'what you got', 'show me everything', 'see the menu', 'browse menu', 'open menu', 'menu please'],
   VIEW_CATEGORY: ['appetizers', 'appetizer', 'starters', 'starter', 'salads', 'mains', 'main dish', 'main course', 'entree', 'entrees', 'sandwiches', 'desserts', 'sides'],
-  ORDER_ITEM: ['i want', 'give me', 'get me', 'bring me', 'serve me', 'pour me', 'i need', 'can i have', "i'll have", 'ill have', 'i will have', 'let me get', 'order'],
+  ORDER_ITEM: ['i want', 'give me', 'add', 'include', 'get me', 'bring me', 'make it', 'serve me', 'pour me', 'i need', 'can i have', "i'll have", 'ill have', 'i will have', 'let me get', 'one', 'two', 'three', 'order'],
   ADD_TO_CART: ['add it', 'add that', 'yes add', 'add to cart', 'put it in', 'add this', 'yes please add', 'add to my order', 'add to order', 'yes add it'],
   ASK_ABOUT_DISH: ['what is', 'what are', 'tell me about', 'what does', 'come with', 'comes with', 'whats in', "what's in", 'describe', 'explain', 'ingredients', 'what goes in'],
   MODIFY_QUANTITY: ['more', 'extra', 'another', 'make it', 'increase', 'double', 'triple', 'add more', 'one more', 'two more'],
@@ -310,7 +310,7 @@ const INTENT_PATTERNS: Record<IntentType, string[]> = {
   RECOMMEND_SEAFOOD: ['something seafood', 'seafood dish', 'fish dish', 'i want seafood', 'i like seafood', 'anything with fish', 'seafood options'],
   RECOMMEND_LIGHT: ['something light', 'light meal', 'not heavy', 'something healthy', 'lighter option', 'light food'],
   PARTY_ORDER: ['we are', 'group of', 'party', 'for us', 'celebrating', 'bunch of us', 'friends', 'birthday', 'celebration'],
-  PLACE_ORDER: ['place order', 'checkout', 'confirm order', "i'm done", 'im done', 'thats all', "that's all", 'done ordering', 'send order', 'submit', 'finish', 'complete order', 'ready to order'],
+  PLACE_ORDER: ['place order', 'checkout', 'confirm order', 'confirm', "i'm done", 'im done', 'thats all', "that's all", 'done ordering', 'send order', 'submit', 'finish', 'complete order', 'ready to order'],
   CANCEL_ORDER: ['cancel order', 'clear cart', 'forget it', 'nevermind', 'never mind', 'start over', 'remove all', 'clear all', 'cancel everything', 'scratch everything'],
   THANK_YOU: ['thank', 'thanks', 'appreciate', 'awesome', 'great', 'perfect', 'nice', 'cool', 'cheers', 'wonderful'],
   HELP: ['help', 'how does this work', 'confused', 'what can you do', 'guide me', 'assist', 'support', 'how to order', 'instructions'],
@@ -395,11 +395,12 @@ const RESPONSES = {
     "Cheers! Let me know if you need anything. 🎉",
   ],
   HELP: [
-    "I'm SIA, your Coasis ordering assistant! Here's how it works: 👇\n\n1️⃣ **Browse** — Say \"show menu\" or ask about any dish\n2️⃣ **Explore** — Type a dish name and I'll describe it\n3️⃣ **Order** — Say \"add\" + dish name to add to cart\n4️⃣ **Checkout** — Say \"place order\" when ready\n\nYou can also ask me:\n• \"What's good?\" — I'll recommend dishes\n• \"Something spicy\" — I'll suggest spicy options\n• \"What comes with the lamb?\"\n\nWhat would you like?",
+    "I'm SIA, your Coasis ordering assistant! Here's how it works: 👇\n\n1️⃣ **Browse** — Say \"show menu\" to see all items\n2️⃣ **Order** — Type a dish name (like \"lamb chops\") to add it to cart\n3️⃣ **Learn** — Say \"tell me about\" + dish name for details\n4️⃣ **Checkout** — Say \"place order\" or \"confirm\" when ready\n\nYou can also ask me:\n• \"What's good?\" — I'll recommend dishes\n• \"Something spicy\" — Spicy picks\n• \"How much is the steak?\" — Price check\n\nWhat would you like?",
   ],
   UNKNOWN: [
-    "I'm not sure I got that. 😅 You can:\n\n• Type a **dish name** to learn about it\n• Say **\"show menu\"** to browse\n• Say **\"recommend\"** for suggestions\n\nWhat would you like?",
-    "Hmm? Try telling me a dish name like \"lamb chops\" or \"steak\" and I'll tell you all about it! 🍽️",
+    "Sorry, didn't quite get that 😅 Try 'show menu' or tell me what you'd like!",
+    "Hmm? Want to see the menu or just tell me what you're craving?",
+    "Not sure what you mean. Try typing a dish name like \"steak\" or say \"show menu\"!",
   ],
   FOLLOWUP: [
     "Anything else to go with that?",
@@ -546,6 +547,11 @@ function findItemsByCategory(menuItems: MenuItem[], category: string): MenuItem[
   );
 }
 
+function findCheapestItem(menuItems: MenuItem[]): MenuItem | null {
+  if (menuItems.length === 0) return null;
+  return menuItems.reduce((min, item) => item.price < min.price ? item : min, menuItems[0]);
+}
+
 function detectCategory(text: string): string | null {
   const normalized = normalize(text);
   const categoryMap: Record<string, string> = {
@@ -555,6 +561,7 @@ function detectCategory(text: string): string | null {
     'sandwich': 'Sandwiches', 'sandwiches': 'Sandwiches',
     'dessert': 'Desserts', 'desserts': 'Desserts',
     'side': 'Sides', 'sides': 'Sides',
+    'food': 'Mains',
   };
   for (const [keyword, cat] of Object.entries(categoryMap)) {
     if (normalized.includes(keyword)) return cat;
@@ -574,9 +581,16 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
     if (normalized.includes(keyword)) return 'REMOVE_ITEM';
   }
 
-  // Check add to cart (explicit "add" + confirmation)
+  // Check add to cart (explicit "add it" / "yes add" confirmations)
   for (const keyword of INTENT_PATTERNS.ADD_TO_CART) {
-    if (normalized.includes(keyword)) return 'ADD_TO_CART';
+    if (normalized.includes(keyword)) {
+      // If a specific dish is mentioned, treat as cart add
+      const dish = detectDishFromKnowledge(text);
+      const matchItems = findMatchingItems(text, menuItems);
+      if (dish || matchItems.length > 0) return 'ADD_TO_CART';
+      // No dish specified ("add it", "yes add") → confirm previous item
+      return 'YES_CONFIRM';
+    }
   }
 
   // Check place order / checkout
@@ -669,13 +683,13 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
     if (normalized.includes(keyword)) return 'PARTY_ORDER';
   }
 
-  // ---- FALLBACK: If message matches a dish keyword, treat as ASK_ABOUT_DISH ----
+  // ---- FALLBACK: If message matches a dish keyword, auto-add to cart ----
   const knownDish = detectDishFromKnowledge(text);
-  if (knownDish) return 'ASK_ABOUT_DISH';
+  if (knownDish) return 'ORDER_ITEM';
 
   // Check if it matches a menu item name
   const menuMatch = findMatchingItems(text, menuItems);
-  if (menuMatch.length > 0) return 'ASK_ABOUT_DISH';
+  if (menuMatch.length > 0) return 'ORDER_ITEM';
 
   return 'UNKNOWN';
 }
@@ -865,11 +879,15 @@ export function processChatMessage(
 
       let responseMsg: string;
       if (availableItems.length === 1) {
-        const { item, quantity } = availableItems[0];
-        responseMsg = getRandomResponse('ITEM_ADDED')
-          .replace('{quantity}', quantity.toString())
-          .replace('{item}', item.name)
-          .replace('{upsell}', upsell);
+        const { item, quantity, preference } = availableItems[0];
+        if (preference) {
+          responseMsg = `Got it! 👍 ${quantity}x ${item.name} (${preference}) added.\n\n${upsell}`;
+        } else {
+          responseMsg = getRandomResponse('ITEM_ADDED')
+            .replace('{quantity}', quantity.toString())
+            .replace('{item}', item.name)
+            .replace('{upsell}', upsell);
+        }
       } else {
         const itemsList = availableItems.map(m => `${m.quantity}x ${m.item.name}`).join(' + ');
         responseMsg = `Love it! 🔥 Added ${itemsList} to your order.\n\n${upsell}`;
@@ -943,9 +961,11 @@ export function processChatMessage(
     case 'CHECK_PRICE': {
       const knownDish = detectDishFromKnowledge(message);
       if (knownDish) {
+        const priceMatch = findMatchingItems(knownDish.displayName, menuItems);
         return {
           message: `${knownDish.displayName} is ${knownDish.price} 💰\n\n${knownDish.description}\n\nWould you like to add it to your cart?`,
           action: 'ask_dish',
+          matchedItems: priceMatch.length > 0 ? [{ item: priceMatch[0].item, quantity: 1 }] : undefined,
           intent,
           entities,
         };
@@ -955,10 +975,28 @@ export function processChatMessage(
         const item = matchedItems[0].item;
         return {
           message: `${item.name} is $${item.price.toFixed(2)} 💰\n\nWould you like to order it?`,
+          action: 'ask_dish',
+          matchedItems: [{ item, quantity: 1 }],
           intent,
           entities,
         };
       }
+
+      // Cheapest / budget query
+      if (normalized.includes('cheap') || normalized.includes('budget') || normalized.includes('affordable')) {
+        const cheapest = findCheapestItem(menuItems.filter(m => m.available));
+        if (cheapest) {
+          return {
+            message: `Looking for a deal? 💸 Our most affordable option is ${cheapest.name} at $${cheapest.price.toFixed(2)}!`,
+            action: 'ask_dish',
+            matchedItems: [{ item: cheapest, quantity: 1 }],
+            suggestedItems: [cheapest],
+            intent,
+            entities,
+          };
+        }
+      }
+
       return {
         message: "Check out our menu to see all prices! 💰",
         action: 'show_menu',
@@ -973,7 +1011,7 @@ export function processChatMessage(
       const picks = popular.sort(() => Math.random() - 0.5).slice(0, 3);
       const list = picks.map(p => `• **${p.displayName}** — ${p.price}`).join('\n');
       return {
-        message: `Great question! 🔥 Here are tonight's top picks:\n\n${list}\n\nType any dish name and I'll tell you more about it!`,
+        message: `Great question! 🔥 Here are tonight's top picks:\n\n${list}\n\nJust type a dish name to add it, or say "tell me about" + name for details!`,
         intent,
         entities,
       };
@@ -984,7 +1022,7 @@ export function processChatMessage(
       const spicy = Object.values(DISH_KNOWLEDGE).filter(d => d.spicy);
       const list = spicy.map(d => `🔥 **${d.displayName}** — ${d.price}`).join('\n');
       return {
-        message: `You like it hot! Here are our spicy dishes:\n\n${list}\n\nWant to try one?`,
+        message: `You like it hot! Here are our spicy dishes:\n\n${list}\n\nJust type a dish name to add it!`,
         intent,
         entities,
       };
@@ -996,7 +1034,7 @@ export function processChatMessage(
       const picks = seafood.sort(() => Math.random() - 0.5).slice(0, 4);
       const list = picks.map(d => `🐟 **${d.displayName}** — ${d.price}`).join('\n');
       return {
-        message: `We have some amazing seafood! 🦞\n\n${list}\n\nWant to know more about any of these?`,
+        message: `We have some amazing seafood! 🦞\n\n${list}\n\nType a dish name to add it to your order!`,
         intent,
         entities,
       };
@@ -1096,25 +1134,29 @@ export function processChatMessage(
 
     // ---- UNKNOWN ----
     default: {
-      // Last resort: try to match any menu item
+      // Last resort: try to match any menu item → auto-add to cart (like old behavior)
       const possibleItems = findMatchingItems(message, menuItems);
       if (possibleItems.length > 0 && possibleItems[0].item.available) {
-        const knownDish = detectDishFromKnowledge(possibleItems[0].item.name);
-        if (knownDish) {
-          return {
-            message: buildDishDescription(knownDish),
-            action: 'ask_dish',
-            matchedItems: [possibleItems[0]],
-            intent: 'ASK_ABOUT_DISH',
-            entities,
-          };
+        const { item, quantity, preference } = possibleItems[0];
+        const knownDish = detectDishFromKnowledge(item.name);
+        const upsell = buildUpsell(knownDish, cart);
+
+        let msg: string;
+        if (preference) {
+          msg = `Got it! 👍 ${quantity}x ${item.name} (${preference}) added.\n\n${upsell}`;
+        } else {
+          msg = getRandomResponse('ITEM_ADDED')
+            .replace('{quantity}', quantity.toString())
+            .replace('{item}', item.name)
+            .replace('{upsell}', upsell);
         }
-        const item = possibleItems[0].item;
+        msg += '\n' + getRandomResponse('FOLLOWUP');
+
         return {
-          message: `**${item.name}** — $${item.price.toFixed(2)}\n\nWould you like to add it to your cart?`,
-          action: 'ask_dish',
+          message: msg,
+          action: 'add_item',
           matchedItems: [possibleItems[0]],
-          intent: 'ASK_ABOUT_DISH',
+          intent: 'ORDER_ITEM',
           entities,
         };
       }
