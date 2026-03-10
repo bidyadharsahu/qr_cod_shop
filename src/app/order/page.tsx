@@ -98,6 +98,7 @@ function OrderContent() {
   });
   const [callingWaiter, setCallingWaiter] = useState(false);
   const [estimatedWait, setEstimatedWait] = useState<number | null>(null);
+  const [lastAskedItem, setLastAskedItem] = useState<MenuItem | null>(null);
   const [orderCount, setOrderCount] = useState(0);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -287,7 +288,7 @@ function OrderContent() {
 
       if (canInstallPWA && !isStandalone) {
         addBotMessage(
-          `Hey there! ${theme.emoji} Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.${loyaltyMsg}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
+          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
           [
             { label: '📲 Install App', value: 'install_app' },
             { label: '⏭️ Skip, Order Now', value: 'skip_install' }
@@ -295,13 +296,13 @@ function OrderContent() {
         );
       } else {
         addBotMessage(
-          `Hey there! ${theme.emoji} Welcome to netrikxr.shop!\n\nI'm SIA, your bartender at Table ${tableNumber}.${loyaltyMsg}\n\n${theme.greeting}`,
+          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
           [
-            { label: '🍹 See Menu', value: 'menu' },
+            { label: '🍽️ See Menu', value: 'menu' },
             { label: '🔥 Popular', value: 'popular' },
+            { label: '🌶️ Spicy', value: 'spicy' },
+            { label: '🦞 Seafood', value: 'seafood' },
             { label: '❤️ Favorites', value: 'favorites' },
-            { label: '🎉 Party Package', value: 'party' },
-            { label: '💬 Recommend', value: 'recommend' },
             { label: '❓ Help', value: 'help' }
           ]
         );
@@ -410,31 +411,46 @@ function OrderContent() {
       case 'skip_install':
         addUserMessage('Skip, let me order');
         addBotMessage(
-          `No problem! ${theme.greeting} 🍹`,
+          `No problem! Let's get you ordering! 🍽️`,
           [
-            { label: '🍹 See Menu', value: 'menu' },
+            { label: '🍽️ See Menu', value: 'menu' },
             { label: '🔥 Popular', value: 'popular' },
+            { label: '🌶️ Spicy', value: 'spicy' },
+            { label: '🦞 Seafood', value: 'seafood' },
             { label: '❤️ Favorites', value: 'favorites' },
-            { label: '🎉 Party Package', value: 'party' },
-            { label: '💬 Recommend', value: 'recommend' },
             { label: '❓ Help', value: 'help' }
           ]
         );
         break;
       case 'popular':
         addUserMessage('Show popular items');
-        {
-          const popularItems = menuItems.slice(0, 5);
-          const popularList = popularItems.map((item, i) => `${i + 1}. ${item.name} - $${item.price.toFixed(2)}`).join('\n');
-          addBotMessage(
-            `🔥 Most Popular Tonight:\n\n${popularList}\n\nTap "See Menu" to browse everything or tell me what you want!`,
-            [
-              { label: '🍹 Full Menu', value: 'menu' },
-              { label: '💬 Recommend', value: 'recommend' },
-              { label: '🛒 View Cart', value: 'cart' }
-            ]
-          );
-        }
+        addBotMessage(
+          `🔥 Most Popular Tonight:\n\n• **Marinated Lambchops** — $42\n• **Strip Steak** — $30\n• **Seafood Trio** — $42\n• **Southern Fried Chicken** — $28\n• **Coasis Burger** — $18\n\nType any dish name and I'll tell you all about it!`,
+          [
+            { label: '🍽️ Full Menu', value: 'menu' },
+            { label: '🛒 View Cart', value: 'cart' }
+          ]
+        );
+        break;
+      case 'spicy':
+        addUserMessage('Show spicy dishes');
+        addBotMessage(
+          `🌶️ Spicy picks:\n\n🔥 **Crispy Chilli Garlic Shrimp** — $14\n🔥 **Blue Cheese Buffalo Wings** — $14\n🔥 **Cajun Seafood Dip** — $18\n🔥 **Salmon & Crab Fried Rice** — $38\n\nWant to try one? Just type the name!`,
+          [
+            { label: '🍽️ Full Menu', value: 'menu' },
+            { label: '🛒 View Cart', value: 'cart' }
+          ]
+        );
+        break;
+      case 'seafood':
+        addUserMessage('Show seafood dishes');
+        addBotMessage(
+          `🦞 Seafood Favorites:\n\n• **Chargrilled Oysters** — $18/$32\n• **Seafood Trio** — $42\n• **Lobster & Crab Fried Rice** — $42\n• **Salmon & Crab Fried Rice** — $38\n• **Crispy Chilli Garlic Shrimp** — $14\n• **Grilled or Fried Branzino** — $34\n\nType any dish name for details!`,
+          [
+            { label: '🍽️ Full Menu', value: 'menu' },
+            { label: '🛒 View Cart', value: 'cart' }
+          ]
+        );
         break;
       case 'favorites':
         addUserMessage('Show my favorites');
@@ -486,65 +502,53 @@ function OrderContent() {
       case 'party':
         addUserMessage('Party package');
         addBotMessage(
-          `🎉 Party time! Nice!\n\nHow many people are celebrating?\nWhat's the vibe - classy, wild, or chill?`,
+          `🎉 Party time! That's awesome!\n\nFor groups, I'd suggest:\n• **Chargrilled Oysters** — great for sharing\n• **Cajun Seafood Dip** — crowd favorite\n• **Steak & Cheese Egg Rolls** — everyone loves these\n• **Seafood Trio** or **Marinated Lambchops** for mains\n\nHow many people are you dining with?`,
           [
-            { label: '🎂 Birthday', value: 'birthday' },
-            { label: '👔 Work Celebration', value: 'celebration' },
-            { label: '😎 Just Vibing', value: 'casual' }
+            { label: '🍽️ See Menu', value: 'menu' },
+            { label: '🔥 Popular', value: 'popular' }
           ]
         );
         break;
       case 'recommend':
         addUserMessage('What do you recommend?');
         addBotMessage(
-          `Great question! 🤔 Here's what's popular tonight:\n\n🔥 Our cocktails are flying\n🍺 Craft beers are fresh\n🥃 Premium whiskey for the refined taste\n\nWhat's your mood?`,
+          `Great question! 🔥 Here are tonight's top picks:\n\n• **Marinated Lambchops** — $42 (most popular!)\n• **Seafood Trio** — $42\n• **Strip Steak** — $30\n\nType any dish name and I'll tell you more!`,
           [
-            { label: '🧊 Refreshing', value: 'cold' },
-            { label: '🥃 Strong', value: 'strong' },
-            { label: '🍹 Full Menu', value: 'menu' }
+            { label: '🌶️ Spicy', value: 'spicy' },
+            { label: '🦞 Seafood', value: 'seafood' },
+            { label: '🍽️ Full Menu', value: 'menu' }
           ]
         );
         break;
-      case 'birthday':
-        addUserMessage('Birthday party');
-        addBotMessage(
-          `🎂 Happy Birthday vibes! Let's make it special!\n\nHow about:\n• Shots to kick it off\n• Signature cocktails\n• A premium bottle\n\nHow many people?`,
-          [{ label: '🍹 See Menu', value: 'menu' }]
-        );
+      case 'add_last_item':
+        if (lastAskedItem) {
+          {
+            const itemToAdd = lastAskedItem;
+            setCart(prev => {
+              const existing = prev.find(i => i.id === itemToAdd.id);
+              if (existing) {
+                return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+              }
+              return [...prev, { ...itemToAdd, quantity: 1 }];
+            });
+            addUserMessage(`Add ${itemToAdd.name}`);
+            addBotMessage(`Great choice! 👍 ${itemToAdd.name} added to your cart.\n\nAnything else?`, [
+              { label: '🍽️ See Menu', value: 'menu' },
+              { label: '🛒 View Cart', value: 'cart' },
+              { label: '✅ Checkout', value: 'checkout' }
+            ]);
+            setLastAskedItem(null);
+          }
+        }
         break;
-      case 'celebration':
-        addUserMessage('Work celebration');
-        addBotMessage(
-          `👔 Congrats on whatever you're celebrating!\n\nFor office celebrations:\n• Whiskey for the distinguished\n• Wine for the refined\n• Cocktails for the adventurous`,
-          [{ label: '🍹 See Menu', value: 'menu' }]
-        );
-        break;
-      case 'casual':
-        addUserMessage('Just hanging out');
-        addBotMessage(
-          `😎 Nothing wrong with that! Best nights are unplanned.\n\nBeer, cocktails, or something stronger?`,
-          [
-            { label: '🍺 Beers', value: 'menu' },
-            { label: '🍸 Cocktails', value: 'menu' },
-            { label: '🥃 Spirits', value: 'menu' }
-          ]
-        );
-        break;
-      case 'cold':
-        addUserMessage('Something refreshing');
-        addBotMessage(
-          `🧊 Ice cold coming up! Perfect choice.\n\nRefreshing beers, frozen cocktails, chilled spirits...`,
-          undefined, 
-          { showMenu: true }
-        );
-        break;
-      case 'strong':
-        addUserMessage('Something strong');
-        addBotMessage(
-          `🥃 I like your style! Going for the good stuff.\n\nWhiskey, rum, vodka, or a strong cocktail?`,
-          undefined, 
-          { showMenu: true }
-        );
+      case 'no_thanks':
+        addUserMessage('No thanks');
+        setLastAskedItem(null);
+        addBotMessage('No problem! What else can I help with?', [
+          { label: '🍽️ See Menu', value: 'menu' },
+          { label: '🔥 Popular', value: 'popular' },
+          { label: '🛒 View Cart', value: 'cart' }
+        ]);
         break;
       case 'checkout':
         handleCheckout();
@@ -646,7 +650,6 @@ function OrderContent() {
     if (!userInput.trim()) return;
 
     const input = userInput.trim();
-    const inputLower = input.toLowerCase();
     addUserMessage(input);
     setUserInput('');
 
@@ -680,9 +683,24 @@ function OrderContent() {
       return;
     }
 
+    // Handle ask_dish action — describe dish, offer Add to Cart
+    if (response.action === 'ask_dish') {
+      if (response.matchedItems && response.matchedItems.length > 0) {
+        setLastAskedItem(response.matchedItems[0].item);
+      }
+      addBotMessage(
+        response.message,
+        [
+          { label: '✅ Add to Cart', value: 'add_last_item' },
+          { label: '🍽️ See Menu', value: 'menu' },
+          { label: '❌ No Thanks', value: 'no_thanks' }
+        ]
+      );
+      return;
+    }
+
     // Handle item ordering - new format with matchedItems array
     if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
-      // Add all matched items to cart
       for (const matched of response.matchedItems) {
         const item = matched.item;
         const qty = matched.quantity || 1;
@@ -699,7 +717,22 @@ function OrderContent() {
       addBotMessage(
         response.message,
         [
-          { label: '🍹 More Drinks', value: 'menu' },
+          { label: '🍽️ Add More', value: 'menu' },
+          { label: '🛒 View Cart', value: 'cart' },
+          { label: '✅ Checkout', value: 'checkout' }
+        ]
+      );
+      return;
+    }
+
+    // Handle remove_item action
+    if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
+      const itemToRemove = response.matchedItems[0].item;
+      setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
+      addBotMessage(
+        response.message,
+        [
+          { label: '🍽️ See Menu', value: 'menu' },
           { label: '🛒 View Cart', value: 'cart' },
           { label: '✅ Checkout', value: 'checkout' }
         ]
@@ -729,41 +762,22 @@ function OrderContent() {
       return;
     }
 
-    // Handle special keyword-based responses for better conversations
-    if (inputLower.includes('cart') || inputLower.includes('my order')) {
-      handleOptionClick('cart');
-      return;
-    }
-
-    if (inputLower.includes('checkout') || inputLower.includes('place order') || inputLower.includes('done ordering')) {
-      handleCheckout();
-      return;
-    }
-
-    if (inputLower.includes('pay') || inputLower.includes('bill')) {
-      handleOptionClick('pay');
-      return;
-    }
-
-    if (inputLower.includes('menu') || inputLower.includes('what do you have')) {
-      handleOptionClick('menu');
-      return;
-    }
-
-    if (inputLower.includes('cancel') || inputLower.includes('clear')) {
-      setCart([]);
-      addBotMessage('Cart cleared! 👍 Start fresh?', [
-        { label: '🍹 See Menu', value: 'menu' },
-        { label: '💬 Recommend', value: 'recommend' }
+    // Handle YES_CONFIRM — add last asked item if any
+    if (response.intent === 'YES_CONFIRM' && lastAskedItem) {
+      const itemToAdd = lastAskedItem;
+      setCart(prev => {
+        const existing = prev.find(i => i.id === itemToAdd.id);
+        if (existing) {
+          return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+        }
+        return [...prev, { ...itemToAdd, quantity: 1 }];
+      });
+      addBotMessage(`Great choice! 👍 ${itemToAdd.name} added to your cart.\n\nAnything else?`, [
+        { label: '🍽️ See Menu', value: 'menu' },
+        { label: '🛒 View Cart', value: 'cart' },
+        { label: '✅ Checkout', value: 'checkout' }
       ]);
-      return;
-    }
-
-    if (inputLower.includes('thank')) {
-      addBotMessage('You\'re welcome! 😊 Need anything else?', [
-        { label: '🍹 More Drinks', value: 'menu' },
-        { label: '🛒 View Cart', value: 'cart' }
-      ]);
+      setLastAskedItem(null);
       return;
     }
 
@@ -771,7 +785,7 @@ function OrderContent() {
     addBotMessage(
       response.message || "I'm here to help! What can I get you?",
       [
-        { label: '🍹 See Menu', value: 'menu' },
+        { label: '🍽️ See Menu', value: 'menu' },
         { label: '🛒 View Cart', value: 'cart' },
         { label: '💬 Recommend', value: 'recommend' }
       ]
@@ -786,8 +800,7 @@ function OrderContent() {
       }
       return [...prev, { ...item, quantity: 1 }];
     });
-    // Show quick confirmation
-    addBotMessage(`Nice choice! 👍 Added ${item.name} to your cart.`, [
+    addBotMessage(`👍 ${item.name} added to your cart!\n\nAnything else?`, [
       { label: '➕ Add More', value: 'menu' },
       { label: '🛒 View Cart', value: 'cart' },
       { label: '✅ Checkout', value: 'checkout' }
@@ -983,8 +996,8 @@ function OrderContent() {
               <img src="/icons/icon-96x96.png" alt="N" className="w-7 h-7 rounded-md" />
             </div>
             <div>
-              <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>Netrik XR</p>
-              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Bartender</p>
+              <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>Coasis</p>
+              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Assistant</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
