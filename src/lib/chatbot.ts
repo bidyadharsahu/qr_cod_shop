@@ -56,7 +56,22 @@ type IntentType =
   | 'THANK_YOU'
   | 'HELP'
   | 'YES_CONFIRM'
+  | 'DRINK_REQUEST'
+  | 'VEGETARIAN_REQUEST'
+  | 'SYSTEM_QUESTION'
+  | 'VAGUE_MESSAGE'
+  | 'CASUAL_CHAT'
   | 'UNKNOWN';
+
+// ============================================
+// CONVERSATION CONTEXT (Memory)
+// ============================================
+export interface ConversationContext {
+  lastPreference?: string;
+  lastAction?: string;
+  lastDishAsked?: string;
+  preferences: string[];
+}
 
 // ============================================
 // COASIS MENU KNOWLEDGE BASE
@@ -315,6 +330,11 @@ const INTENT_PATTERNS: Record<IntentType, string[]> = {
   THANK_YOU: ['thank', 'thanks', 'appreciate', 'awesome', 'great', 'perfect', 'nice', 'cool', 'cheers', 'wonderful'],
   HELP: ['help', 'how does this work', 'confused', 'what can you do', 'guide me', 'assist', 'support', 'how to order', 'instructions'],
   YES_CONFIRM: ['yes', 'yeah', 'yep', 'sure', 'ok', 'okay', 'yea', 'ya', 'absolutely', 'definitely', 'please do', 'go ahead', 'do it'],
+  DRINK_REQUEST: ['beer', 'wine', 'cocktail', 'cocktails', 'drink', 'drinks', 'something to drink', 'beverages', 'drink menu', 'a drink', 'bourbon', 'whiskey', 'whisky', 'vodka', 'tequila', 'margarita', 'mojito', 'rum', 'gin', 'sangria', 'mimosa', 'champagne', 'prosecco', 'soda', 'juice', 'lemonade', 'iced tea'],
+  VEGETARIAN_REQUEST: ['paneer', 'vegetarian', 'no meat', 'plant based', 'vegan', 'meatless', 'veggie', 'vegetarian options', 'veg options', 'meatfree', 'meat free', 'without meat'],
+  SYSTEM_QUESTION: ['how do you work', 'what are you', 'who are you', 'who made you', 'are you real', 'are you ai', 'are you a bot', 'are you human', 'your name', 'what is sia', 'who is sia', 'what company', 'who built you', 'who created you'],
+  VAGUE_MESSAGE: ['im hungry', 'hungry', 'i dont know', 'whatever', 'surprise me', 'dealers choice', 'not sure', 'idk', 'feed me', 'hmm', 'hmmm', 'umm', 'ummm', 'dunno', 'no idea', 'you pick', 'you choose', 'just something'],
+  CASUAL_CHAT: ['how are you', 'whats up', 'wassup', 'sup', 'hows it going', 'good morning', 'good evening', 'good afternoon', 'good night', 'hey there', 'yo', 'heya'],
   UNKNOWN: [],
 };
 
@@ -347,66 +367,89 @@ const PREFERENCE_PATTERNS = [
 // ============================================
 const RESPONSES = {
   GREETING: [
-    "Welcome to Coasis! 🍽️ I'm SIA, your ordering assistant.\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Airline Chicken Breast\n• Seafood Trio\n\nWhat would you like to try?",
-    "Hey there! 👋 Welcome to Coasis Restaurant Bar & Suites!\n\nI'm SIA — I can help you explore the menu, explain dishes, and take your order.\n\nWhat are you in the mood for?",
-    "Hello! Welcome to Coasis! 🍽️\n\nLet me know what you're craving — I know the menu inside and out!",
+    "Hey! Welcome to Coasis! 🍽️ I'm SIA, your personal waiter tonight.\n\n🔥 What's hot right now:\n• Marinated Lambchops — absolute favorite\n• Seafood Trio — fresh catch of the day\n• Strip Steak — cooked to perfection\n\nWhat catches your eye? Just type a dish name and I'll tell you all about it!",
+    "Welcome in! 👋 I'm SIA — think of me as your table-side assistant.\n\nHungry? Here's what people are loving tonight:\n• Marinated Lambchops 🔥\n• Southern Fried Chicken\n• Chargrilled Oysters\n\nJust say a dish name and I'll break it down for you, or say 'menu' to browse!",
+    "Hey there! 🍴 Welcome to Coasis Restaurant Bar & Suites!\n\nI'm SIA — I know every dish on this menu. Ask me about anything!\n\nFeeling adventurous? Try 'something spicy' or 'seafood' — or just browse the menu!",
   ],
   VIEW_MENU: [
-    "Here's our full menu! 👇 Tap a category or just tell me what sounds good.",
-    "Check out what Coasis has to offer! 🔥 You can also just type a dish name and I'll tell you all about it.",
-    "Take a look at our menu! Tell me if anything catches your eye — I can recommend pairings too.",
+    "Here's the full lineup! 👇 Tap a category or just type any dish name — I'll tell you what makes it special.",
+    "Coming right up! 🔥 Take a look and let me know what catches your eye. I can explain any dish in detail!",
+    "Here's what Chef has going tonight! Browse around, and just type a dish name if you want the full story on it.",
   ],
   ITEM_ADDED: [
-    "Great choice! 👍 {quantity}x {item} added to your cart.\n\n{upsell}",
-    "Done! 🎉 {quantity}x {item} is in your order.\n\n{upsell}",
-    "You got it! {quantity}x {item} added! 👌\n\n{upsell}",
+    "Nice pick! 👍 {quantity}x {item} — locked in.\n\n{upsell}",
+    "Done and done! 🎉 {quantity}x {item} heading your way.\n\n{upsell}",
+    "Good taste! {quantity}x {item} added to your order! 👌\n\n{upsell}",
+    "You got it! {quantity}x {item} is on the list. 🔥\n\n{upsell}",
   ],
   ITEM_REMOVED: [
-    "Done! {item} removed from your cart. 👍",
-    "{item} has been removed. Anything else you'd like to change?",
+    "Taken care of! {item} is off your order. 👍\n\nAnything else you'd like to change, or ready to keep going?",
+    "Done! {item} removed. No worries at all.\n\nWant to add something else instead?",
   ],
   ITEM_NOT_FOUND: [
-    "Hmm, I couldn't find that on our menu. 🤔\n\nWant me to show you the menu? Or tell me what you're in the mood for — I'll find something perfect!",
-    "I don't think we have that one. Let me show you what's available!\n\nOr just tell me: are you feeling meat, seafood, or something lighter?",
+    "Hmm, I don't think we have that one. 🤔 But no worries — let me help!\n\nAre you in the mood for something meaty, seafood, or lighter? I'll point you in the right direction!",
+    "That's not on our menu, but I've got plenty of great suggestions!\n\nTell me what you're craving — spicy? Seafood? Something hearty? I'll find your perfect match.",
+    "I couldn't find that one here. But hey, Coasis has some amazing options!\n\nWhat vibe are you going for? I'll steer you right. 🍽️",
   ],
   ITEM_UNAVAILABLE: [
-    "Sorry! 😔 {item} is currently unavailable.\n\nWant me to suggest something similar?",
+    "Ah, bummer! 😔 {item} is unavailable right now.\n\nBut I've got some great alternatives — want me to suggest something similar?",
   ],
   VIEW_CART: [
-    "Here's your order so far:",
-    "Let's see what you've got:",
-    "Your current order:",
+    "Let's see what we've got going! Here's your order so far:",
+    "Here's the rundown of your order:",
+    "Alright, here's everything you've added:",
   ],
   CART_EMPTY: [
-    "Your cart is empty! Let's change that 😄\n\nWhat would you like to order?",
-    "Nothing in the cart yet. Ready to explore the menu?",
+    "Your cart's looking lonely! 😄 Let's fix that.\n\nWhat are you in the mood for? Type a dish name or say 'menu' to browse!",
+    "Nothing in the cart yet! No rush — browse the menu or tell me what you're craving.",
   ],
   CHECKOUT: [
-    "Perfect! 👍 Sending your order now...",
-    "Got it! Your order is being submitted.",
+    "Alright, let's get this order in! 👍 Sending it to the kitchen now...",
+    "Perfect! Submitting your order — sit tight! 🍳",
   ],
   CANCEL: [
-    "Cart cleared! 🗑️ Fresh start — what would you like?",
-    "All cleared! Ready when you are. 👍",
+    "All cleared! 🗑️ Fresh start. What would you like instead?",
+    "Cart's empty now! Ready for a do-over. What sounds good?",
   ],
   THANK_YOU: [
-    "You're welcome! 😊 Need anything else?",
-    "Anytime! Enjoy your meal! 🍽️",
-    "Cheers! Let me know if you need anything. 🎉",
+    "Anytime! 😊 Need anything else? I'm right here.",
+    "You're welcome! Enjoy your meal! 🍽️ Just holler if you need me.",
+    "Cheers! 🎉 Let me know if anything else comes to mind.",
   ],
   HELP: [
-    "I'm SIA, your Coasis ordering assistant! Here's how it works: 👇\n\n1️⃣ **Browse** — Say \"show menu\" to see all items\n2️⃣ **Order** — Type a dish name (like \"lamb chops\") to add it to cart\n3️⃣ **Learn** — Say \"tell me about\" + dish name for details\n4️⃣ **Checkout** — Say \"place order\" or \"confirm\" when ready\n\nYou can also ask me:\n• \"What's good?\" — I'll recommend dishes\n• \"Something spicy\" — Spicy picks\n• \"How much is the steak?\" — Price check\n\nWhat would you like?",
+    "No worries, I've got you! Here's the easy version: 👇\n\n🍽️ **Browse** — Say 'menu' or a category like 'seafood' or 'appetizers'\n💬 **Learn** — Type a dish name (like 'lamb chops') and I'll describe it\n🛒 **Order** — Say 'add lamb chops' or 'I want the steak' to add directly\n✅ **Checkout** — Say 'place order' when you're ready\n\nPro tips:\n• Ask me 'what's good?' for recommendations\n• Say 'something spicy' for heat lovers\n• Say 'how much is...' for pricing\n\nWhat would you like to start with?",
   ],
   UNKNOWN: [
-    "Sorry, didn't quite get that 😅 Try 'show menu' or tell me what you'd like!",
-    "Hmm? Want to see the menu or just tell me what you're craving?",
-    "Not sure what you mean. Try typing a dish name like \"steak\" or say \"show menu\"!",
+    "Hmm, I didn't catch that one. 😅 No worries though!\n\nTry typing a dish name like 'steak' or 'oysters' — I'll tell you all about it. Or say 'menu' to browse everything!",
+    "Not sure what you mean, but I'm here to help! 🍽️\n\nWant to see the menu? Or just tell me what kind of food you're craving!",
+    "I got a little lost there! But hey, just type a dish name and I'll describe it, or say 'menu' to see everything we've got.",
   ],
   FOLLOWUP: [
-    "Anything else to go with that?",
-    "Want something else?",
     "What else can I get you?",
-    "Need anything else?",
+    "Anything else catching your eye?",
+    "Want to add something else to go with that?",
+    "Still hungry? I've got more suggestions! 😄",
+  ],
+  DRINK_REQUEST: [
+    "Great taste! 🍹 For cocktails, beer, and wine — our bar team has you covered!\n\nJust let your waiter know, or tap 'Call Waiter' and they'll come right over with the drink menu.\n\nIn the meantime, want to check out our food menu? We've got some amazing appetizers that pair perfectly with drinks!",
+    "Looking for a drink? 🥂 Our bar has a full selection of cocktails, wine, beer, and more!\n\nTap 'Call Waiter' to get the drink menu brought to your table.\n\nWhile you wait, how about browsing our appetizers? The Chargrilled Oysters go amazing with a cold beer! 🦞",
+  ],
+  VEGETARIAN_REQUEST: [
+    "I hear you! 🥗 While our menu leans toward seafood and grilled meats, we do have some great options:\n\n• **Coasis House Salad** — $14 (fresh & flavorful)\n• **Grilled Caesar Salad** — $16 (classic done right)\n• **Brownie Bites** — $10 (for dessert!)\n\nI can also ask the kitchen about modifying dishes. Want me to call a waiter to discuss options?",
+    "Totally get it! 🌱 Here's what works great for vegetarians:\n\n🥗 **Coasis House Salad** — $14\n🥗 **Grilled Caesar Salad** — $16\n🍫 **Brownie Bites** — $10\n\nWant to add any of these? Just type the name!",
+  ],
+  SYSTEM_QUESTION: [
+    "I'm SIA — your Smart Interactive Assistant! 🤖 I work right here at Coasis Restaurant Bar & Suites.\n\nI know the entire menu, can describe any dish, take your order, and get it straight to the kitchen. Think of me as your digital waiter! 🍽️\n\nSo... what are you hungry for?",
+    "Hey! I'm SIA, Coasis's AI ordering assistant. 🤖\n\nI'm built to make your dining experience smooth — ask me about any dish, I'll tell you what's in it, what pairs well, and add it to your order when you're ready.\n\nReady to explore the menu?",
+  ],
+  VAGUE_MESSAGE: [
+    "No worries, I'll help you decide! 🤔\n\nHere's what I'd go with tonight:\n• 🔥 **Marinated Lambchops** — our number one seller\n• 🦞 **Seafood Trio** — if you love the ocean\n• 🍗 **Southern Fried Chicken** — comfort food done right\n\nJust type a dish name and I'll tell you everything about it!",
+    "Let me make it easy! Here are tonight's can't-miss picks:\n\n• **Strip Steak** — $30 (meat lover's dream)\n• **Chargrilled Oysters** — $18 (smoky and buttery)\n• **Coasis Burger** — $18 (if you want something classic)\n\nType any dish name to learn more, or say 'menu' to see it all!",
+    "Surprise you? I thought you'd never ask! 🎉\n\nIf I were sitting at your table, I'd go with the **Marinated Lambchops** ($42) — they're unreal. Pair them with **Chargrilled Oysters** to start and you're golden.\n\nWant me to tell you more about either one?",
+  ],
+  CASUAL_CHAT: [
+    "I'm doing great, thanks for asking! 😊 Ready to help you have an amazing meal.\n\nSo, what are you in the mood for tonight? Anything catch your eye yet?",
+    "Hey hey! 👋 I'm always good when there's good food around!\n\nLet's get you something delicious. Want to see the menu or hear my recommendations?",
   ],
 };
 
@@ -624,6 +667,26 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
     }
   }
 
+  // Check casual chat (how are you, etc.) — before other checks
+  for (const keyword of INTENT_PATTERNS.CASUAL_CHAT) {
+    if (normalized.includes(keyword)) return 'CASUAL_CHAT';
+  }
+
+  // Check system questions (who are you, etc.)
+  for (const keyword of INTENT_PATTERNS.SYSTEM_QUESTION) {
+    if (normalized.includes(keyword)) return 'SYSTEM_QUESTION';
+  }
+
+  // Check drink requests — before menu matching (drinks aren't on food menu)
+  for (const keyword of INTENT_PATTERNS.DRINK_REQUEST) {
+    if (normalized.includes(keyword)) return 'DRINK_REQUEST';
+  }
+
+  // Check vegetarian requests
+  for (const keyword of INTENT_PATTERNS.VEGETARIAN_REQUEST) {
+    if (normalized.includes(keyword)) return 'VEGETARIAN_REQUEST';
+  }
+
   // Check view menu
   for (const keyword of INTENT_PATTERNS.VIEW_MENU) {
     if (normalized.includes(keyword)) return 'VIEW_MENU';
@@ -683,13 +746,18 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
     if (normalized.includes(keyword)) return 'PARTY_ORDER';
   }
 
-  // ---- FALLBACK: If message matches a dish keyword, auto-add to cart ----
+  // Check vague messages (hungry, whatever, surprise me, hmm)
+  for (const keyword of INTENT_PATTERNS.VAGUE_MESSAGE) {
+    if (normalized.includes(keyword)) return 'VAGUE_MESSAGE';
+  }
+
+  // ---- FALLBACK: If message matches a dish keyword, DESCRIBE first (don't auto-add) ----
   const knownDish = detectDishFromKnowledge(text);
-  if (knownDish) return 'ORDER_ITEM';
+  if (knownDish) return 'ASK_ABOUT_DISH';
 
   // Check if it matches a menu item name
   const menuMatch = findMatchingItems(text, menuItems);
-  if (menuMatch.length > 0) return 'ORDER_ITEM';
+  if (menuMatch.length > 0) return 'ASK_ABOUT_DISH';
 
   return 'UNKNOWN';
 }
@@ -735,7 +803,8 @@ function buildUpsell(dish: DishInfo | null, cart: CartItem[]): string {
 export function processChatMessage(
   message: string,
   menuItems: MenuItem[],
-  cart: CartItem[]
+  cart: CartItem[],
+  context?: ConversationContext
 ): ChatbotResponse {
   const normalized = normalize(message);
   const intent = detectIntent(message, menuItems, cart);
@@ -1126,7 +1195,84 @@ export function processChatMessage(
     // ---- YES / CONFIRM ----
     case 'YES_CONFIRM': {
       return {
-        message: "What would you like me to add? Just type the dish name!",
+        message: "Sure thing! What would you like me to add? Just type the dish name — or say 'menu' to browse!",
+        intent,
+        entities,
+      };
+    }
+
+    // ---- DRINK REQUEST ----
+    case 'DRINK_REQUEST': {
+      return {
+        message: getRandomResponse('DRINK_REQUEST'),
+        intent,
+        entities,
+      };
+    }
+
+    // ---- VEGETARIAN REQUEST ----
+    case 'VEGETARIAN_REQUEST': {
+      const vegItems = menuItems.filter(m =>
+        m.name.toLowerCase().includes('salad') ||
+        m.name.toLowerCase().includes('house') ||
+        m.category.toLowerCase() === 'salads' ||
+        m.name.toLowerCase().includes('brownie')
+      );
+      const list = vegItems.map(v => `• **${v.name}** — $${v.price.toFixed(2)}`).join('\n');
+      const msg = list
+        ? `I hear you! 🥗 Here are our best vegetarian-friendly options:\n\n${list}\n\nType a dish name for the full description, or say 'add' + name to order!`
+        : getRandomResponse('VEGETARIAN_REQUEST');
+      return {
+        message: msg,
+        suggestedItems: vegItems.length > 0 ? vegItems : undefined,
+        intent,
+        entities,
+      };
+    }
+
+    // ---- SYSTEM QUESTION ----
+    case 'SYSTEM_QUESTION': {
+      return {
+        message: getRandomResponse('SYSTEM_QUESTION'),
+        intent,
+        entities,
+      };
+    }
+
+    // ---- VAGUE MESSAGE ----
+    case 'VAGUE_MESSAGE': {
+      // Use context preferences to give smarter recommendations
+      if (context?.preferences?.includes('spicy')) {
+        const spicy = Object.values(DISH_KNOWLEDGE).filter(d => d.spicy);
+        const picks = spicy.sort(() => Math.random() - 0.5).slice(0, 3);
+        const list = picks.map(p => `🔥 **${p.displayName}** — ${p.price}`).join('\n');
+        return {
+          message: `Since you like it spicy, how about these? 🌶️\n\n${list}\n\nType a name to learn more!`,
+          intent,
+          entities,
+        };
+      }
+      if (context?.preferences?.includes('seafood')) {
+        const seafood = Object.values(DISH_KNOWLEDGE).filter(d => d.seafood);
+        const picks = seafood.sort(() => Math.random() - 0.5).slice(0, 3);
+        const list = picks.map(p => `🦞 **${p.displayName}** — ${p.price}`).join('\n');
+        return {
+          message: `I remember you like seafood! How about these? 🐟\n\n${list}\n\nType a name to learn more!`,
+          intent,
+          entities,
+        };
+      }
+      return {
+        message: getRandomResponse('VAGUE_MESSAGE'),
+        intent,
+        entities,
+      };
+    }
+
+    // ---- CASUAL CHAT ----
+    case 'CASUAL_CHAT': {
+      return {
+        message: getRandomResponse('CASUAL_CHAT'),
         intent,
         entities,
       };
@@ -1134,31 +1280,44 @@ export function processChatMessage(
 
     // ---- UNKNOWN ----
     default: {
-      // Last resort: try to match any menu item → auto-add to cart (like old behavior)
+      // Last resort: try to match a dish → DESCRIBE it (don't auto-add)
       const possibleItems = findMatchingItems(message, menuItems);
       if (possibleItems.length > 0 && possibleItems[0].item.available) {
-        const { item, quantity, preference } = possibleItems[0];
+        const item = possibleItems[0].item;
         const knownDish = detectDishFromKnowledge(item.name);
-        const upsell = buildUpsell(knownDish, cart);
-
-        let msg: string;
-        if (preference) {
-          msg = `Got it! 👍 ${quantity}x ${item.name} (${preference}) added.\n\n${upsell}`;
-        } else {
-          msg = getRandomResponse('ITEM_ADDED')
-            .replace('{quantity}', quantity.toString())
-            .replace('{item}', item.name)
-            .replace('{upsell}', upsell);
+        if (knownDish) {
+          const msg = buildDishDescription(knownDish);
+          return {
+            message: msg,
+            action: 'ask_dish',
+            matchedItems: [{ item, quantity: 1 }],
+            intent: 'ASK_ABOUT_DISH',
+            entities,
+          };
         }
-        msg += '\n' + getRandomResponse('FOLLOWUP');
-
         return {
-          message: msg,
-          action: 'add_item',
-          matchedItems: [possibleItems[0]],
-          intent: 'ORDER_ITEM',
+          message: `**${item.name}** — $${item.price.toFixed(2)}\n\nWant me to add it to your cart?`,
+          action: 'ask_dish',
+          matchedItems: [{ item, quantity: 1 }],
+          intent: 'ASK_ABOUT_DISH',
           entities,
         };
+      }
+
+      // Check if user might be naming something not on the menu — give helpful suggestion
+      const preference = extractPreference(message);
+      if (preference) {
+        const suggested = Object.values(DISH_KNOWLEDGE)
+          .filter(d => preference === 'spicy' ? d.spicy : preference === 'seafood' ? d.seafood : d.popular)
+          .slice(0, 3);
+        if (suggested.length > 0) {
+          const list = suggested.map(s => `• **${s.displayName}** — ${s.price}`).join('\n');
+          return {
+            message: `I couldn't find that exact dish, but based on your taste, you might love:\n\n${list}\n\nType a name to learn more!`,
+            intent: 'UNKNOWN',
+            entities,
+          };
+        }
       }
 
       return {

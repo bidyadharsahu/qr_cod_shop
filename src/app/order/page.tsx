@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { MenuItem } from '@/lib/types';
-import { processChatMessage } from '@/lib/chatbot';
+import { processChatMessage, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import jsPDF from 'jspdf';
 import { 
@@ -99,6 +99,7 @@ function OrderContent() {
   const [callingWaiter, setCallingWaiter] = useState(false);
   const [estimatedWait, setEstimatedWait] = useState<number | null>(null);
   const [lastAskedItem, setLastAskedItem] = useState<MenuItem | null>(null);
+  const [conversationContext, setConversationContext] = useState<ConversationContext>({ preferences: [] });
   const [orderCount, setOrderCount] = useState(0);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -653,12 +654,32 @@ function OrderContent() {
     addUserMessage(input);
     setUserInput('');
 
-    // Use custom chatbot engine
+    // Use custom chatbot engine with conversation context
     const response = processChatMessage(
       input, 
       menuItems, 
-      cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity }))
+      cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
+      conversationContext
     );
+
+    // Update conversation context based on response
+    setConversationContext(prev => {
+      const updated = { ...prev };
+      if (response.entities.preference) {
+        updated.lastPreference = response.entities.preference;
+        if (!updated.preferences.includes(response.entities.preference)) {
+          updated.preferences = [...updated.preferences, response.entities.preference];
+        }
+      }
+      if (response.intent) updated.lastAction = response.intent;
+      if (response.intent === 'RECOMMEND_SPICY' && !updated.preferences.includes('spicy')) {
+        updated.preferences = [...updated.preferences, 'spicy'];
+      }
+      if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
+        updated.preferences = [...updated.preferences, 'seafood'];
+      }
+      return updated;
+    });
 
     // Handle actions based on chatbot response
     if (response.action === 'checkout') {
@@ -772,12 +793,50 @@ function OrderContent() {
         }
         return [...prev, { ...itemToAdd, quantity: 1 }];
       });
-      addBotMessage(`Great choice! 👍 ${itemToAdd.name} added to your cart.\n\nAnything else?`, [
-        { label: '🍽️ See Menu', value: 'menu' },
+      addBotMessage(`Excellent choice! 🔥 ${itemToAdd.name} is in your cart.\n\nMany guests also pair it with some appetizers or a side. Want to see the menu for more, or ready to checkout?`, [
+        { label: '🍽️ Add More', value: 'menu' },
         { label: '🛒 View Cart', value: 'cart' },
         { label: '✅ Checkout', value: 'checkout' }
       ]);
       setLastAskedItem(null);
+      return;
+    }
+
+    // Handle new conversational intents with appropriate buttons
+    if (response.intent === 'DRINK_REQUEST') {
+      addBotMessage(response.message, [
+        { label: '🔔 Call Waiter', value: 'call_waiter' },
+        { label: '🍽️ Food Menu', value: 'menu' },
+        { label: '🔥 Popular', value: 'popular' }
+      ]);
+      return;
+    }
+
+    if (response.intent === 'VEGETARIAN_REQUEST') {
+      addBotMessage(response.message, [
+        { label: '🔔 Call Waiter', value: 'call_waiter' },
+        { label: '🍽️ Full Menu', value: 'menu' },
+        { label: '🛒 View Cart', value: 'cart' }
+      ]);
+      return;
+    }
+
+    if (response.intent === 'SYSTEM_QUESTION' || response.intent === 'CASUAL_CHAT') {
+      addBotMessage(response.message, [
+        { label: '🍽️ See Menu', value: 'menu' },
+        { label: '🔥 Popular', value: 'popular' },
+        { label: '💬 Recommend', value: 'recommend' }
+      ]);
+      return;
+    }
+
+    if (response.intent === 'VAGUE_MESSAGE') {
+      addBotMessage(response.message, [
+        { label: '🔥 Popular', value: 'popular' },
+        { label: '🌶️ Spicy', value: 'spicy' },
+        { label: '🦞 Seafood', value: 'seafood' },
+        { label: '🍽️ Full Menu', value: 'menu' }
+      ]);
       return;
     }
 
