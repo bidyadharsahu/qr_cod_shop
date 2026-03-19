@@ -618,13 +618,14 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
 
 function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, metadata: MenuSearchMetadata): number {
   const normalized = normalize(text);
+  const dishName = intent.dishName;
   let score = 0;
 
   if (normalized === metadata.name || metadata.synonyms.some(s => s === normalized)) {
     score += 100;
   } else if (
     metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword)) ||
-    (intent.dishName && (metadata.name.includes(intent.dishName) || metadata.synonyms.some(s => s.includes(intent.dishName))))
+    (dishName && (metadata.name.includes(dishName) || metadata.synonyms.some(s => s.includes(dishName))))
   ) {
     score += 70;
   }
