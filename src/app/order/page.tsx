@@ -101,6 +101,10 @@ function OrderContent() {
   const [lastAskedItem, setLastAskedItem] = useState<MenuItem | null>(null);
   const [conversationContext, setConversationContext] = useState<ConversationContext>({ preferences: [] });
   const [orderCount, setOrderCount] = useState(0);
+  const [submittedQuantities, setSubmittedQuantities] = useState<Record<number, number>>({});
+  const [lastSubmittedSubtotal, setLastSubmittedSubtotal] = useState(0);
+  const [lastSubmittedItemsCount, setLastSubmittedItemsCount] = useState(0);
+  const [lastOrderWasAddOn, setLastOrderWasAddOn] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -253,7 +257,7 @@ function OrderContent() {
           if (payload.new.status === 'confirmed') {
             setWaitingForConfirmation(false);
             addBotMessage(
-              `✅ Your order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
+              `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
               [
                 { label: '➕ Order More', value: 'more' },
                 { label: '💵 Add Tip & Bill', value: 'pay' }
@@ -277,7 +281,7 @@ function OrderContent() {
     return () => {
       supabase.removeChannel(orderSub);
     };
-  }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, subtotal]);
+  }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, lastSubmittedSubtotal, lastSubmittedItemsCount, lastOrderWasAddOn]);
 
   // Welcome message - show install prompt if available, otherwise themed welcome
   useEffect(() => {
@@ -597,20 +601,58 @@ function OrderContent() {
 
     setLoading(true);
     addUserMessage('Place my order');
+
+    const pendingItems = cart
+      .map(item => {
+        const alreadySubmitted = submittedQuantities[item.id] || 0;
+        const unsentQty = Math.max(0, item.quantity - alreadySubmitted);
+        return {
+          id: item.id,
+          name: item.name,
+          quantity: unsentQty,
+          price: item.price
+        };
+      })
+      .filter(item => item.quantity > 0);
+
+    if (pendingItems.length === 0) {
+      setLoading(false);
+      addBotMessage(
+        'I do not see any new items to send. Add or increase an item first, then place order again.',
+        [
+          { label: '🍽️ Add More', value: 'menu' },
+          { label: '🛒 View Cart', value: 'cart' }
+        ]
+      );
+      return;
+    }
+
+    const pendingSubtotal = pendingItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const pendingTax = calculateOrderTotal(pendingSubtotal, 0).taxAmount;
+    const pendingTotal = pendingSubtotal + pendingTax;
+    const isAddOnOrder = Object.keys(submittedQuantities).length > 0;
+    const itemCount = pendingItems.reduce((sum, item) => sum + item.quantity, 0);
     
-    const receipt = `ORD-${tableNumber}-${Date.now().toString().slice(-6)}`;
+    const receiptPrefix = isAddOnOrder ? 'ADD' : 'ORD';
+    const receipt = `${receiptPrefix}-${tableNumber}-${Date.now().toString().slice(-6)}`;
     setReceiptId(receipt);
+    setLastSubmittedSubtotal(pendingSubtotal);
+    setLastSubmittedItemsCount(itemCount);
+    setLastOrderWasAddOn(isAddOnOrder);
 
     const orderData = {
       table_number: parseInt(tableNumber),
-      items: cart.map(i => ({ id: i.id, name: i.name, quantity: i.quantity, price: i.price })),
-      subtotal: subtotal,
+      items: pendingItems,
+      subtotal: pendingSubtotal,
       tip_amount: 0,
-      tax_amount: calculation.taxAmount,
-      total: calculation.total,
+      tax_amount: pendingTax,
+      total: pendingTotal,
       status: 'pending',
       payment_status: 'unpaid',
-      receipt_id: receipt
+      receipt_id: receipt,
+      customer_note: isAddOnOrder
+        ? `ADD_ON_ORDER | table ${tableNumber} | contains only newly added items`
+        : 'NEW_ORDER | initial order from chatbot'
     };
 
     const { data: insertedData, error } = await supabase.from('orders').insert(orderData).select();
@@ -624,6 +666,13 @@ function OrderContent() {
 
     if (insertedData && insertedData[0]) {
       setCurrentOrderId(insertedData[0].id);
+      setSubmittedQuantities(prev => {
+        const next = { ...prev };
+        for (const item of cart) {
+          next[item.id] = item.quantity;
+        }
+        return next;
+      });
     }
 
     setOrderPlaced(true);
@@ -635,11 +684,11 @@ function OrderContent() {
     try { localStorage.setItem('netrikxr-order-count', newCount.toString()); } catch (_) {}
     
     // Estimate wait time (3-8 min based on items)
-    const waitMin = Math.min(3 + cart.reduce((s, i) => s + i.quantity, 0), 12);
+    const waitMin = Math.min(3 + itemCount, 12);
     setEstimatedWait(waitMin);
 
     addBotMessage(
-      `📤 Order Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nSubtotal: $${subtotal.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
+      `📤 ${isAddOnOrder ? 'Add-on Order' : 'Order'} Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nItems: ${itemCount}\nSubtotal: $${pendingSubtotal.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
       [
         { label: '🔔 Call Waiter', value: 'call_waiter' }
       ]
@@ -764,6 +813,7 @@ function OrderContent() {
     // Handle clear cart action
     if (response.action === 'clear_cart') {
       setCart([]);
+      setSubmittedQuantities({});
       addBotMessage(response.message, [
         { label: '🍹 See Menu', value: 'menu' },
         { label: '💬 Recommend', value: 'recommend' }
@@ -1114,7 +1164,7 @@ function OrderContent() {
                   
                   {/* Message Bubble */}
                   <div 
-                    className={`rounded-2xl px-4 py-2.5 ${msg.role === 'user' ? 'rounded-br-sm ml-auto' : 'rounded-bl-sm'}`}
+                    className={`message-bubble rounded-2xl px-4 py-2.5 ${msg.role === 'user' ? 'rounded-br-sm ml-auto user-chat-pop' : 'rounded-bl-sm bot-chat-pop'}`}
                     style={msg.role === 'user' 
                       ? { background: theme.userBubbleBg, color: '#000' }
                       : { background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }
@@ -1130,7 +1180,7 @@ function OrderContent() {
                         <button
                           key={opt.value}
                           onClick={() => handleOptionClick(opt.value)}
-                          className="px-3.5 py-2 bg-zinc-900 rounded-xl text-[13px] font-medium active:scale-95 transition-transform"
+                          className="quick-chip-pop px-3.5 py-2 bg-zinc-900 rounded-xl text-[13px] font-medium active:scale-95 transition-transform"
                           style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}
                         >
                           {opt.label}

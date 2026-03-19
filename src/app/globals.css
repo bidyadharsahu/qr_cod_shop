@@ -660,8 +660,43 @@ button {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.bot-chat-pop {
+  animation: botBubblePop 0.22s ease-out;
+  transform-origin: left bottom;
+}
+
+.user-chat-pop {
+  animation: userBubblePop 0.22s ease-out;
+  transform-origin: right bottom;
+}
+
+@keyframes botBubblePop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes userBubblePop {
+  0% { opacity: 0; transform: translateY(6px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.quick-chip-pop {
+  animation: chipFadeUp 0.28s ease-out;
+}
+
+@keyframes chipFadeUp {
+  0% { opacity: 0; transform: translateY(4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 .message-bubble-user {
   box-shadow: 0 2px 12px rgba(245, 158, 11, 0.15);
+}
+
+.order-addon-card {
+  background:
+    linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(39, 39, 42, 0.95) 55%),
+    radial-gradient(circle at top right, rgba(245, 158, 11, 0.2), transparent 40%);
 }
 
 /* Admin dashboard card hover effects */

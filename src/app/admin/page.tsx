@@ -61,6 +61,9 @@ export default function AdminDashboard() {
     setTimeout(() => setToast(null), 4000);
   };
 
+  const isAddOnOrder = (order: Order) => (order.customer_note || '').includes('ADD_ON_ORDER');
+  const isNewOrder = (order: Order) => (order.customer_note || '').includes('NEW_ORDER');
+
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
     return 'https://qr-cod-shop.vercel.app';
@@ -421,7 +424,7 @@ export default function AdminDashboard() {
                   <Bell className="w-7 h-7 text-green-600" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-bold text-white text-lg">🔔 New Order!</p>
+                      <p className="font-bold text-white text-lg">🔔 {isAddOnOrder(notifications[0]) ? 'Add-on Order!' : 'New Order!'}</p>
                   <p className="text-sm text-white/80">Table {notifications[0].table_number}</p>
                   <p className="text-xs text-white/60 font-mono">{notifications[0].receipt_id}</p>
                 </div>
@@ -728,7 +731,11 @@ export default function AdminDashboard() {
             ) : (
               <div className="space-y-3">
                 {filteredOrders.map(order => (
-                  <motion.div key={order.id} layout className="bg-zinc-800 border border-zinc-700 rounded-lg p-3">
+                  <motion.div
+                    key={order.id}
+                    layout
+                    className={`rounded-lg p-3 border ${isAddOnOrder(order) ? 'order-addon-card border-amber-500/40' : 'bg-zinc-800 border-zinc-700'}`}
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
@@ -743,9 +750,18 @@ export default function AdminDashboard() {
                           <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                             order.payment_status === 'paid' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
                           }`}>{order.payment_status === 'paid' ? 'PAID' : 'UNPAID'}</span>
+                          {isAddOnOrder(order) && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/40">ADD-ON</span>
+                          )}
+                          {isNewOrder(order) && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">NEW</span>
+                          )}
                         </div>
                         <p className="text-xl font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
                         <p className="text-gray-400">Table {order.table_number} • {new Date(order.created_at).toLocaleString()}</p>
+                        {order.customer_note && (
+                          <p className="text-xs text-gray-500 mt-1">{order.customer_note}</p>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="text-3xl font-bold text-green-400">${order.total.toFixed(2)}</p>
