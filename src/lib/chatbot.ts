@@ -22,6 +22,8 @@ export interface ChatbotResponse {
     category?: string;
     tipAmount?: number;
     itemNames?: string[];
+    dishName?: string;
+    modifiers?: string[];
   };
 }
 
@@ -520,6 +522,10 @@ const MODIFIER_WORDS = new Set([
   'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon', 'rice',
 ]);
 
+const PROTEIN_MODIFIERS = new Set([
+  'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon',
+]);
+
 const GENERIC_QUERY_TERMS = new Set([
   'fried', 'spicy', 'veg', 'vegan', 'vegetarian', 'seafood', 'fish', 'chicken', 'rice', 'salad',
   'starter', 'appetizer', 'main', 'dessert', 'drink', 'drinks', 'food',
@@ -579,12 +585,14 @@ function parseDishIntent(text: string): ParsedDishIntent {
   const tokens = extractMeaningfulTokens(text);
   const category = detectCategory(text) || undefined;
   const modifiers = tokens.filter(t => MODIFIER_WORDS.has(t));
-  const coreTokens = tokens.filter(t => !MODIFIER_WORDS.has(t));
-  const dishName = coreTokens.length > 0 ? coreTokens.join(' ') : undefined;
+
+  const dishTokens = tokens.filter(t => !STOP_WORDS.has(t));
+  const dishNameTokens = dishTokens.filter((token, idx) => !(idx === 0 && PROTEIN_MODIFIERS.has(token)));
+  const dishName = dishNameTokens.length > 0 ? dishNameTokens.join(' ') : undefined;
+
   const isGeneric =
-    tokens.length > 0 &&
-    coreTokens.length === 0 &&
-    tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t));
+    !dishName ||
+    (dishNameTokens.length === 1 && GENERIC_QUERY_TERMS.has(dishNameTokens[0]));
 
   return { dishName, category, modifiers, tokens, isGeneric };
 }
@@ -594,17 +602,22 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
   const dish = Object.values(DISH_KNOWLEDGE).find(d => normalize(d.displayName) === normalizedName);
   const knowledgeKeywords = dish?.keywords ?? [];
 
-  const tags = uniqueStrings([
+  const baseKeywords = [
+    normalizedName,
     ...normalizedName.split(' ').filter(w => w.length > 2),
+    ...knowledgeKeywords,
+    ...(item.keywords || []),
+  ];
+
+  const tags = uniqueStrings([
+    ...baseKeywords,
     normalize(item.category),
+    ...(item.tags || []),
     dish?.spicy ? 'spicy' : '',
     dish?.seafood ? 'seafood' : '',
   ].filter(Boolean));
 
-  const keywords = uniqueStrings([
-    normalizedName,
-    ...knowledgeKeywords,
-  ]);
+  const keywords = uniqueStrings(baseKeywords);
 
   return {
     id: String(item.id),
@@ -612,49 +625,53 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
     category: normalize(item.category),
     keywords,
     tags,
-    synonyms: keywords,
+    synonyms: uniqueStrings([
+      ...keywords,
+      ...(item.synonyms || []),
+    ]),
   };
 }
 
 function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, metadata: MenuSearchMetadata): number {
-  const normalized = normalize(text);
-  const dishName = intent.dishName;
+  const normalizedInput = normalize(text);
   let score = 0;
 
-  if (normalized === metadata.name || metadata.synonyms.some(s => s === normalized)) {
+  // Exact dish match
+  if (
+    (intent.dishName && (metadata.name === intent.dishName || metadata.synonyms.includes(intent.dishName))) ||
+    normalizedInput === metadata.name
+  ) {
     score += 100;
   } else if (
-    metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword)) ||
-    (dishName && (metadata.name.includes(dishName) || metadata.synonyms.some(s => s.includes(dishName))))
+    intent.dishName &&
+    (metadata.name.includes(intent.dishName) || metadata.synonyms.some(s => s.includes(intent.dishName)))
   ) {
     score += 70;
   }
 
-  for (const modifier of intent.modifiers) {
-    if (metadata.tags.includes(modifier) || metadata.name.includes(modifier)) {
-      score += 40;
-    }
-  }
+  const modifierHit = intent.modifiers.some(mod => metadata.tags.includes(mod) || metadata.keywords.includes(mod));
+  if (modifierHit) score += 40;
 
-  if (intent.category && metadata.category.includes(normalize(intent.category))) {
+  if (intent.category && metadata.category === normalize(intent.category)) {
     score += 20;
   }
 
+  // Token overlap bonus to break ties
   const preciseTokens = intent.tokens.filter(t => !GENERIC_QUERY_TERMS.has(t));
-  let overlap = 0;
-  for (const token of preciseTokens) {
-    if (metadata.name.includes(token) || metadata.keywords.some(k => k.includes(token))) {
-      overlap += 1;
-    }
+  const overlap = preciseTokens.filter(t =>
+    metadata.name.includes(t) || metadata.keywords.some(k => k.includes(t)) || metadata.tags.includes(t)
+  );
+  if (overlap.length > 0) {
+    score += Math.min(overlap.length * 10, 30);
   }
-  score += Math.min(overlap * 15, 45);
 
-  if (intent.isGeneric && score > 0 && score < 70) {
-    score -= 20;
+  // Soft penalty for vague single-word queries
+  if (intent.isGeneric && score < 70) {
+    score -= 15;
   }
 
   if (!item.available) {
-    score -= 30;
+    score -= 25;
   }
 
   return score;
@@ -675,17 +692,19 @@ function findRankedMatchingItems(
       return { item, score, quantity, preference };
     })
     .filter(entry => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .sort((a, b) => b.score - a.score);
 
-  const requiresClarification = intent.isGeneric && (
-    scored.length === 0 ||
-    scored[0].score < 70 ||
-    (scored.length > 1 && scored[0].score - scored[1].score < 30)
-  );
+  const limited = scored.slice(0, 5);
+  const topScore = limited[0]?.score ?? 0;
+  const secondScore = limited[1]?.score ?? 0;
+
+  const requiresClarification =
+    intent.isGeneric ||
+    topScore < 60 ||
+    (!intent.dishName && limited.length > 1 && topScore - secondScore < 20);
 
   return {
-    matches: scored.map(({ item, quantity, preference }) => ({ item, quantity, preference })),
+    matches: limited.map(({ item, quantity, preference }) => ({ item, quantity, preference })),
     requiresClarification,
     intent,
   };
@@ -905,13 +924,13 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
 // BUILD DISH DESCRIPTION MESSAGE
 // ============================================
 function buildDishDescription(dish: DishInfo): string {
-  let msg = `${dish.description}\n\n${dish.details}\n\n💰 Price: ${dish.price}`;
+  let msg = `Here\u2019s ${dish.displayName} 😋\n${dish.description}\n\n${dish.details}\n\n💰 ${dish.price}`;
 
   if (dish.pairings.length > 0) {
     msg += `\n\n🍽️ Pairs well with:\n${dish.pairings.map(p => `• ${p}`).join('\n')}`;
   }
 
-  msg += `\n\nWould you like me to add it to your cart?`;
+  msg += `\n\nWant me to add it to your cart?`;
   return msg;
 }
 
@@ -947,11 +966,14 @@ export function processChatMessage(
 ): ChatbotResponse {
   const normalized = normalize(message);
   const intent = detectIntent(message, menuItems, cart);
+  const parsedDishIntent = parseDishIntent(message);
   const entities: ChatbotResponse['entities'] = {};
 
   entities.quantity = extractQuantity(message);
   entities.preference = extractPreference(message);
-  entities.category = detectCategory(message) || undefined;
+  entities.category = detectCategory(message) || parsedDishIntent.category || undefined;
+  entities.dishName = parsedDishIntent.dishName;
+  entities.modifiers = parsedDishIntent.modifiers;
 
   switch (intent) {
     // ---- GREETING ----
@@ -1004,8 +1026,8 @@ export function processChatMessage(
         const suggestions = ranked.matches.slice(0, 3).map(m => m.item.name).join(', ');
         return {
           message: suggestions
-            ? `I want to make sure I get this right. Did you mean one of these: ${suggestions}?`
-            : `Could you share the full dish name? For example: "crab fried rice" or "southern fried chicken".`,
+            ? `Just to be sure 😅 which dish did you mean? I heard: ${suggestions}. Tell me the exact name so I nail it.`
+            : `That sounds tasty! 👀 Can you share the full dish name (e.g., "chicken fried rice") so I don't guess?`,
           action: 'show_menu',
           suggestedItems: ranked.matches.slice(0, 3).map(m => m.item),
           intent,
@@ -1055,7 +1077,7 @@ export function processChatMessage(
 
       if (ranked.requiresClarification) {
         return {
-          message: `I can help with that. Which exact dish do you want? Try: "crab fried rice", "lobster & crab fried rice", or "southern fried chicken".`,
+          message: `I’m catching a vibe, but tell me the exact dish so I don’t guess 😅 Think: "crab fried rice", "lobster & crab fried rice", or "southern fried chicken".`,
           action: 'show_menu',
           suggestedItems: matchedItems.slice(0, 3).map(m => m.item),
           intent,
@@ -1195,7 +1217,7 @@ export function processChatMessage(
       const ranked = findRankedMatchingItems(message, menuItems);
       if (ranked.requiresClarification) {
         return {
-          message: `Sure, I can check that. Please tell me the exact dish name so I give you the right price.`,
+          message: `Happy to check! 👀 Tell me the exact dish name so I give you the right price (no mix-ups).`,
           action: 'show_menu',
           suggestedItems: ranked.matches.slice(0, 3).map(m => m.item),
           intent,
@@ -1459,7 +1481,7 @@ export function processChatMessage(
       const ranked = findRankedMatchingItems(message, menuItems);
       if (ranked.requiresClarification) {
         return {
-          message: `I found a few close matches, but I want to avoid mistakes. Please share the full dish name.`,
+          message: `I spotted a few possibilities, but I don't want to guess 😅 Drop the full dish name and I'll handle it.`,
           action: 'show_menu',
           suggestedItems: ranked.matches.slice(0, 3).map(m => m.item),
           intent: 'UNKNOWN',

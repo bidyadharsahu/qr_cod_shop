@@ -17,6 +17,7 @@ import { calculateOrderTotal } from '@/lib/calculations';
 
 const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
+const BOT_REACTIONS = ['❤️', '👍', '😍', '🔥'];
 
 interface CartItem extends MenuItem {
   quantity: number;
@@ -32,6 +33,8 @@ interface ChatMessage {
   showTip?: boolean;
   showRating?: boolean;
   showBill?: boolean;
+  reactions?: string[];
+  selectedReaction?: string;
 }
 
 function OrderContent() {
@@ -328,6 +331,7 @@ function OrderContent() {
       role: 'bot',
       content,
       options,
+      reactions: BOT_REACTIONS,
       ...extra
     };
     setChatMessages(prev => [...prev, msg]);
@@ -335,6 +339,12 @@ function OrderContent() {
 
   const addUserMessage = (content: string) => {
     setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content }]);
+  };
+
+  const handleReaction = (messageId: string, reaction: string) => {
+    setChatMessages(prev => prev.map(msg => 
+      msg.id === messageId ? { ...msg, selectedReaction: reaction } : msg
+    ));
   };
 
   // Handle PWA install from chatbot
@@ -1146,9 +1156,10 @@ function OrderContent() {
             {chatMessages.map((msg) => (
               <motion.div
                 key={msg.id}
+                layout
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.2 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 28, mass: 0.8 }}
                 className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`${msg.role === 'user' ? 'max-w-[75%]' : 'max-w-[85%]'}`}>
@@ -1186,6 +1197,27 @@ function OrderContent() {
                           {opt.label}
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Reactions */}
+                  {msg.role === 'bot' && msg.reactions && msg.reactions.length > 0 && (
+                    <div className="flex items-center gap-2 mt-2 flex-wrap text-[12px] text-gray-500">
+                      <span>React:</span>
+                      {msg.reactions.map((reaction) => (
+                        <motion.button
+                          key={reaction}
+                          whileTap={{ scale: 0.9 }}
+                          whileHover={{ scale: 1.05 }}
+                          onClick={() => handleReaction(msg.id, reaction)}
+                          className={`px-2 py-1 rounded-full border bg-zinc-900/80 ${msg.selectedReaction === reaction ? 'border-yellow-400 text-yellow-300' : 'border-zinc-800 text-gray-400'}`}
+                        >
+                          {reaction}
+                        </motion.button>
+                      ))}
+                      {msg.selectedReaction && (
+                        <span className="text-[11px] text-gray-400">You reacted {msg.selectedReaction}</span>
+                      )}
                     </div>
                   )}
 
