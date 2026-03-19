@@ -517,13 +517,31 @@ const STOP_WORDS = new Set([
 
 const MODIFIER_WORDS = new Set([
   'fried', 'grilled', 'spicy', 'mild', 'crispy', 'hot', 'cold', 'vegan', 'vegetarian', 'veg',
-  'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon', 'rice',
+  'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon',
 ]);
 
 const GENERIC_QUERY_TERMS = new Set([
   'fried', 'spicy', 'veg', 'vegan', 'vegetarian', 'seafood', 'fish', 'chicken', 'rice', 'salad',
   'starter', 'appetizer', 'main', 'dessert', 'drink', 'drinks', 'food',
 ]);
+
+const DISH_STYLE_WORDS = new Set([
+  'fried', 'grilled', 'spicy', 'crispy', 'blackened', 'garlic', 'southern', 'buffalo',
+]);
+
+const CATEGORY_HINTS: Record<string, string> = {
+  rice: 'rice',
+  salad: 'salad',
+  sandwich: 'sandwich',
+  pasta: 'pasta',
+  dessert: 'dessert',
+  appetizer: 'starter',
+  appetizers: 'starter',
+  starter: 'starter',
+  starters: 'starter',
+  noodle: 'noodles',
+  noodles: 'noodles',
+};
 
 // ============================================
 // HELPER FUNCTIONS
@@ -576,14 +594,50 @@ function extractMeaningfulTokens(text: string): string[] {
 }
 
 function parseDishIntent(text: string): ParsedDishIntent {
+  const normalizedText = normalize(text);
   const tokens = extractMeaningfulTokens(text);
-  const category = detectCategory(text) || undefined;
+  const categoryFromMenu = detectCategory(text);
+  const categoryToken = tokens.find(t => CATEGORY_HINTS[t]);
+  const category = categoryToken
+    ? CATEGORY_HINTS[categoryToken]
+    : (categoryFromMenu ? normalize(categoryFromMenu) : undefined);
   const modifiers = tokens.filter(t => MODIFIER_WORDS.has(t));
-  const coreTokens = tokens.filter(t => !MODIFIER_WORDS.has(t));
-  const dishName = coreTokens.length > 0 ? coreTokens.join(' ') : undefined;
-  const isGeneric =
-    tokens.length > 0 &&
-    coreTokens.length === 0 &&
+  const coreTokens = tokens.filter(t => !MODIFIER_WORDS.has(t) && !GENERIC_QUERY_TERMS.has(t));
+
+  let dishName: string | undefined;
+
+  if (categoryToken) {
+    const categoryIndex = tokens.indexOf(categoryToken);
+    const styleToken = categoryIndex > 0 && DISH_STYLE_WORDS.has(tokens[categoryIndex - 1])
+      ? tokens[categoryIndex - 1]
+      : undefined;
+    dishName = styleToken ? `${styleToken} ${categoryToken}` : categoryToken;
+  }
+
+  if (!dishName) {
+    let bestKeyword = '';
+    for (const dish of Object.values(DISH_KNOWLEDGE)) {
+      for (const keyword of dish.keywords) {
+        const normalizedKeyword = normalize(keyword);
+        if (
+          normalizedKeyword.includes(' ') &&
+          normalizedText.includes(normalizedKeyword) &&
+          normalizedKeyword.length > bestKeyword.length
+        ) {
+          bestKeyword = normalizedKeyword;
+        }
+      }
+    }
+    if (bestKeyword) {
+      dishName = bestKeyword;
+    }
+  }
+
+  if (!dishName && coreTokens.length > 0) {
+    dishName = coreTokens.join(' ');
+  }
+
+  const isGeneric = !dishName && tokens.length > 0 &&
     tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t));
 
   return { dishName, category, modifiers, tokens, isGeneric };
@@ -594,9 +648,12 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
   const dish = Object.values(DISH_KNOWLEDGE).find(d => normalize(d.displayName) === normalizedName);
   const knowledgeKeywords = dish?.keywords ?? [];
 
+  const categoryFromName = Object.entries(CATEGORY_HINTS).find(([keyword]) => normalizedName.includes(keyword))?.[1];
+
   const tags = uniqueStrings([
     ...normalizedName.split(' ').filter(w => w.length > 2),
     normalize(item.category),
+    categoryFromName || '',
     dish?.spicy ? 'spicy' : '',
     dish?.seafood ? 'seafood' : '',
   ].filter(Boolean));
@@ -609,7 +666,7 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
   return {
     id: String(item.id),
     name: normalizedName,
-    category: normalize(item.category),
+    category: categoryFromName || normalize(item.category),
     keywords,
     tags,
     synonyms: keywords,
@@ -623,14 +680,19 @@ function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, m
 
   if (normalized === metadata.name || metadata.synonyms.some(s => s === normalized)) {
     score += 100;
-  } else if (
-    metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword)) ||
-    (dishName && (metadata.name.includes(dishName) || metadata.synonyms.some(s => s.includes(dishName))))
-  ) {
+  } else if (dishName && (
+    metadata.name.includes(dishName) ||
+    metadata.keywords.some(k => k.includes(dishName) || dishName.includes(k)) ||
+    metadata.synonyms.some(s => s.includes(dishName) || dishName.includes(s))
+  )) {
     score += 70;
   }
 
-  for (const modifier of intent.modifiers) {
+  const relevantTags = uniqueStrings([
+    ...intent.modifiers,
+    ...(dishName ? dishName.split(' ') : []),
+  ]);
+  for (const modifier of relevantTags) {
     if (metadata.tags.includes(modifier) || metadata.name.includes(modifier)) {
       score += 40;
     }
@@ -640,7 +702,7 @@ function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, m
     score += 20;
   }
 
-  const preciseTokens = intent.tokens.filter(t => !GENERIC_QUERY_TERMS.has(t));
+  const preciseTokens = intent.tokens.filter(t => !GENERIC_QUERY_TERMS.has(t) || (dishName && dishName.includes(t)));
   let overlap = 0;
   for (const token of preciseTokens) {
     if (metadata.name.includes(token) || metadata.keywords.some(k => k.includes(token))) {
