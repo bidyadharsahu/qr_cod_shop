@@ -17,6 +17,11 @@ export interface ChatbotResponse {
   category?: string;
   intent: string;
   entities: {
+    dishName?: string;
+    categoryName?: string;
+    modifiers?: string[];
+    tokens?: string[];
+    isGeneric?: boolean;
     quantity?: number;
     preference?: string;
     category?: string;
@@ -95,6 +100,7 @@ interface ParsedDishIntent {
   category?: string;
   modifiers: string[];
   tokens: string[];
+  coreTokens: string[];
   isGeneric: boolean;
 }
 
@@ -520,10 +526,25 @@ const MODIFIER_WORDS = new Set([
   'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon', 'rice',
 ]);
 
+// Protein terms are treated as modifiers but also separated for intent parsing to avoid over-broad dish names
+const PROTEIN_WORDS = new Set([
+  'chicken', 'beef', 'lamb', 'fish', 'seafood', 'shrimp', 'crab', 'lobster', 'salmon', 'prawn', 'prawns',
+  'veg', 'vegetarian', 'paneer'
+]);
+
 const GENERIC_QUERY_TERMS = new Set([
   'fried', 'spicy', 'veg', 'vegan', 'vegetarian', 'seafood', 'fish', 'chicken', 'rice', 'salad',
   'starter', 'appetizer', 'main', 'dessert', 'drink', 'drinks', 'food',
 ]);
+
+const MAX_GENERIC_RESULTS = 3;
+const MAX_SPECIFIC_RESULTS = 5;
+const MIN_TOKEN_LENGTH = 2;
+const OVERLAP_SCORE_PER_TOKEN = 20;
+const MAX_OVERLAP_SCORE = 60;
+const GENERIC_QUERY_PENALTY_MULTIPLIER = 0.8;
+const MIN_CLARIFICATION_SCORE_DIFFERENCE = 25;
+const MIN_GENERIC_QUERY_SCORE = 60;
 
 // ============================================
 // HELPER FUNCTIONS
@@ -547,6 +568,14 @@ function uniqueStrings(values: string[]): string[] {
     out.push(value);
   }
   return out;
+}
+
+function generateSynonymsFromTokens(tokens: string[]): string[] {
+  if (tokens.length <= 1) return [];
+  const synonyms: string[] = [];
+  // Move the first token to the end to capture phrasing like "fried rice chicken"
+  synonyms.push([...tokens.slice(1), tokens[0]].join(' '));
+  return uniqueStrings(synonyms);
 }
 
 function extractQuantity(text: string): number {
@@ -580,30 +609,45 @@ function parseDishIntent(text: string): ParsedDishIntent {
   const category = detectCategory(text) || undefined;
   const modifiers = tokens.filter(t => MODIFIER_WORDS.has(t));
   const coreTokens = tokens.filter(t => !MODIFIER_WORDS.has(t));
-  const dishName = coreTokens.length > 0 ? coreTokens.join(' ') : undefined;
+  const dishTokens = coreTokens.filter(t => !PROTEIN_WORDS.has(t));
+  let dishName: string | undefined;
+  if (dishTokens.length > 0) {
+    dishName = dishTokens.join(' ');
+  } else if (coreTokens.length > 1) {
+    // Fall back to the full phrase when only generic/protein words are present
+    dishName = coreTokens.join(' ');
+  }
   const isGeneric =
     tokens.length > 0 &&
-    coreTokens.length === 0 &&
-    tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t));
+    dishTokens.length === 0 &&
+    tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t) || PROTEIN_WORDS.has(t));
 
-  return { dishName, category, modifiers, tokens, isGeneric };
+  return { dishName, category, modifiers, tokens, coreTokens, isGeneric };
 }
 
 function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
   const normalizedName = normalize(item.name);
   const dish = Object.values(DISH_KNOWLEDGE).find(d => normalize(d.displayName) === normalizedName);
   const knowledgeKeywords = dish?.keywords ?? [];
+  const nameTokens = normalizedName.split(' ').filter(Boolean);
 
   const tags = uniqueStrings([
-    ...normalizedName.split(' ').filter(w => w.length > 2),
+    ...nameTokens.filter(w => w.length > 2),
     normalize(item.category),
     dish?.spicy ? 'spicy' : '',
     dish?.seafood ? 'seafood' : '',
+    dish?.popular ? 'popular' : '',
   ].filter(Boolean));
 
-  const keywords = uniqueStrings([
+  const synonyms = uniqueStrings([
     normalizedName,
     ...knowledgeKeywords,
+    ...generateSynonymsFromTokens(nameTokens),
+  ]);
+
+  const keywords = uniqueStrings([
+    ...synonyms,
+    ...nameTokens,
   ]);
 
   return {
@@ -612,45 +656,54 @@ function buildMenuMetadata(item: MenuItem): MenuSearchMetadata {
     category: normalize(item.category),
     keywords,
     tags,
-    synonyms: keywords,
+    synonyms,
   };
 }
 
 function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, metadata: MenuSearchMetadata): number {
-  const normalized = normalize(text);
+  const normalizedQuery = normalize(text);
   const dishName = intent.dishName;
+  const specificTokens = intent.coreTokens.filter(t => !GENERIC_QUERY_TERMS.has(t) && t.length > MIN_TOKEN_LENGTH);
+
+  const exactMatch = normalizedQuery === metadata.name || metadata.synonyms.some(s => s === normalizedQuery);
+  const nameHasDish = !!dishName && metadata.name.includes(dishName);
+  const synonymHasDish = !!dishName && metadata.synonyms.some(s => s.includes(dishName));
+  const phraseMatch = nameHasDish || synonymHasDish;
+  const tagMatches = intent.modifiers.filter(
+    (m) => metadata.tags.includes(m) || metadata.keywords.some(k => k.includes(m))
+  );
+  const categoryMatch = intent.category && metadata.category.includes(normalize(intent.category));
+
   let score = 0;
 
-  if (normalized === metadata.name || metadata.synonyms.some(s => s === normalized)) {
+  if (exactMatch) {
     score += 100;
-  } else if (
-    metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword)) ||
-    (dishName && (metadata.name.includes(dishName) || metadata.synonyms.some(s => s.includes(dishName))))
-  ) {
+  } else if (phraseMatch) {
     score += 70;
   }
 
-  for (const modifier of intent.modifiers) {
-    if (metadata.tags.includes(modifier) || metadata.name.includes(modifier)) {
-      score += 40;
-    }
+  if (tagMatches.length > 0) {
+    score += 40 * tagMatches.length;
   }
 
-  if (intent.category && metadata.category.includes(normalize(intent.category))) {
+  const overlap = specificTokens.filter(
+    (token) => metadata.name.includes(token) || metadata.keywords.some(k => k.includes(token))
+  ).length;
+  if (overlap > 0) {
+    score += Math.min(overlap * OVERLAP_SCORE_PER_TOKEN, MAX_OVERLAP_SCORE);
+  }
+
+  if (!exactMatch && !phraseMatch && categoryMatch) {
     score += 20;
   }
 
-  const preciseTokens = intent.tokens.filter(t => !GENERIC_QUERY_TERMS.has(t));
-  let overlap = 0;
-  for (const token of preciseTokens) {
-    if (metadata.name.includes(token) || metadata.keywords.some(k => k.includes(token))) {
-      overlap += 1;
+  if (intent.isGeneric && !exactMatch && !phraseMatch) {
+    // Generic queries should not rank too many items; keep only strong overlaps
+    if (score < MIN_GENERIC_QUERY_SCORE) {
+      score = 0;
+    } else {
+      score = Math.floor(score * GENERIC_QUERY_PENALTY_MULTIPLIER);
     }
-  }
-  score += Math.min(overlap * 15, 45);
-
-  if (intent.isGeneric && score > 0 && score < 70) {
-    score -= 20;
   }
 
   if (!item.available) {
@@ -667,6 +720,7 @@ function findRankedMatchingItems(
   const quantity = extractQuantity(text);
   const preference = extractPreference(text);
   const intent = parseDishIntent(text);
+  const maxResults = intent.isGeneric ? MAX_GENERIC_RESULTS : MAX_SPECIFIC_RESULTS;
 
   const scored: RankedMenuMatch[] = menuItems
     .map((item) => {
@@ -676,13 +730,13 @@ function findRankedMatchingItems(
     })
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
+    .slice(0, maxResults);
 
-  const requiresClarification = intent.isGeneric && (
+  const requiresClarification =
     scored.length === 0 ||
     scored[0].score < 70 ||
-    (scored.length > 1 && scored[0].score - scored[1].score < 30)
-  );
+    (intent.isGeneric && scored[0].score < 100) ||
+    (scored.length > 1 && scored[0].score - scored[1].score < MIN_CLARIFICATION_SCORE_DIFFERENCE);
 
   return {
     matches: scored.map(({ item, quantity, preference }) => ({ item, quantity, preference })),
@@ -948,10 +1002,16 @@ export function processChatMessage(
   const normalized = normalize(message);
   const intent = detectIntent(message, menuItems, cart);
   const entities: ChatbotResponse['entities'] = {};
+  const parsedIntent = parseDishIntent(message);
 
   entities.quantity = extractQuantity(message);
   entities.preference = extractPreference(message);
   entities.category = detectCategory(message) || undefined;
+  entities.dishName = parsedIntent.dishName;
+  entities.modifiers = parsedIntent.modifiers;
+  entities.tokens = parsedIntent.tokens;
+  entities.isGeneric = parsedIntent.isGeneric;
+  entities.categoryName = parsedIntent.category || entities.category;
 
   switch (intent) {
     // ---- GREETING ----
