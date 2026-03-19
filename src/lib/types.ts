@@ -4,6 +4,9 @@ export interface MenuItem {
   price: number;
   category: string;
   available: boolean;
+  keywords?: string[];
+  tags?: string[];
+  synonyms?: string[];
   created_at?: string;
   updated_at?: string;
 }
