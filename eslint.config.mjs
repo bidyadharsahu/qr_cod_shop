@@ -1,14 +1,12 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({ baseDirectory: __dirname });
+// Extract the @typescript-eslint plugin from the Next.js flat config so we can
+// reference it in our custom overrides without re-installing it separately.
+const tsPlugin = nextCoreWebVitals.find((c) => c.plugins?.["@typescript-eslint"])
+  ?.plugins["@typescript-eslint"];
 
 const eslintConfig = [
-  ...compat.extends("next/core-web-vitals"),
+  ...nextCoreWebVitals,
   {
     ignores: [
       ".next/**",
@@ -20,6 +18,9 @@ const eslintConfig = [
     ],
   },
   {
+    plugins: {
+      ...(tsPlugin ? { "@typescript-eslint": tsPlugin } : {}),
+    },
     rules: {
       // Relax rules that block deployment
       "@typescript-eslint/no-explicit-any": "off",
