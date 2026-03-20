@@ -66,7 +66,7 @@ function OrderContent() {
   // When URL param changes (new QR scan), update and persist
   useEffect(() => {
     if (tableParam && tableParam !== tableNumber) {
-      setTableNumber(tableParam);
+      setTableNumber(tableParam); // eslint-disable-line react-hooks/set-state-in-effect
     }
     // Always persist current table
     persistTable(tableParam || tableNumber);
@@ -86,10 +86,20 @@ function OrderContent() {
   const [loading, setLoading] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
-  const [isOnline, setIsOnline] = useState(true);
-  const [canInstallPWA, setCanInstallPWA] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const [theme, setTheme] = useState<AppTheme>(() => getCurrentTheme());
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof window !== 'undefined' ? navigator.onLine : true
+  );
+  const [canInstallPWA, setCanInstallPWA] = useState(() =>
+    typeof window !== 'undefined' && !!(window as any).__pwaInstallPrompt
+  );
+  const [isStandalone] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true
+    );
+  });
+  const [theme] = useState<AppTheme>(() => getCurrentTheme());
   const [favorites, setFavorites] = useState<number[]>(() => {
     if (typeof window !== 'undefined') {
       try { return JSON.parse(localStorage.getItem('netrikxr-favorites') || '[]'); } catch { return []; }
@@ -100,7 +110,10 @@ function OrderContent() {
   const [estimatedWait, setEstimatedWait] = useState<number | null>(null);
   const [lastAskedItem, setLastAskedItem] = useState<MenuItem | null>(null);
   const [conversationContext, setConversationContext] = useState<ConversationContext>({ preferences: [] });
-  const [orderCount, setOrderCount] = useState(0);
+  const [orderCount, setOrderCount] = useState(() => {
+    if (typeof window === 'undefined') return 0;
+    return parseInt(localStorage.getItem('netrikxr-order-count') || '0');
+  });
   const [submittedQuantities, setSubmittedQuantities] = useState<Record<number, number>>({});
   const [lastSubmittedSubtotal, setLastSubmittedSubtotal] = useState(0);
   const [lastSubmittedItemsCount, setLastSubmittedItemsCount] = useState(0);
@@ -116,7 +129,6 @@ function OrderContent() {
 
   // Track online/offline state
   useEffect(() => {
-    setIsOnline(navigator.onLine);
     const goOnline = () => setIsOnline(true);
     const goOffline = () => setIsOnline(false);
     window.addEventListener('online', goOnline);
@@ -127,12 +139,10 @@ function OrderContent() {
     };
   }, []);
 
-  // Apply occasion-based theme on mount
+  // Apply occasion-based theme to DOM on mount (initial value comes from useState initializer above)
   useEffect(() => {
-    const currentTheme = getCurrentTheme();
-    setTheme(currentTheme);
-    applyTheme(currentTheme);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
   // Persist favorites
   useEffect(() => {
@@ -142,6 +152,21 @@ function OrderContent() {
   // Toggle favorite
   const toggleFavorite = (itemId: number) => {
     setFavorites(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
+  };
+
+  const addBotMessage = (content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) => {
+    const msg: ChatMessage = {
+      id: Date.now().toString(),
+      role: 'bot',
+      content,
+      options,
+      ...extra
+    };
+    setChatMessages(prev => [...prev, msg]);
+  };
+
+  const addUserMessage = (content: string) => {
+    setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content }]);
   };
 
   // Call waiter function
@@ -169,16 +194,6 @@ function OrderContent() {
 
   // Detect PWA install availability and standalone mode
   useEffect(() => {
-    const standalone = 
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
-
-    // Check if install prompt is already available
-    if ((window as any).__pwaInstallPrompt) {
-      setCanInstallPWA(true);
-    }
-
     // Listen for install prompt becoming available
     const handleInstallAvailable = () => setCanInstallPWA(true);
     window.addEventListener('pwa-install-available', handleInstallAvailable);
@@ -286,12 +301,11 @@ function OrderContent() {
   // Welcome message - show install prompt if available, otherwise themed welcome
   useEffect(() => {
     if (menuItems.length > 0 && chatMessages.length === 0) {
-      // Count previous orders from this table (for loyalty feature)
-      const storedCount = parseInt(localStorage.getItem('netrikxr-order-count') || '0');
-      setOrderCount(storedCount);
-      const loyaltyMsg = storedCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${storedCount} time${storedCount > 1 ? 's' : ''} with us!` : '';
+      // orderCount is initialized from localStorage in the useState lazy initializer
+      const loyaltyMsg = orderCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${orderCount} time${orderCount > 1 ? 's' : ''} with us!` : '';
 
       if (canInstallPWA && !isStandalone) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         addBotMessage(
           `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
           [
@@ -300,6 +314,7 @@ function OrderContent() {
           ]
         );
       } else {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         addBotMessage(
           `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
           [
@@ -321,21 +336,6 @@ function OrderContent() {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   }, [chatMessages]);
-
-  const addBotMessage = (content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) => {
-    const msg: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'bot',
-      content,
-      options,
-      ...extra
-    };
-    setChatMessages(prev => [...prev, msg]);
-  };
-
-  const addUserMessage = (content: string) => {
-    setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content }]);
-  };
 
   // Handle PWA install from chatbot
   const handlePWAInstall = async () => {

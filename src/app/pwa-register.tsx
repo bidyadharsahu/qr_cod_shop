@@ -5,17 +5,16 @@ import { useEffect, useState } from 'react';
 export default function PWARegister() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-
-  useEffect(() => {
-    // Check if already running as installed app
-    const isInStandaloneMode = 
+  const [isStandalone] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return (
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
-      document.referrer.includes('android-app://');
-    
-    setIsStandalone(isInStandaloneMode);
+      document.referrer.includes('android-app://')
+    );
+  });
 
+  useEffect(() => {
     // Register service worker
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
@@ -77,7 +76,7 @@ export default function PWARegister() {
       window.dispatchEvent(new CustomEvent('pwa-install-available'));
       // Show install banner after a short delay (fallback for non-order pages)
       setTimeout(() => {
-        if (!isInStandaloneMode) {
+        if (!isStandalone) {
           setShowInstallBanner(true);
         }
       }, 3000);
@@ -142,7 +141,7 @@ export default function PWARegister() {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('appinstalled', handleAppInstalled);
     };
-  }, []);
+  }, [isStandalone]);
 
   const handleInstall = async () => {
     if (!installPrompt) return;

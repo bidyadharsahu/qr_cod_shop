@@ -33,8 +33,8 @@ export default function AdminDashboard() {
   // Theme
   const [theme, setTheme] = useState<AppTheme>(getCurrentTheme());
   
-  // Waiter calls
-  const [waiterCalls, setWaiterCalls] = useState<Order[]>([]);
+  // Real-time payment modal updates (separate from the base showPaymentModal value)
+  const [realtimePaymentUpdate, setRealtimePaymentUpdate] = useState<Order | null>(null);
   
   // Order filtering
   const [orderSearch, setOrderSearch] = useState('');
@@ -46,7 +46,8 @@ export default function AdminDashboard() {
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
-  const [paymentModalData, setPaymentModalData] = useState<Order | null>(null);
+  // Derive the displayed payment data: prefer real-time updates, fall back to the modal order
+  const paymentModalData = showPaymentModal ? (realtimePaymentUpdate ?? showPaymentModal) : null;
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
   
   // Forms
@@ -129,6 +130,7 @@ export default function AdminDashboard() {
   // Initial fetch & realtime
   useEffect(() => {
     if (!isAuthenticated) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchOrders(); fetchMenu(); fetchTables();
 
     const ordersSub = supabase.channel('orders-rt')
@@ -156,15 +158,8 @@ export default function AdminDashboard() {
 
   // Real-time payment modal updates
   useEffect(() => {
-    if (!showPaymentModal) {
-      setPaymentModalData(null);
-      return;
-    }
+    if (!showPaymentModal) return;
 
-    // Set initial data
-    setPaymentModalData(showPaymentModal);
-
-    // Listen for real-time updates to this specific order
     const paymentSub = supabase
       .channel(`order-payment-${showPaymentModal.id}`)
       .on(
@@ -176,13 +171,14 @@ export default function AdminDashboard() {
           filter: `id=eq.${showPaymentModal.id}`
         },
         (payload: any) => {
-          setPaymentModalData(payload.new as Order);
+          setRealtimePaymentUpdate(payload.new as Order);
         }
       )
       .subscribe();
 
     return () => {
       supabase.removeChannel(paymentSub);
+      setRealtimePaymentUpdate(null);
     };
   }, [showPaymentModal]);
 
@@ -302,11 +298,11 @@ export default function AdminDashboard() {
     return Math.max(5, activeOrders.length * 8); // ~8 min per active order, min 5
   }, [orders]);
 
-  // Separate waiter calls from regular orders
-  useEffect(() => {
-    const calls = orders.filter(o => o.receipt_id?.startsWith('CALL-') && o.status === 'pending');
-    setWaiterCalls(calls);
-  }, [orders]);
+  // Waiter calls derived from orders (avoids redundant setState-in-effect)
+  const waiterCalls = useMemo(
+    () => orders.filter(o => o.receipt_id?.startsWith('CALL-') && o.status === 'pending'),
+    [orders]
+  );
 
   // Filtered orders (excluding waiter calls for the orders list)
   const filteredOrders = useMemo(() => {
@@ -335,9 +331,8 @@ export default function AdminDashboard() {
     showToast('Waiter call acknowledged');
   };
 
-  // Update theme on mount & every minute
+  // Update theme every minute (initial value comes from useState initializer above)
   useEffect(() => {
-    setTheme(getCurrentTheme());
     const interval = setInterval(() => setTheme(getCurrentTheme()), 60000);
     return () => clearInterval(interval);
   }, []);
