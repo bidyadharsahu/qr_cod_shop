@@ -25,6 +25,8 @@ function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' |
     '- Preserve ordering intent exactly. Do not change action meaning.',
     '- Do not invent dishes, prices, quantities, or policy.',
     '- Keep all factual details from the original response.',
+    '- Keep all item names and numbers exactly the same as in the original response.',
+    '- Do not add extra recommendations unless already present.',
     '- Keep it concise (max 110 words).',
     '- Return plain text only (no markdown, no JSON).',
     `User message: ${payload.userMessage}`,
@@ -34,9 +36,11 @@ function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' |
 }
 
 export async function POST(request: NextRequest) {
+  let baseMessage = '';
+
   try {
     const body = (await request.json()) as ChatHumanizeRequest;
-    const baseMessage = body.baseMessage?.trim();
+    baseMessage = body.baseMessage?.trim() || '';
 
     if (!baseMessage) {
       return NextResponse.json({ message: '' }, { status: 400 });
@@ -96,6 +100,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: rewritten.slice(0, 800) });
   } catch {
-    return NextResponse.json({ message: '' }, { status: 500 });
+    // Keep UX stable: if AI call or parsing fails, return the deterministic message.
+    return NextResponse.json({ message: baseMessage || '' });
   }
 }
