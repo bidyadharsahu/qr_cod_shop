@@ -35,6 +35,22 @@ interface ChatMessage {
   showBill?: boolean;
 }
 
+const formatDayLabel = (timestamp: number): string => {
+  const date = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+
+  return date.toLocaleDateString([], {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+};
+
 function OrderContent() {
   const searchParams = useSearchParams();
   const tableParam = searchParams.get('table');
@@ -85,6 +101,7 @@ function OrderContent() {
   const [showThankYou, setShowThankYou] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isBotTyping, setIsBotTyping] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
@@ -332,7 +349,7 @@ function OrderContent() {
     setTimeout(() => {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
-  }, [chatMessages]);
+  }, [chatMessages, isBotTyping]);
 
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const msg: ChatMessage = {
@@ -365,203 +382,209 @@ function OrderContent() {
         body: JSON.stringify({
           userMessage,
           baseMessage: baseResponse.message,
-          intent: baseResponse.intent,
-          entities: baseResponse.entities,
-        }),
-        signal: controller.signal,
-      });
+          setIsBotTyping(true);
 
-      window.clearTimeout(timeoutId);
+          try {
+            // Use custom chatbot engine with conversation context
+            const baseResponse = processChatMessage(
+              input, 
+              menuItems, 
+              cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
+              conversationContext
+            );
+            const response = await humanizeBotResponse(input, baseResponse);
 
-      if (!res.ok) return baseResponse;
+            // Update conversation context based on response
+            setConversationContext(prev => {
+              const updated = { ...prev };
+              if (response.entities.preference) {
+                updated.lastPreference = response.entities.preference;
+                if (!updated.preferences.includes(response.entities.preference)) {
+                  updated.preferences = [...updated.preferences, response.entities.preference];
+                }
+              }
+              if (response.intent) updated.lastAction = response.intent;
+              if (response.intent === 'RECOMMEND_SPICY' && !updated.preferences.includes('spicy')) {
+                updated.preferences = [...updated.preferences, 'spicy'];
+              }
+              if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
+                updated.preferences = [...updated.preferences, 'seafood'];
+              }
+              return updated;
+            });
 
-      const data = await res.json() as { message?: string };
-      const improvedMessage = data.message?.trim();
+            // Handle actions based on chatbot response
+            if (response.action === 'checkout') {
+              handleCheckout();
+              return;
+            }
 
-      if (!improvedMessage) return baseResponse;
+            if (response.action === 'show_cart') {
+              if (cart.length === 0) {
+                addBotMessage(response.message, [
+                  { label: '🍹 See Menu', value: 'menu' },
+                  { label: '💬 Recommend', value: 'recommend' }
+                ]);
+              } else {
+                addBotMessage(response.message, undefined, { showCart: true });
+              }
+              return;
+            }
 
-      return {
-        ...baseResponse,
-        message: improvedMessage,
-      };
-    } catch {
-      return baseResponse;
-    }
-  };
+            if (response.action === 'show_tip') {
+              addBotMessage(response.message, undefined, { showTip: true });
+              return;
+            }
 
-  // Handle PWA install from chatbot
-  const handlePWAInstall = async () => {
-    const doInstall = (window as any).__pwaDoInstall;
-    if (!doInstall) {
-      // Check iOS
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isIOS) {
-        addBotMessage(
-          `📲 **Install on iPhone:**\n\n` +
-          `1️⃣ Tap the **Share** button ⬆️ (bottom center of Safari)\n` +
-          `2️⃣ Scroll down → tap **"Add to Home Screen"**\n` +
-          `3️⃣ Tap **"Add"** in the top right\n\n` +
-          `Then open **"Coasis"** from your home screen — it'll work just like a real app! 🎉\n\n` +
-          `💡 Your table number (${tableNumber}) is saved automatically.`,
-          [
-            { label: '✅ Done! Let me order', value: 'skip_install' },
-            { label: '🍹 Skip & See Menu', value: 'menu' }
-          ]
-        );
-      } else {
-        addBotMessage(
-          `Hmm, install isn't available right now. Let's get you ordering instead! 🍹`,
-          [
-            { label: '🍹 See Menu', value: 'menu' },
-            { label: '💬 Recommend', value: 'recommend' }
-          ]
-        );
-      }
-      return;
-    }
+            // Handle ask_dish action — describe dish, offer Add to Cart
+            if (response.action === 'ask_dish') {
+              if (response.matchedItems && response.matchedItems.length > 0) {
+                setLastAskedItem(response.matchedItems[0].item);
+              }
+              addBotMessage(
+                response.message,
+                [
+                  { label: '✅ Add to Cart', value: 'add_last_item' },
+                  { label: '🍽️ See Menu', value: 'menu' },
+                  { label: '❌ No Thanks', value: 'no_thanks' }
+                ]
+              );
+              return;
+            }
 
-    addBotMessage(`📲 Installing... Tap "Install" on the popup that appears!`);
-    
-    const accepted = await doInstall();
-    if (accepted) {
-      setCanInstallPWA(false);
-      // Persist table before redirect
-      const table = tableNumber;
-      document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
+            // Handle item ordering - new format with matchedItems array
+            if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
+              for (const matched of response.matchedItems) {
+                const item = matched.item;
+                const qty = matched.quantity || 1;
+          
+                setCart(prev => {
+                  const existing = prev.find(i => i.id === item.id);
+                  if (existing) {
+                    return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
+                  }
+                  return [...prev, { ...item, quantity: qty }];
+                });
+              }
+
+              addBotMessage(
+                response.message,
+                [
+                  { label: '🍽️ Add More', value: 'menu' },
+                  { label: '🛒 View Cart', value: 'cart' },
+                  { label: '✅ Checkout', value: 'checkout' }
+                ]
+              );
+              return;
+            }
+
+            // Handle remove_item action
+            if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
+              const itemToRemove = response.matchedItems[0].item;
+              setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
+              addBotMessage(
+                response.message,
+                [
+                  { label: '🍽️ See Menu', value: 'menu' },
+                  { label: '🛒 View Cart', value: 'cart' },
+                  { label: '✅ Checkout', value: 'checkout' }
+                ]
+              );
+              return;
+            }
       
-      addBotMessage(
-        `🎉 App installed! Opening now...\n\nIf it doesn't open automatically, look for "Coasis" on your home screen and tap it!`,
-        [
-          { label: '🚀 Open App', value: 'open_installed_app' }
-        ]
-      );
-    } else {
-      addBotMessage(
-        `No worries! You can always install later. Let's get you ordering! 🍹`,
-        [
-          { label: '🍹 See Menu', value: 'menu' },
-          { label: '🎉 Party Package', value: 'party' },
-          { label: '💬 Recommend', value: 'recommend' },
-          { label: '❓ Help', value: 'help' }
-        ]
-      );
-    }
-  };
-
-  const handleOptionClick = (value: string) => {
-    switch (value) {
-      case 'install_app':
-        addUserMessage('Install the app');
-        handlePWAInstall();
-        return;
-      case 'open_installed_app':
-        addUserMessage('Open the app');
-        {
-          const table = tableNumber;
-          const url = `${window.location.origin}/order?table=${table}`;
-          // Try to open in standalone PWA
-          window.open(url, '_blank');
-          // Fallback: full redirect
-          setTimeout(() => window.location.replace(url), 1000);
-        }
-        return;
-      case 'skip_install':
-        addUserMessage('Skip, let me order');
-        addBotMessage(
-          `No problem! Let's get you ordering! 🍽️`,
-          [
-            { label: '🍽️ See Menu', value: 'menu' },
-            { label: '🔥 Popular', value: 'popular' },
-            { label: '🌶️ Spicy', value: 'spicy' },
-            { label: '🦞 Seafood', value: 'seafood' },
-            { label: '❤️ Favorites', value: 'favorites' },
-            { label: '❓ Help', value: 'help' }
-          ]
-        );
-        break;
-      case 'popular':
-        addUserMessage('Show popular items');
-        addBotMessage(
-          `🔥 Most Popular Tonight:\n\n• **Marinated Lambchops** — $42\n• **Strip Steak** — $30\n• **Seafood Trio** — $42\n• **Southern Fried Chicken** — $28\n• **Coasis Burger** — $18\n\nType any dish name and I'll tell you all about it!`,
-          [
-            { label: '🍽️ Full Menu', value: 'menu' },
-            { label: '🛒 View Cart', value: 'cart' }
-          ]
-        );
-        break;
-      case 'spicy':
-        addUserMessage('Show spicy dishes');
-        addBotMessage(
-          `🌶️ Spicy picks:\n\n🔥 **Crispy Chilli Garlic Shrimp** — $14\n🔥 **Blue Cheese Buffalo Wings** — $14\n🔥 **Cajun Seafood Dip** — $18\n🔥 **Salmon & Crab Fried Rice** — $38\n\nWant to try one? Just type the name!`,
-          [
-            { label: '🍽️ Full Menu', value: 'menu' },
-            { label: '🛒 View Cart', value: 'cart' }
-          ]
-        );
-        break;
-      case 'seafood':
-        addUserMessage('Show seafood dishes');
-        addBotMessage(
-          `🦞 Seafood Favorites:\n\n• **Chargrilled Oysters** — $18/$32\n• **Seafood Trio** — $42\n• **Lobster & Crab Fried Rice** — $42\n• **Salmon & Crab Fried Rice** — $38\n• **Crispy Chilli Garlic Shrimp** — $14\n• **Grilled or Fried Branzino** — $34\n\nType any dish name for details!`,
-          [
-            { label: '🍽️ Full Menu', value: 'menu' },
-            { label: '🛒 View Cart', value: 'cart' }
-          ]
-        );
-        break;
-      case 'favorites':
-        addUserMessage('Show my favorites');
-        {
-          const favItems = menuItems.filter(item => favorites.includes(item.id));
-          if (favItems.length === 0) {
-            addBotMessage(
-              `❤️ You haven't saved any favorites yet!\n\nBrowse the menu and tap the heart icon to save your go-to drinks.`,
-              [
+            // Handle clear cart action
+            if (response.action === 'clear_cart') {
+              setCart([]);
+              setSubmittedQuantities({});
+              addBotMessage(response.message, [
                 { label: '🍹 See Menu', value: 'menu' },
+                { label: '💬 Recommend', value: 'recommend' }
+              ]);
+              return;
+            }
+
+            // Handle suggested items
+            if (response.suggestedItems && response.suggestedItems.length > 0) {
+              addBotMessage(response.message, undefined, { showMenu: true });
+              return;
+            }
+
+            // Handle menu/category display
+            if (response.action === 'show_menu' || response.action === 'show_category') {
+              addBotMessage(response.message, undefined, { showMenu: true });
+              return;
+            }
+
+            // Handle YES_CONFIRM — add last asked item if any
+            if (response.intent === 'YES_CONFIRM' && lastAskedItem) {
+              const itemToAdd = lastAskedItem;
+              setCart(prev => {
+                const existing = prev.find(i => i.id === itemToAdd.id);
+                if (existing) {
+                  return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+                }
+                return [...prev, { ...itemToAdd, quantity: 1 }];
+              });
+              addBotMessage(`Excellent choice! 🔥 ${itemToAdd.name} is in your cart.\n\nMany guests also pair it with some appetizers or a side. Want to see the menu for more, or ready to checkout?`, [
+                { label: '🍽️ Add More', value: 'menu' },
+                { label: '🛒 View Cart', value: 'cart' },
+                { label: '✅ Checkout', value: 'checkout' }
+              ]);
+              setLastAskedItem(null);
+              return;
+            }
+
+            // Handle new conversational intents with appropriate buttons
+            if (response.intent === 'DRINK_REQUEST') {
+              addBotMessage(response.message, [
+                { label: '🔔 Call Waiter', value: 'call_waiter' },
+                { label: '🍽️ Food Menu', value: 'menu' },
+                { label: '🔥 Popular', value: 'popular' }
+              ]);
+              return;
+            }
+
+            if (response.intent === 'VEGETARIAN_REQUEST') {
+              addBotMessage(response.message, [
+                { label: '🔔 Call Waiter', value: 'call_waiter' },
+                { label: '🍽️ Full Menu', value: 'menu' },
+                { label: '🛒 View Cart', value: 'cart' }
+              ]);
+              return;
+            }
+
+            if (response.intent === 'SYSTEM_QUESTION' || response.intent === 'CASUAL_CHAT') {
+              addBotMessage(response.message, [
+                { label: '🍽️ See Menu', value: 'menu' },
+                { label: '🔥 Popular', value: 'popular' },
+                { label: '💬 Recommend', value: 'recommend' }
+              ]);
+              return;
+            }
+
+            if (response.intent === 'VAGUE_MESSAGE') {
+              addBotMessage(response.message, [
+                { label: '🔥 Popular', value: 'popular' },
+                { label: '🌶️ Spicy', value: 'spicy' },
+                { label: '🦞 Seafood', value: 'seafood' },
+                { label: '🍽️ Full Menu', value: 'menu' }
+              ]);
+              return;
+            }
+
+            // Default response with options
+            addBotMessage(
+              response.message || "I'm here to help! What can I get you?",
+              [
+                { label: '🍽️ See Menu', value: 'menu' },
+                { label: '🛒 View Cart', value: 'cart' },
                 { label: '💬 Recommend', value: 'recommend' }
               ]
             );
-          } else {
-            addBotMessage(`❤️ Your favorite drinks:`, undefined, { showMenu: true });
-            setSelectedCategory(null); // Reset filter to show all (favs will be highlighted)
+          } finally {
+            setIsBotTyping(false);
           }
-        }
-        break;
-      case 'call_waiter':
-        addUserMessage('Call waiter');
-        callWaiter();
-        break;
-      case 'menu':
-        addUserMessage('Show me the menu');
-        addBotMessage('Here\'s what we\'ve got tonight! 🍹 Tap any category or just tell me what you\'re feeling.', undefined, { showMenu: true });
-        break;
-      case 'cart':
-        addUserMessage('Show my cart');
-        if (cart.length === 0) {
-          addBotMessage('Your cart is empty! 😄 What can I get you?', [
-            { label: '🍹 See Menu', value: 'menu' },
-            { label: '💬 Recommend', value: 'recommend' }
-          ]);
-        } else {
-          addBotMessage(`You have ${cart.length} item${cart.length > 1 ? 's' : ''} in your cart:`, undefined, { showCart: true });
-        }
-        break;
-      case 'help':
-        addUserMessage('Help');
-        addBotMessage(
-          `No worries, I got you! Here's how it works:\n\n1️⃣ Browse menu or tell me what you want\n2️⃣ Add items to cart\n3️⃣ Place your order\n4️⃣ Wait for confirmation\n5️⃣ Add tip & get your bill\n\nEasy! What would you like?`,
-          [
-            { label: '🍹 Show Menu', value: 'menu' },
-            { label: '💬 Talk to SIA', value: 'recommend' }
-          ]
-        );
-        break;
-      case 'party':
-        addUserMessage('Party package');
-        addBotMessage(
-          `🎉 Party time! That's awesome!\n\nFor groups, I'd suggest:\n• **Chargrilled Oysters** — great for sharing\n• **Cajun Seafood Dip** — crowd favorite\n• **Steak & Cheese Egg Rolls** — everyone loves these\n• **Seafood Trio** or **Marinated Lambchops** for mains\n\nHow many people are you dining with?`,
-          [
-            { label: '🍽️ See Menu', value: 'menu' },
             { label: '🔥 Popular', value: 'popular' }
           ]
         );
@@ -1205,9 +1228,20 @@ function OrderContent() {
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-6">
           <AnimatePresence mode="popLayout">
-            {chatMessages.map((msg) => (
+            {chatMessages.map((msg, index) => {
+              const previous = chatMessages[index - 1];
+              const showDateSeparator = !previous || new Date(previous.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
+
+              return (
+              <div key={msg.id}>
+                {showDateSeparator && (
+                  <div className="flex justify-center py-1.5">
+                    <span className="px-3 py-1 rounded-full text-[11px] text-gray-300 bg-zinc-900/80 border border-zinc-700/70">
+                      {formatDayLabel(msg.createdAt)}
+                    </span>
+                  </div>
+                )}
               <motion.div
-                key={msg.id}
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ duration: 0.2 }}
@@ -1234,9 +1268,14 @@ function OrderContent() {
                   >
                     <p className={`leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium' : 'text-[15px]'}`}>{msg.content}</p>
                   </div>
-                  <p className={`mt-1 text-[10px] ${msg.role === 'user' ? 'text-right text-gray-500' : 'text-left text-gray-500'}`}>
-                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                  <div className={`mt-1 text-[10px] ${msg.role === 'user' ? 'text-right' : 'text-left'} text-gray-500 flex items-center gap-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    {msg.role === 'user' && (
+                      <span className="text-sky-400 text-[11px] leading-none tracking-[-1px]" aria-label="Read">
+                        ✓✓
+                      </span>
+                    )}
+                  </div>
 
                   {/* Quick Options */}
                   {msg.options && msg.options.length > 0 && (
@@ -1517,7 +1556,33 @@ function OrderContent() {
                   )}
                 </div>
               </motion.div>
-            ))}
+              </div>
+              );
+            })}
+
+            {isBotTyping && (
+              <motion.div
+                key="typing-indicator"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="flex justify-start"
+              >
+                <div className="max-w-[85%]">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` }}>
+                      <MessageCircle className="w-3 h-3 text-black" />
+                    </div>
+                    <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>SIA</span>
+                  </div>
+                  <div className="message-bubble rounded-2xl rounded-bl-sm px-4 py-3" style={{ background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }}>
+                    <div className="typing-dots" aria-label="SIA is typing">
+                      <span></span><span></span><span></span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
           <div ref={chatEndRef} className="h-1" />
         </div>
@@ -1604,6 +1669,24 @@ function OrderContent() {
         .cart-pulse {
           animation: cartPulse 1.8s ease-in-out infinite;
         }
+        .typing-dots {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .typing-dots span {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          background: rgba(156, 163, 175, 0.95);
+          animation: typingBlink 1.2s infinite ease-in-out;
+        }
+        .typing-dots span:nth-child(2) {
+          animation-delay: 0.18s;
+        }
+        .typing-dots span:nth-child(3) {
+          animation-delay: 0.36s;
+        }
         .animate-bounce-subtle {
           animation: bounceSubtle 1.4s ease-in-out infinite;
         }
@@ -1614,6 +1697,10 @@ function OrderContent() {
         @keyframes bounceSubtle {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-2px); }
+        }
+        @keyframes typingBlink {
+          0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
+          40% { transform: translateY(-2px); opacity: 1; }
         }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
