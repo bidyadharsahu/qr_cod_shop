@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense } from 'react';
+import { useState, useEffect, useRef, Suspense, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -49,6 +49,27 @@ const formatDayLabel = (timestamp: number): string => {
     month: 'short',
     year: 'numeric',
   });
+};
+
+const getSmartDayGreeting = (themeName: string): string => {
+  const now = new Date();
+  const weekday = now.toLocaleDateString([], { weekday: 'long' });
+  const monthDay = `${now.getMonth() + 1}-${now.getDate()}`;
+  const specials: Record<string, string> = {
+    '1-1': 'Happy New Year. Wishing you a fresh and amazing start.',
+    '2-14': 'Happy Valentine\'s Day. Great day for a special table.',
+    '12-25': 'Merry Christmas. We hope your day is full of joy.',
+    '12-31': 'Happy New Year\'s Eve. Let\'s celebrate in style.',
+  };
+
+  const dayVibe = now.getDay() === 0 || now.getDay() === 6
+    ? `It\'s ${weekday}, perfect for a relaxed treat.`
+    : `It\'s ${weekday}, let\'s make your meal the best part of today.`;
+
+  const special = specials[monthDay];
+  if (special) return `${special} ${dayVibe}`;
+  if (themeName && themeName !== 'Default') return `${dayVibe} Today\'s vibe: ${themeName}.`;
+  return dayVibe;
 };
 
 function OrderContent() {
@@ -103,6 +124,7 @@ function OrderContent() {
   const [loading, setLoading] = useState(false);
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
+  const [showConfirmationFlash, setShowConfirmationFlash] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [canInstallPWA, setCanInstallPWA] = useState(false);
@@ -126,9 +148,33 @@ function OrderContent() {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmationFlashTimerRef = useRef<number | null>(null);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+  const pendingCartItems = useMemo(
+    () => cart.reduce((sum, item) => sum + Math.max(0, item.quantity - (submittedQuantities[item.id] || 0)), 0),
+    [cart, submittedQuantities]
+  );
+  const pendingSubtotal = useMemo(
+    () => cart.reduce((sum, item) => {
+      const unsentQty = Math.max(0, item.quantity - (submittedQuantities[item.id] || 0));
+      return sum + (item.price * unsentQty);
+    }, 0),
+    [cart, submittedQuantities]
+  );
+  const hasPendingCartChanges = pendingCartItems > 0;
+  const showOrderStatusDock = waitingForConfirmation || hasPendingCartChanges || showConfirmationFlash;
+  const orderDockState: 'pending' | 'unsent' | 'confirmed' = showConfirmationFlash
+    ? 'confirmed'
+    : (waitingForConfirmation ? 'pending' : 'unsent');
+  const orderDockAccent = orderDockState === 'unsent' ? theme.primary : '#22c55e';
+  const orderDockTitle = orderDockState === 'confirmed'
+    ? 'Order confirmed'
+    : (orderDockState === 'pending' ? 'Pending confirmation' : 'Ready to send');
+  const orderDockCta = orderDockState === 'confirmed'
+    ? 'Done'
+    : (orderDockState === 'pending' ? 'View' : 'Send now');
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
@@ -168,9 +214,23 @@ function OrderContent() {
     }
   }, [cart.length, waitingForConfirmation]);
 
+  useEffect(() => {
+    return () => {
+      if (confirmationFlashTimerRef.current) {
+        window.clearTimeout(confirmationFlashTimerRef.current);
+      }
+    };
+  }, []);
+
   // Toggle favorite
   const toggleFavorite = (itemId: number) => {
     setFavorites(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
+  };
+
+  const triggerConfirmationHaptic = () => {
+    if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
+    // Short success pattern: tap, pause, tap.
+    navigator.vibrate([45, 30, 65]);
   };
 
   // Call waiter function
@@ -284,7 +344,16 @@ function OrderContent() {
         },
         (payload: any) => {
           if (payload.new.status === 'confirmed') {
+            triggerConfirmationHaptic();
             setWaitingForConfirmation(false);
+            setCurrentOrderId(null);
+            setShowConfirmationFlash(true);
+            if (confirmationFlashTimerRef.current) {
+              window.clearTimeout(confirmationFlashTimerRef.current);
+            }
+            confirmationFlashTimerRef.current = window.setTimeout(() => {
+              setShowConfirmationFlash(false);
+            }, 1200);
             addBotMessage(
               `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
               [
@@ -322,7 +391,7 @@ function OrderContent() {
 
       if (canInstallPWA && !isStandalone) {
         addBotMessage(
-          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
+          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
           [
             { label: '📲 Install App', value: 'install_app' },
             { label: '⏭️ Skip, Order Now', value: 'skip_install' }
@@ -330,7 +399,7 @@ function OrderContent() {
         );
       } else {
         addBotMessage(
-          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
+          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
           [
             { label: '🍽️ See Menu', value: 'menu' },
             { label: '🔥 Popular', value: 'popular' },
@@ -1571,35 +1640,65 @@ const handleCheckout = async () => {
       {/* ========================================== */}
       {/* FIXED INPUT BAR - Native App Style */}
       {/* ========================================== */}
-      {cart.length > 0 && (
-        <div className="flex-shrink-0 px-4 pb-2 safe-bottom-mini">
-          <div
-            className="max-w-lg mx-auto rounded-2xl px-3.5 py-2.5 flex items-center justify-between"
-            style={{ background: '#111111', border: `1px solid ${theme.primary}66`, boxShadow: `0 10px 24px ${theme.primary}22` }}
+      <AnimatePresence>
+        {showOrderStatusDock && (
+          <motion.div
+            layout
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 14 }}
+            transition={{ duration: 0.24, ease: 'easeOut' }}
+            className="flex-shrink-0 px-4 pb-2 safe-bottom-mini"
           >
-            <button
-              onClick={() => handleOptionClick('cart')}
-              className="flex items-center gap-2 text-left min-w-0"
+            <div
+              className="max-w-lg mx-auto rounded-2xl px-3.5 py-2.5 flex items-center justify-between"
+              style={{ background: '#111111', border: `1px solid ${orderDockAccent}66`, boxShadow: `0 10px 24px ${orderDockAccent}22` }}
             >
-              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-black" style={{ background: theme.primary }}>
-                {totalCartItems}
-              </span>
-              <div className="min-w-0">
-                <p className="text-[12px] text-gray-400 leading-tight">Your cart</p>
-                <p className="text-[14px] font-semibold truncate" style={{ color: theme.primary }}>${subtotal.toFixed(2)}</p>
-              </div>
-            </button>
-            <button
-              onClick={handleCheckout}
-              disabled={loading || waitingForConfirmation}
-              className="px-4 py-2 rounded-xl text-black text-[13px] font-bold active:scale-95 transition-transform disabled:opacity-50"
-              style={{ background: theme.primary }}
-            >
-              {loading ? 'Placing...' : waitingForConfirmation ? 'Pending...' : 'Checkout'}
-            </button>
-          </div>
-        </div>
-      )}
+              <button
+                onClick={() => handleOptionClick('cart')}
+                className="flex items-center gap-2 text-left min-w-0"
+              >
+                <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-black ${orderDockState === 'confirmed' ? 'dock-confirm-pop' : ''}`} style={{ background: orderDockAccent }}>
+                  {orderDockState === 'confirmed' ? '✓' : (waitingForConfirmation ? totalCartItems : pendingCartItems)}
+                </span>
+                <div className="min-w-0">
+                  <p className="text-[11px] leading-tight flex items-center gap-1.5" style={{ color: `${orderDockAccent}dd` }}>
+                    <span className={`order-dock-dot ${orderDockState === 'pending' ? 'is-pending' : ''}`} style={{ background: orderDockAccent }} />
+                    {orderDockTitle}
+                  </p>
+                  {orderDockState === 'confirmed' ? (
+                    <>
+                      <p className="text-[14px] font-semibold truncate dock-confirm-text" style={{ color: orderDockAccent }}>
+                        Your order is on the way
+                      </p>
+                    </>
+                  ) : waitingForConfirmation ? (
+                    <>
+                      <p className="text-[14px] font-semibold truncate" style={{ color: orderDockAccent }}>
+                        Awaiting confirmation{estimatedWait ? ` • ~${estimatedWait} min` : ''}
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[14px] font-semibold truncate" style={{ color: orderDockAccent }}>
+                        {pendingCartItems} item{pendingCartItems > 1 ? 's' : ''} • ${pendingSubtotal.toFixed(2)}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </button>
+              <button
+                onClick={() => (orderDockState === 'unsent' ? handleCheckout() : handleOptionClick('cart'))}
+                disabled={loading}
+                className="px-4 py-2 rounded-xl text-black text-[13px] font-bold active:scale-95 transition-transform disabled:opacity-50"
+                style={{ background: orderDockAccent }}
+              >
+                {loading ? 'Placing...' : orderDockCta}
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="flex-shrink-0 sticky bottom-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-bottom">
         <form onSubmit={handleSendMessage} className="flex gap-3 max-w-lg mx-auto">
@@ -1667,6 +1766,21 @@ const handleCheckout = async () => {
         .typing-dots span:nth-child(3) {
           animation-delay: 0.36s;
         }
+        .order-dock-dot {
+          width: 7px;
+          height: 7px;
+          border-radius: 999px;
+          opacity: 0.9;
+        }
+        .order-dock-dot.is-pending {
+          animation: dockPulse 1.1s ease-in-out infinite;
+        }
+        .dock-confirm-pop {
+          animation: confirmPop 0.35s ease-out;
+        }
+        .dock-confirm-text {
+          animation: confirmGlow 0.8s ease-out;
+        }
         .animate-bounce-subtle {
           animation: bounceSubtle 1.4s ease-in-out infinite;
         }
@@ -1681,6 +1795,20 @@ const handleCheckout = async () => {
         @keyframes typingBlink {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
           40% { transform: translateY(-2px); opacity: 1; }
+        }
+        @keyframes dockPulse {
+          0%, 100% { transform: scale(1); opacity: 0.75; }
+          50% { transform: scale(1.2); opacity: 1; }
+        }
+        @keyframes confirmPop {
+          0% { transform: scale(0.75); }
+          65% { transform: scale(1.12); }
+          100% { transform: scale(1); }
+        }
+        @keyframes confirmGlow {
+          0% { filter: brightness(1); }
+          50% { filter: brightness(1.22); }
+          100% { filter: brightness(1); }
         }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
