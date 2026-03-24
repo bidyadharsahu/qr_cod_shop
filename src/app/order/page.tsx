@@ -382,252 +382,240 @@ function OrderContent() {
         body: JSON.stringify({
           userMessage,
           baseMessage: baseResponse.message,
-          setIsBotTyping(true);
+          intent: baseResponse.intent,
+          entities: baseResponse.entities,
+        }),
+        signal: controller.signal,
+      });
 
-          try {
-            // Use custom chatbot engine with conversation context
-            const baseResponse = processChatMessage(
-              input, 
-              menuItems, 
-              cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
-              conversationContext
-            );
-            const response = await humanizeBotResponse(input, baseResponse);
+      window.clearTimeout(timeoutId);
 
-            // Update conversation context based on response
-            setConversationContext(prev => {
-              const updated = { ...prev };
-              if (response.entities.preference) {
-                updated.lastPreference = response.entities.preference;
-                if (!updated.preferences.includes(response.entities.preference)) {
-                  updated.preferences = [...updated.preferences, response.entities.preference];
-                }
-              }
-              if (response.intent) updated.lastAction = response.intent;
-              if (response.intent === 'RECOMMEND_SPICY' && !updated.preferences.includes('spicy')) {
-                updated.preferences = [...updated.preferences, 'spicy'];
-              }
-              if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
-                updated.preferences = [...updated.preferences, 'seafood'];
-              }
-              return updated;
-            });
+      if (!res.ok) return baseResponse;
 
-            // Handle actions based on chatbot response
-            if (response.action === 'checkout') {
-              handleCheckout();
-              return;
-            }
+      const data = await res.json() as { message?: string };
+      const improvedMessage = data.message?.trim();
 
-            if (response.action === 'show_cart') {
-              if (cart.length === 0) {
-                addBotMessage(response.message, [
-                  { label: '🍹 See Menu', value: 'menu' },
-                  { label: '💬 Recommend', value: 'recommend' }
-                ]);
-              } else {
-                addBotMessage(response.message, undefined, { showCart: true });
-              }
-              return;
-            }
+      if (!improvedMessage) return baseResponse;
 
-            if (response.action === 'show_tip') {
-              addBotMessage(response.message, undefined, { showTip: true });
-              return;
-            }
+      return {
+        ...baseResponse,
+        message: improvedMessage,
+      };
+    } catch {
+      return baseResponse;
+    }
+  };
 
-            // Handle ask_dish action — describe dish, offer Add to Cart
-            if (response.action === 'ask_dish') {
-              if (response.matchedItems && response.matchedItems.length > 0) {
-                setLastAskedItem(response.matchedItems[0].item);
-              }
-              addBotMessage(
-                response.message,
-                [
-                  { label: '✅ Add to Cart', value: 'add_last_item' },
-                  { label: '🍽️ See Menu', value: 'menu' },
-                  { label: '❌ No Thanks', value: 'no_thanks' }
-                ]
-              );
-              return;
-            }
+  // Handle PWA install from chatbot
+  const handlePWAInstall = async () => {
+    const doInstall = (window as any).__pwaDoInstall;
+    if (!doInstall) {
+      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      if (isIOS) {
+        addBotMessage(
+          `?? **Install on iPhone:**\n\n` +
+          `1?? Tap the **Share** button ?? (bottom center of Safari)\n` +
+          `2?? Scroll down ? tap **"Add to Home Screen"**\n` +
+          `3?? Tap **"Add"** in the top right\n\n` +
+          `Then open **"Coasis"** from your home screen � it'll work just like a real app! ??\n\n` +
+          `?? Your table number (${tableNumber}) is saved automatically.`,
+          [
+            { label: '? Done! Let me order', value: 'skip_install' },
+            { label: '?? Skip & See Menu', value: 'menu' }
+          ]
+        );
+      } else {
+        addBotMessage(
+          `Hmm, install isn't available right now. Let's get you ordering instead! ??`,
+          [
+            { label: '?? See Menu', value: 'menu' },
+            { label: '?? Recommend', value: 'recommend' }
+          ]
+        );
+      }
+      return;
+    }
 
-            // Handle item ordering - new format with matchedItems array
-            if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
-              for (const matched of response.matchedItems) {
-                const item = matched.item;
-                const qty = matched.quantity || 1;
-          
-                setCart(prev => {
-                  const existing = prev.find(i => i.id === item.id);
-                  if (existing) {
-                    return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
-                  }
-                  return [...prev, { ...item, quantity: qty }];
-                });
-              }
+    addBotMessage(`?? Installing... Tap "Install" on the popup that appears!`);
 
-              addBotMessage(
-                response.message,
-                [
-                  { label: '🍽️ Add More', value: 'menu' },
-                  { label: '🛒 View Cart', value: 'cart' },
-                  { label: '✅ Checkout', value: 'checkout' }
-                ]
-              );
-              return;
-            }
+    const accepted = await doInstall();
+    if (accepted) {
+      setCanInstallPWA(false);
+      const table = tableNumber;
+      document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
 
-            // Handle remove_item action
-            if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
-              const itemToRemove = response.matchedItems[0].item;
-              setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
-              addBotMessage(
-                response.message,
-                [
-                  { label: '🍽️ See Menu', value: 'menu' },
-                  { label: '🛒 View Cart', value: 'cart' },
-                  { label: '✅ Checkout', value: 'checkout' }
-                ]
-              );
-              return;
-            }
-      
-            // Handle clear cart action
-            if (response.action === 'clear_cart') {
-              setCart([]);
-              setSubmittedQuantities({});
-              addBotMessage(response.message, [
-                { label: '🍹 See Menu', value: 'menu' },
-                { label: '💬 Recommend', value: 'recommend' }
-              ]);
-              return;
-            }
+      addBotMessage(
+        `?? App installed! Opening now...\n\nIf it doesn't open automatically, look for "Coasis" on your home screen and tap it!`,
+        [
+          { label: '?? Open App', value: 'open_installed_app' }
+        ]
+      );
+    } else {
+      addBotMessage(
+        `No worries! You can always install later. Let's get you ordering! ??`,
+        [
+          { label: '?? See Menu', value: 'menu' },
+          { label: '?? Party Package', value: 'party' },
+          { label: '?? Recommend', value: 'recommend' },
+          { label: '? Help', value: 'help' }
+        ]
+      );
+    }
+  };
 
-            // Handle suggested items
-            if (response.suggestedItems && response.suggestedItems.length > 0) {
-              addBotMessage(response.message, undefined, { showMenu: true });
-              return;
-            }
-
-            // Handle menu/category display
-            if (response.action === 'show_menu' || response.action === 'show_category') {
-              addBotMessage(response.message, undefined, { showMenu: true });
-              return;
-            }
-
-            // Handle YES_CONFIRM — add last asked item if any
-            if (response.intent === 'YES_CONFIRM' && lastAskedItem) {
-              const itemToAdd = lastAskedItem;
-              setCart(prev => {
-                const existing = prev.find(i => i.id === itemToAdd.id);
-                if (existing) {
-                  return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
-                }
-                return [...prev, { ...itemToAdd, quantity: 1 }];
-              });
-              addBotMessage(`Excellent choice! 🔥 ${itemToAdd.name} is in your cart.\n\nMany guests also pair it with some appetizers or a side. Want to see the menu for more, or ready to checkout?`, [
-                { label: '🍽️ Add More', value: 'menu' },
-                { label: '🛒 View Cart', value: 'cart' },
-                { label: '✅ Checkout', value: 'checkout' }
-              ]);
-              setLastAskedItem(null);
-              return;
-            }
-
-            // Handle new conversational intents with appropriate buttons
-            if (response.intent === 'DRINK_REQUEST') {
-              addBotMessage(response.message, [
-                { label: '🔔 Call Waiter', value: 'call_waiter' },
-                { label: '🍽️ Food Menu', value: 'menu' },
-                { label: '🔥 Popular', value: 'popular' }
-              ]);
-              return;
-            }
-
-            if (response.intent === 'VEGETARIAN_REQUEST') {
-              addBotMessage(response.message, [
-                { label: '🔔 Call Waiter', value: 'call_waiter' },
-                { label: '🍽️ Full Menu', value: 'menu' },
-                { label: '🛒 View Cart', value: 'cart' }
-              ]);
-              return;
-            }
-
-            if (response.intent === 'SYSTEM_QUESTION' || response.intent === 'CASUAL_CHAT') {
-              addBotMessage(response.message, [
-                { label: '🍽️ See Menu', value: 'menu' },
-                { label: '🔥 Popular', value: 'popular' },
-                { label: '💬 Recommend', value: 'recommend' }
-              ]);
-              return;
-            }
-
-            if (response.intent === 'VAGUE_MESSAGE') {
-              addBotMessage(response.message, [
-                { label: '🔥 Popular', value: 'popular' },
-                { label: '🌶️ Spicy', value: 'spicy' },
-                { label: '🦞 Seafood', value: 'seafood' },
-                { label: '🍽️ Full Menu', value: 'menu' }
-              ]);
-              return;
-            }
-
-            // Default response with options
+  const handleOptionClick = (value: string) => {
+    switch (value) {
+      case 'install_app':
+        addUserMessage('Install the app');
+        handlePWAInstall();
+        return;
+      case 'open_installed_app':
+        addUserMessage('Open the app');
+        {
+          const table = tableNumber;
+          const url = `${window.location.origin}/order?table=${table}`;
+          window.open(url, '_blank');
+          setTimeout(() => window.location.replace(url), 1000);
+        }
+        return;
+      case 'skip_install':
+        addUserMessage('Skip, let me order');
+        addBotMessage(
+          `No problem! Let's get you ordering! ???`,
+          [
+            { label: '??? See Menu', value: 'menu' },
+            { label: '?? Popular', value: 'popular' },
+            { label: '??? Spicy', value: 'spicy' },
+            { label: '?? Seafood', value: 'seafood' },
+            { label: '?? Favorites', value: 'favorites' },
+            { label: '? Help', value: 'help' }
+          ]
+        );
+        break;
+      case 'popular':
+        addUserMessage('Show popular items');
+        addBotMessage(
+          `?? Most Popular Tonight:\n\n� **Marinated Lambchops** � $42\n� **Strip Steak** � $30\n� **Seafood Trio** � $42\n� **Southern Fried Chicken** � $28\n� **Coasis Burger** � $18\n\nType any dish name and I'll tell you all about it!`,
+          [
+            { label: '??? Full Menu', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' }
+          ]
+        );
+        break;
+      case 'spicy':
+        addUserMessage('Show spicy dishes');
+        addBotMessage(
+          `??? Spicy picks:\n\n?? **Crispy Chilli Garlic Shrimp** � $14\n?? **Blue Cheese Buffalo Wings** � $14\n?? **Cajun Seafood Dip** � $18\n?? **Salmon & Crab Fried Rice** � $38\n\nWant to try one? Just type the name!`,
+          [
+            { label: '??? Full Menu', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' }
+          ]
+        );
+        break;
+      case 'seafood':
+        addUserMessage('Show seafood dishes');
+        addBotMessage(
+          `?? Seafood Favorites:\n\n� **Chargrilled Oysters** � $18/$32\n� **Seafood Trio** � $42\n� **Lobster & Crab Fried Rice** � $42\n� **Salmon & Crab Fried Rice** � $38\n� **Crispy Chilli Garlic Shrimp** � $14\n� **Grilled or Fried Branzino** � $34\n\nType any dish name for details!`,
+          [
+            { label: '??? Full Menu', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' }
+          ]
+        );
+        break;
+      case 'favorites':
+        addUserMessage('Show my favorites');
+        {
+          const favItems = menuItems.filter(item => favorites.includes(item.id));
+          if (favItems.length === 0) {
             addBotMessage(
-              response.message || "I'm here to help! What can I get you?",
+              `?? You haven't saved any favorites yet!\n\nBrowse the menu and tap the heart icon to save your go-to drinks.`,
               [
-                { label: '🍽️ See Menu', value: 'menu' },
-                { label: '🛒 View Cart', value: 'cart' },
-                { label: '💬 Recommend', value: 'recommend' }
+                { label: '?? See Menu', value: 'menu' },
+                { label: '?? Recommend', value: 'recommend' }
               ]
             );
-          } finally {
-            setIsBotTyping(false);
+          } else {
+            addBotMessage(`?? Your favorite drinks:`, undefined, { showMenu: true });
+            setSelectedCategory(null);
           }
-            { label: '🔥 Popular', value: 'popular' }
+        }
+        break;
+      case 'call_waiter':
+        addUserMessage('Call waiter');
+        callWaiter();
+        break;
+      case 'menu':
+        addUserMessage('Show me the menu');
+        addBotMessage('Here\'s what we\'ve got tonight! ?? Tap any category or just tell me what you\'re feeling.', undefined, { showMenu: true });
+        break;
+      case 'cart':
+        addUserMessage('Show my cart');
+        if (cart.length === 0) {
+          addBotMessage('Your cart is empty! ?? What can I get you?', [
+            { label: '?? See Menu', value: 'menu' },
+            { label: '?? Recommend', value: 'recommend' }
+          ]);
+        } else {
+          addBotMessage(`You have ${cart.length} item${cart.length > 1 ? 's' : ''} in your cart:`, undefined, { showCart: true });
+        }
+        break;
+      case 'help':
+        addUserMessage('Help');
+        addBotMessage(
+          `No worries, I got you! Here's how it works:\n\n1?? Browse menu or tell me what you want\n2?? Add items to cart\n3?? Place your order\n4?? Wait for confirmation\n5?? Add tip & get your bill\n\nEasy! What would you like?`,
+          [
+            { label: '?? Show Menu', value: 'menu' },
+            { label: '?? Talk to SIA', value: 'recommend' }
+          ]
+        );
+        break;
+      case 'party':
+        addUserMessage('Party package');
+        addBotMessage(
+          `?? Party time! That's awesome!\n\nFor groups, I'd suggest:\n� **Chargrilled Oysters** � great for sharing\n� **Cajun Seafood Dip** � crowd favorite\n� **Steak & Cheese Egg Rolls** � everyone loves these\n� **Seafood Trio** or **Marinated Lambchops** for mains\n\nHow many people are you dining with?`,
+          [
+            { label: '??? See Menu', value: 'menu' },
+            { label: '?? Popular', value: 'popular' }
           ]
         );
         break;
       case 'recommend':
         addUserMessage('What do you recommend?');
         addBotMessage(
-          `Great question! 🔥 Here are tonight's top picks:\n\n• **Marinated Lambchops** — $42 (most popular!)\n• **Seafood Trio** — $42\n• **Strip Steak** — $30\n\nType any dish name and I'll tell you more!`,
+          `Great question! ?? Here are tonight's top picks:\n\n� **Marinated Lambchops** � $42 (most popular!)\n� **Seafood Trio** � $42\n� **Strip Steak** � $30\n\nType any dish name and I'll tell you more!`,
           [
-            { label: '🌶️ Spicy', value: 'spicy' },
-            { label: '🦞 Seafood', value: 'seafood' },
-            { label: '🍽️ Full Menu', value: 'menu' }
+            { label: '??? Spicy', value: 'spicy' },
+            { label: '?? Seafood', value: 'seafood' },
+            { label: '??? Full Menu', value: 'menu' }
           ]
         );
         break;
       case 'add_last_item':
         if (lastAskedItem) {
-          {
-            const itemToAdd = lastAskedItem;
-            setCart(prev => {
-              const existing = prev.find(i => i.id === itemToAdd.id);
-              if (existing) {
-                return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
-              }
-              return [...prev, { ...itemToAdd, quantity: 1 }];
-            });
-            addUserMessage(`Add ${itemToAdd.name}`);
-            addBotMessage(`Great choice! 👍 ${itemToAdd.name} added to your cart.\n\nAnything else?`, [
-              { label: '🍽️ See Menu', value: 'menu' },
-              { label: '🛒 View Cart', value: 'cart' },
-              { label: '✅ Checkout', value: 'checkout' }
-            ]);
-            setLastAskedItem(null);
-          }
+          const itemToAdd = lastAskedItem;
+          setCart(prev => {
+            const existing = prev.find(i => i.id === itemToAdd.id);
+            if (existing) {
+              return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+            }
+            return [...prev, { ...itemToAdd, quantity: 1 }];
+          });
+          addUserMessage(`Add ${itemToAdd.name}`);
+          addBotMessage(`Great choice! ?? ${itemToAdd.name} added to your cart.\n\nAnything else?`, [
+            { label: '??? See Menu', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' },
+            { label: '? Checkout', value: 'checkout' }
+          ]);
+          setLastAskedItem(null);
         }
         break;
       case 'no_thanks':
         addUserMessage('No thanks');
         setLastAskedItem(null);
         addBotMessage('No problem! What else can I help with?', [
-          { label: '🍽️ See Menu', value: 'menu' },
-          { label: '🔥 Popular', value: 'popular' },
-          { label: '🛒 View Cart', value: 'cart' }
+          { label: '??? See Menu', value: 'menu' },
+          { label: '?? Popular', value: 'popular' },
+          { label: '?? View Cart', value: 'cart' }
         ]);
         break;
       case 'checkout':
@@ -635,37 +623,236 @@ function OrderContent() {
         break;
       case 'more':
         addUserMessage('Order more');
-        addBotMessage('Let\'s add more! 🍹 What else sounds good?', undefined, { showMenu: true });
+        addBotMessage('Let\'s add more! ?? What else sounds good?', undefined, { showMenu: true });
         break;
       case 'pay':
         addUserMessage('Pay now');
-        addBotMessage('Almost done! 💰 Would you like to add a tip?', undefined, { showTip: true });
+        addBotMessage('Almost done! ?? Would you like to add a tip?', undefined, { showTip: true });
         break;
       case 'skip_tip':
         setSelectedTip(0);
         addUserMessage('No tip');
-        addBotMessage('No problem! Ready for your bill?', [{ label: '📄 Get Bill', value: 'bill' }]);
+        addBotMessage('No problem! Ready for your bill?', [{ label: '?? Get Bill', value: 'bill' }]);
         break;
       case 'confirm_tip':
         addUserMessage(`Tip: ${selectedTip}%`);
-        addBotMessage(`Thanks! 🙏 ${selectedTip}% tip added. Ready for your bill?`, [{ label: '📄 Get Bill', value: 'bill' }]);
+        addBotMessage(`Thanks! ?? ${selectedTip}% tip added. Ready for your bill?`, [{ label: '?? Get Bill', value: 'bill' }]);
         break;
       case 'bill':
         addUserMessage('Get bill');
-        addBotMessage('Here\'s your bill! 🧾 Pay cash to the manager when ready. Thanks for hanging with us!', undefined, { showBill: true });
+        addBotMessage('Here\'s your bill! ?? Pay cash to the manager when ready. Thanks for hanging with us!', undefined, { showBill: true });
         break;
       case 'done':
         addUserMessage('Done');
         setWaitingForConfirmation(false);
         setCurrentOrderId(null);
-        addBotMessage('One last thing! How was everything? ⭐', undefined, { showRating: true });
+        addBotMessage('One last thing! How was everything? ?', undefined, { showRating: true });
         break;
       default:
         break;
     }
   };
 
-  const handleCheckout = async () => {
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userInput.trim()) return;
+
+    const input = userInput.trim();
+    addUserMessage(input);
+    setUserInput('');
+    setIsBotTyping(true);
+
+    try {
+      const baseResponse = processChatMessage(
+        input,
+        menuItems,
+        cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
+        conversationContext
+      );
+      const response = await humanizeBotResponse(input, baseResponse);
+
+      setConversationContext(prev => {
+        const updated = { ...prev };
+        if (response.entities.preference) {
+          updated.lastPreference = response.entities.preference;
+          if (!updated.preferences.includes(response.entities.preference)) {
+            updated.preferences = [...updated.preferences, response.entities.preference];
+          }
+        }
+        if (response.intent) updated.lastAction = response.intent;
+        if (response.intent === 'RECOMMEND_SPICY' && !updated.preferences.includes('spicy')) {
+          updated.preferences = [...updated.preferences, 'spicy'];
+        }
+        if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
+          updated.preferences = [...updated.preferences, 'seafood'];
+        }
+        return updated;
+      });
+
+      if (response.action === 'checkout') {
+        handleCheckout();
+        return;
+      }
+
+      if (response.action === 'show_cart') {
+        if (cart.length === 0) {
+          addBotMessage(response.message, [
+            { label: '?? See Menu', value: 'menu' },
+            { label: '?? Recommend', value: 'recommend' }
+          ]);
+        } else {
+          addBotMessage(response.message, undefined, { showCart: true });
+        }
+        return;
+      }
+
+      if (response.action === 'show_tip') {
+        addBotMessage(response.message, undefined, { showTip: true });
+        return;
+      }
+
+      if (response.action === 'ask_dish') {
+        if (response.matchedItems && response.matchedItems.length > 0) {
+          setLastAskedItem(response.matchedItems[0].item);
+        }
+        addBotMessage(
+          response.message,
+          [
+            { label: '? Add to Cart', value: 'add_last_item' },
+            { label: '??? See Menu', value: 'menu' },
+            { label: '? No Thanks', value: 'no_thanks' }
+          ]
+        );
+        return;
+      }
+
+      if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
+        for (const matched of response.matchedItems) {
+          const item = matched.item;
+          const qty = matched.quantity || 1;
+
+          setCart(prev => {
+            const existing = prev.find(i => i.id === item.id);
+            if (existing) {
+              return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
+            }
+            return [...prev, { ...item, quantity: qty }];
+          });
+        }
+
+        addBotMessage(
+          response.message,
+          [
+            { label: '??? Add More', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' },
+            { label: '? Checkout', value: 'checkout' }
+          ]
+        );
+        return;
+      }
+
+      if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
+        const itemToRemove = response.matchedItems[0].item;
+        setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
+        addBotMessage(
+          response.message,
+          [
+            { label: '??? See Menu', value: 'menu' },
+            { label: '?? View Cart', value: 'cart' },
+            { label: '? Checkout', value: 'checkout' }
+          ]
+        );
+        return;
+      }
+
+      if (response.action === 'clear_cart') {
+        setCart([]);
+        setSubmittedQuantities({});
+        addBotMessage(response.message, [
+          { label: '?? See Menu', value: 'menu' },
+          { label: '?? Recommend', value: 'recommend' }
+        ]);
+        return;
+      }
+
+      if (response.suggestedItems && response.suggestedItems.length > 0) {
+        addBotMessage(response.message, undefined, { showMenu: true });
+        return;
+      }
+
+      if (response.action === 'show_menu' || response.action === 'show_category') {
+        addBotMessage(response.message, undefined, { showMenu: true });
+        return;
+      }
+
+      if (response.intent === 'YES_CONFIRM' && lastAskedItem) {
+        const itemToAdd = lastAskedItem;
+        setCart(prev => {
+          const existing = prev.find(i => i.id === itemToAdd.id);
+          if (existing) {
+            return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
+          }
+          return [...prev, { ...itemToAdd, quantity: 1 }];
+        });
+        addBotMessage(`Excellent choice! ?? ${itemToAdd.name} is in your cart.\n\nMany guests also pair it with some appetizers or a side. Want to see the menu for more, or ready to checkout?`, [
+          { label: '??? Add More', value: 'menu' },
+          { label: '?? View Cart', value: 'cart' },
+          { label: '? Checkout', value: 'checkout' }
+        ]);
+        setLastAskedItem(null);
+        return;
+      }
+
+      if (response.intent === 'DRINK_REQUEST') {
+        addBotMessage(response.message, [
+          { label: '?? Call Waiter', value: 'call_waiter' },
+          { label: '??? Food Menu', value: 'menu' },
+          { label: '?? Popular', value: 'popular' }
+        ]);
+        return;
+      }
+
+      if (response.intent === 'VEGETARIAN_REQUEST') {
+        addBotMessage(response.message, [
+          { label: '?? Call Waiter', value: 'call_waiter' },
+          { label: '??? Full Menu', value: 'menu' },
+          { label: '?? View Cart', value: 'cart' }
+        ]);
+        return;
+      }
+
+      if (response.intent === 'SYSTEM_QUESTION' || response.intent === 'CASUAL_CHAT') {
+        addBotMessage(response.message, [
+          { label: '??? See Menu', value: 'menu' },
+          { label: '?? Popular', value: 'popular' },
+          { label: '?? Recommend', value: 'recommend' }
+        ]);
+        return;
+      }
+
+      if (response.intent === 'VAGUE_MESSAGE') {
+        addBotMessage(response.message, [
+          { label: '?? Popular', value: 'popular' },
+          { label: '??? Spicy', value: 'spicy' },
+          { label: '?? Seafood', value: 'seafood' },
+          { label: '??? Full Menu', value: 'menu' }
+        ]);
+        return;
+      }
+
+      addBotMessage(
+        response.message || "I'm here to help! What can I get you?",
+        [
+          { label: '??? See Menu', value: 'menu' },
+          { label: '?? View Cart', value: 'cart' },
+          { label: '?? Recommend', value: 'recommend' }
+        ]
+      );
+    } finally {
+      setIsBotTyping(false);
+    }
+  };
+const handleCheckout = async () => {
     if (cart.length === 0) {
       addBotMessage('Your cart is empty! Add some items first.', [{ label: '📋 View Menu', value: 'menu' }]);
       return;
@@ -768,213 +955,6 @@ function OrderContent() {
       `📤 ${isAddOnOrder ? 'Add-on Order' : 'Order'} Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nItems: ${itemCount}\nSubtotal: $${pendingSubtotal.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
       [
         { label: '🔔 Call Waiter', value: 'call_waiter' }
-      ]
-    );
-  };
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim()) return;
-
-    const input = userInput.trim();
-    addUserMessage(input);
-    setUserInput('');
-
-    // Use custom chatbot engine with conversation context
-    const baseResponse = processChatMessage(
-      input, 
-      menuItems, 
-      cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
-      conversationContext
-    );
-    const response = await humanizeBotResponse(input, baseResponse);
-
-    // Update conversation context based on response
-    setConversationContext(prev => {
-      const updated = { ...prev };
-      if (response.entities.preference) {
-        updated.lastPreference = response.entities.preference;
-        if (!updated.preferences.includes(response.entities.preference)) {
-          updated.preferences = [...updated.preferences, response.entities.preference];
-        }
-      }
-      if (response.intent) updated.lastAction = response.intent;
-      if (response.intent === 'RECOMMEND_SPICY' && !updated.preferences.includes('spicy')) {
-        updated.preferences = [...updated.preferences, 'spicy'];
-      }
-      if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
-        updated.preferences = [...updated.preferences, 'seafood'];
-      }
-      return updated;
-    });
-
-    // Handle actions based on chatbot response
-    if (response.action === 'checkout') {
-      handleCheckout();
-      return;
-    }
-
-    if (response.action === 'show_cart') {
-      if (cart.length === 0) {
-        addBotMessage(response.message, [
-          { label: '🍹 See Menu', value: 'menu' },
-          { label: '💬 Recommend', value: 'recommend' }
-        ]);
-      } else {
-        addBotMessage(response.message, undefined, { showCart: true });
-      }
-      return;
-    }
-
-    if (response.action === 'show_tip') {
-      addBotMessage(response.message, undefined, { showTip: true });
-      return;
-    }
-
-    // Handle ask_dish action — describe dish, offer Add to Cart
-    if (response.action === 'ask_dish') {
-      if (response.matchedItems && response.matchedItems.length > 0) {
-        setLastAskedItem(response.matchedItems[0].item);
-      }
-      addBotMessage(
-        response.message,
-        [
-          { label: '✅ Add to Cart', value: 'add_last_item' },
-          { label: '🍽️ See Menu', value: 'menu' },
-          { label: '❌ No Thanks', value: 'no_thanks' }
-        ]
-      );
-      return;
-    }
-
-    // Handle item ordering - new format with matchedItems array
-    if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
-      for (const matched of response.matchedItems) {
-        const item = matched.item;
-        const qty = matched.quantity || 1;
-        
-        setCart(prev => {
-          const existing = prev.find(i => i.id === item.id);
-          if (existing) {
-            return prev.map(i => i.id === item.id ? { ...i, quantity: i.quantity + qty } : i);
-          }
-          return [...prev, { ...item, quantity: qty }];
-        });
-      }
-
-      addBotMessage(
-        response.message,
-        [
-          { label: '🍽️ Add More', value: 'menu' },
-          { label: '🛒 View Cart', value: 'cart' },
-          { label: '✅ Checkout', value: 'checkout' }
-        ]
-      );
-      return;
-    }
-
-    // Handle remove_item action
-    if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
-      const itemToRemove = response.matchedItems[0].item;
-      setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
-      addBotMessage(
-        response.message,
-        [
-          { label: '🍽️ See Menu', value: 'menu' },
-          { label: '🛒 View Cart', value: 'cart' },
-          { label: '✅ Checkout', value: 'checkout' }
-        ]
-      );
-      return;
-    }
-    
-    // Handle clear cart action
-    if (response.action === 'clear_cart') {
-      setCart([]);
-      setSubmittedQuantities({});
-      addBotMessage(response.message, [
-        { label: '🍹 See Menu', value: 'menu' },
-        { label: '💬 Recommend', value: 'recommend' }
-      ]);
-      return;
-    }
-
-    // Handle suggested items
-    if (response.suggestedItems && response.suggestedItems.length > 0) {
-      addBotMessage(response.message, undefined, { showMenu: true });
-      return;
-    }
-
-    // Handle menu/category display
-    if (response.action === 'show_menu' || response.action === 'show_category') {
-      addBotMessage(response.message, undefined, { showMenu: true });
-      return;
-    }
-
-    // Handle YES_CONFIRM — add last asked item if any
-    if (response.intent === 'YES_CONFIRM' && lastAskedItem) {
-      const itemToAdd = lastAskedItem;
-      setCart(prev => {
-        const existing = prev.find(i => i.id === itemToAdd.id);
-        if (existing) {
-          return prev.map(i => i.id === itemToAdd.id ? { ...i, quantity: i.quantity + 1 } : i);
-        }
-        return [...prev, { ...itemToAdd, quantity: 1 }];
-      });
-      addBotMessage(`Excellent choice! 🔥 ${itemToAdd.name} is in your cart.\n\nMany guests also pair it with some appetizers or a side. Want to see the menu for more, or ready to checkout?`, [
-        { label: '🍽️ Add More', value: 'menu' },
-        { label: '🛒 View Cart', value: 'cart' },
-        { label: '✅ Checkout', value: 'checkout' }
-      ]);
-      setLastAskedItem(null);
-      return;
-    }
-
-    // Handle new conversational intents with appropriate buttons
-    if (response.intent === 'DRINK_REQUEST') {
-      addBotMessage(response.message, [
-        { label: '🔔 Call Waiter', value: 'call_waiter' },
-        { label: '🍽️ Food Menu', value: 'menu' },
-        { label: '🔥 Popular', value: 'popular' }
-      ]);
-      return;
-    }
-
-    if (response.intent === 'VEGETARIAN_REQUEST') {
-      addBotMessage(response.message, [
-        { label: '🔔 Call Waiter', value: 'call_waiter' },
-        { label: '🍽️ Full Menu', value: 'menu' },
-        { label: '🛒 View Cart', value: 'cart' }
-      ]);
-      return;
-    }
-
-    if (response.intent === 'SYSTEM_QUESTION' || response.intent === 'CASUAL_CHAT') {
-      addBotMessage(response.message, [
-        { label: '🍽️ See Menu', value: 'menu' },
-        { label: '🔥 Popular', value: 'popular' },
-        { label: '💬 Recommend', value: 'recommend' }
-      ]);
-      return;
-    }
-
-    if (response.intent === 'VAGUE_MESSAGE') {
-      addBotMessage(response.message, [
-        { label: '🔥 Popular', value: 'popular' },
-        { label: '🌶️ Spicy', value: 'spicy' },
-        { label: '🦞 Seafood', value: 'seafood' },
-        { label: '🍽️ Full Menu', value: 'menu' }
-      ]);
-      return;
-    }
-
-    // Default response with options
-    addBotMessage(
-      response.message || "I'm here to help! What can I get you?",
-      [
-        { label: '🍽️ See Menu', value: 'menu' },
-        { label: '🛒 View Cart', value: 'cart' },
-        { label: '💬 Recommend', value: 'recommend' }
       ]
     );
   };
@@ -1725,3 +1705,4 @@ export default function OrderPage() {
     </Suspense>
   );
 }
+
