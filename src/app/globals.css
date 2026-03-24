@@ -693,6 +693,57 @@ button {
   box-shadow: 0 2px 12px rgba(245, 158, 11, 0.15);
 }
 
+.chat-surface {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 14% 8%, rgba(245, 158, 11, 0.1), transparent 34%),
+    radial-gradient(circle at 84% 14%, rgba(16, 185, 129, 0.08), transparent 30%),
+    linear-gradient(180deg, #0b0b0d 0%, #0a0a0a 60%, #090909 100%);
+}
+
+.chat-surface > :not(.chat-ambient-bubble) {
+  position: relative;
+  z-index: 1;
+}
+
+.chat-ambient-bubble {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(30px);
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 0;
+  animation: ambientFloat 8s ease-in-out infinite;
+}
+
+.chat-ambient-bubble-a {
+  width: 240px;
+  height: 240px;
+  top: -60px;
+  left: -40px;
+  background: rgba(245, 158, 11, 0.16);
+}
+
+.chat-ambient-bubble-b {
+  width: 200px;
+  height: 200px;
+  top: 16%;
+  right: -60px;
+  background: rgba(20, 184, 166, 0.14);
+  animation-delay: 1.8s;
+}
+
+@keyframes ambientFloat {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-14px) scale(1.06);
+  }
+}
+
 .order-addon-card {
   background:
     linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(39, 39, 42, 0.95) 55%),

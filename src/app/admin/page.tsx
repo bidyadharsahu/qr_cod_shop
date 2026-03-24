@@ -329,6 +329,12 @@ export default function AdminDashboard() {
     return filtered;
   }, [orders, orderStatusFilter, orderTableFilter, orderSearch]);
 
+  const orderTypeSummary = useMemo(() => {
+    const addOnCount = filteredOrders.filter(isAddOnOrder).length;
+    const newCount = filteredOrders.filter(isNewOrder).length;
+    return { addOnCount, newCount };
+  }, [filteredOrders]);
+
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
     await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', call.id);
@@ -719,6 +725,19 @@ export default function AdminDashboard() {
                   <option key={t.id} value={t.table_number.toString()}>Table {t.table_number}</option>
                 ))}
               </select>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-emerald-300/80">New Orders</p>
+                <p className="text-2xl font-bold text-emerald-300">{orderTypeSummary.newCount}</p>
+                <p className="text-xs text-emerald-200/70">First request from table</p>
+              </div>
+              <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-amber-300/80">Add-on Orders</p>
+                <p className="text-2xl font-bold text-amber-300">{orderTypeSummary.addOnCount}</p>
+                <p className="text-xs text-amber-200/70">Extra items after first order</p>
+              </div>
             </div>
 
             <p className="text-xs text-gray-500">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found</p>

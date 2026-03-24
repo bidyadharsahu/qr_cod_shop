@@ -114,6 +114,34 @@ interface RankedMenuMatch {
   preference?: string;
 }
 
+const CATEGORY_KEYWORDS: Record<string, string> = {
+  'appetizer': 'Appetizers',
+  'appetizers': 'Appetizers',
+  'starter': 'Appetizers',
+  'starters': 'Appetizers',
+  'salad': 'Salads',
+  'salads': 'Salads',
+  'main': 'Mains',
+  'mains': 'Mains',
+  'main dish': 'Mains',
+  'entree': 'Mains',
+  'entrees': 'Mains',
+  'main course': 'Mains',
+  'sandwich': 'Sandwiches',
+  'sandwiches': 'Sandwiches',
+  'dessert': 'Desserts',
+  'desserts': 'Desserts',
+  'side': 'Sides',
+  'sides': 'Sides',
+  'food': 'Mains',
+};
+
+const CATEGORY_TOKEN_SET = new Set(
+  Object.keys(CATEGORY_KEYWORDS)
+    .flatMap(value => normalize(value).split(' '))
+    .filter(Boolean)
+);
+
 const DISH_KNOWLEDGE: Record<string, DishInfo> = {
   chargrilled_oysters: {
     displayName: 'Chargrilled Oysters',
@@ -575,16 +603,78 @@ function extractMeaningfulTokens(text: string): string[] {
     .filter(token => token.length > 1 && !STOP_WORDS.has(token));
 }
 
-function parseDishIntent(text: string): ParsedDishIntent {
+function extractBestDishPhrase(tokens: string[], metadata: MenuSearchMetadata[]): string | undefined {
+  if (tokens.length < 2) return undefined;
+
+  let bestPhrase: string | undefined;
+  let bestLength = 0;
+  let bestCoverage = 0;
+
+  for (let phraseLength = Math.min(4, tokens.length); phraseLength >= 2; phraseLength -= 1) {
+    for (let i = 0; i <= tokens.length - phraseLength; i += 1) {
+      const phrase = tokens.slice(i, i + phraseLength).join(' ');
+      if (phrase.length < 4) continue;
+
+      let coverage = 0;
+      for (const item of metadata) {
+        const inName = item.name.includes(phrase);
+        const inSynonyms = item.synonyms.some(s => s.includes(phrase));
+        const inKeywords = item.keywords.some(k => k.includes(phrase));
+        if (inName || inSynonyms || inKeywords) coverage += 1;
+      }
+
+      if (coverage === 0) continue;
+
+      if (
+        phraseLength > bestLength ||
+        (phraseLength === bestLength && coverage > bestCoverage)
+      ) {
+        bestPhrase = phrase;
+        bestLength = phraseLength;
+        bestCoverage = coverage;
+      }
+    }
+  }
+
+  return bestPhrase;
+}
+
+function parseDishIntent(text: string, menuItems: MenuItem[]): ParsedDishIntent {
   const tokens = extractMeaningfulTokens(text);
   const category = detectCategory(text) || undefined;
-  const modifiers = tokens.filter(t => MODIFIER_WORDS.has(t));
-  const coreTokens = tokens.filter(t => !MODIFIER_WORDS.has(t));
-  const dishName = coreTokens.length > 0 ? coreTokens.join(' ') : undefined;
+  const metadata = menuItems.map(buildMenuMetadata);
+  const phraseDish = extractBestDishPhrase(tokens, metadata);
+
+  const coreTokens = tokens.filter(t => !CATEGORY_TOKEN_SET.has(t));
+  const fallbackDishName = coreTokens.length > 0 ? coreTokens.join(' ') : undefined;
+  let dishName = phraseDish || fallbackDishName;
+
+  if (dishName) {
+    const dishTokens = dishName.split(' ');
+    if (dishTokens.length >= 3 && MODIFIER_WORDS.has(dishTokens[0])) {
+      const narrowedDish = dishTokens.slice(1).join(' ');
+      const narrowedMatch = metadata.some(item =>
+        item.name.includes(narrowedDish) ||
+        item.synonyms.some(s => s.includes(narrowedDish)) ||
+        item.keywords.some(k => k.includes(narrowedDish))
+      );
+      if (narrowedMatch) {
+        dishName = narrowedDish;
+      }
+    }
+  }
+
+  const dishTokenSet = new Set((dishName || '').split(' ').filter(Boolean));
+  const modifiers = tokens.filter(t => MODIFIER_WORDS.has(t) && !dishTokenSet.has(t));
+
   const isGeneric =
-    tokens.length > 0 &&
-    coreTokens.length === 0 &&
-    tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t));
+    (tokens.length === 1 && (GENERIC_QUERY_TERMS.has(tokens[0]) || MODIFIER_WORDS.has(tokens[0]))) ||
+    (
+      tokens.length > 0 &&
+      !phraseDish &&
+      coreTokens.length === 0 &&
+      tokens.every(t => GENERIC_QUERY_TERMS.has(t) || MODIFIER_WORDS.has(t) || CATEGORY_TOKEN_SET.has(t))
+    );
 
   return { dishName, category, modifiers, tokens, isGeneric };
 }
@@ -621,36 +711,60 @@ function scoreMenuItem(text: string, intent: ParsedDishIntent, item: MenuItem, m
   const dishName = intent.dishName;
   let score = 0;
 
-  if (normalized === metadata.name || metadata.synonyms.some(s => s === normalized)) {
+  const exactKeywordMatch = metadata.keywords.some(k => k === normalized);
+  const exactSynonymMatch = metadata.synonyms.some(s => s === normalized);
+  const exactNameMatch = normalized === metadata.name;
+
+  if (exactNameMatch || exactKeywordMatch || exactSynonymMatch) {
     score += 100;
   } else if (
-    metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword)) ||
-    (dishName && (metadata.name.includes(dishName) || metadata.synonyms.some(s => s.includes(dishName))))
+    (dishName && dishName.length > 2 && (
+      metadata.name.includes(dishName) ||
+      metadata.synonyms.some(s => s.includes(dishName)) ||
+      metadata.keywords.some(k => k.includes(dishName))
+    )) ||
+    metadata.keywords.some(keyword => keyword.length > 3 && normalized.includes(keyword))
   ) {
     score += 70;
   }
 
+  const matchedTags = new Set<string>();
   for (const modifier of intent.modifiers) {
     if (metadata.tags.includes(modifier) || metadata.name.includes(modifier)) {
-      score += 40;
+      matchedTags.add(modifier);
     }
   }
+  score += Math.min(matchedTags.size * 40, 80);
 
   if (intent.category && metadata.category.includes(normalize(intent.category))) {
     score += 20;
   }
 
-  const preciseTokens = intent.tokens.filter(t => !GENERIC_QUERY_TERMS.has(t));
-  let overlap = 0;
-  for (const token of preciseTokens) {
+  let tokenSignal = 0;
+  for (const token of intent.tokens) {
+    if (token.length < 2) continue;
+
+    if (metadata.name.split(' ').includes(token)) {
+      tokenSignal += 14;
+      continue;
+    }
+
     if (metadata.name.includes(token) || metadata.keywords.some(k => k.includes(token))) {
-      overlap += 1;
+      tokenSignal += 8;
+      continue;
+    }
+
+    const prefixMatch = metadata.keywords.some(k =>
+      k.split(' ').some(word => word.startsWith(token) || token.startsWith(word))
+    );
+    if (prefixMatch) {
+      tokenSignal += 5;
     }
   }
-  score += Math.min(overlap * 15, 45);
+  score += Math.min(tokenSignal, 45);
 
   if (intent.isGeneric && score > 0 && score < 70) {
-    score -= 20;
+    score -= 30;
   }
 
   if (!item.available) {
@@ -666,7 +780,7 @@ function findRankedMatchingItems(
 ): { matches: { item: MenuItem; quantity: number; preference?: string }[]; requiresClarification: boolean; intent: ParsedDishIntent } {
   const quantity = extractQuantity(text);
   const preference = extractPreference(text);
-  const intent = parseDishIntent(text);
+  const intent = parseDishIntent(text, menuItems);
 
   const scored: RankedMenuMatch[] = menuItems
     .map((item) => {
@@ -678,10 +792,13 @@ function findRankedMatchingItems(
     .sort((a, b) => b.score - a.score)
     .slice(0, 5);
 
+  const topScore = scored[0]?.score ?? 0;
+  const secondScore = scored[1]?.score ?? 0;
+
   const requiresClarification = intent.isGeneric && (
     scored.length === 0 ||
-    scored[0].score < 70 ||
-    (scored.length > 1 && scored[0].score - scored[1].score < 30)
+    topScore < 80 ||
+    (scored.length > 1 && topScore - secondScore < 18)
   );
 
   return {
@@ -736,16 +853,7 @@ function findCheapestItem(menuItems: MenuItem[]): MenuItem | null {
 
 function detectCategory(text: string): string | null {
   const normalized = normalize(text);
-  const categoryMap: Record<string, string> = {
-    'appetizer': 'Appetizers', 'appetizers': 'Appetizers', 'starter': 'Appetizers', 'starters': 'Appetizers',
-    'salad': 'Salads', 'salads': 'Salads',
-    'main': 'Mains', 'mains': 'Mains', 'main dish': 'Mains', 'entree': 'Mains', 'entrees': 'Mains', 'main course': 'Mains',
-    'sandwich': 'Sandwiches', 'sandwiches': 'Sandwiches',
-    'dessert': 'Desserts', 'desserts': 'Desserts',
-    'side': 'Sides', 'sides': 'Sides',
-    'food': 'Mains',
-  };
-  for (const [keyword, cat] of Object.entries(categoryMap)) {
+  for (const [keyword, cat] of Object.entries(CATEGORY_KEYWORDS)) {
     if (normalized.includes(keyword)) return cat;
   }
   return null;
@@ -1122,14 +1230,15 @@ export function processChatMessage(
             .replace('{upsell}', upsell);
         }
       } else {
-        const itemsList = availableItems.map(m => `${m.quantity}x ${m.item.name}`).join(' + ');
-        responseMsg = `Love it! 🔥 Added ${itemsList} to your order.\n\n${upsell}`;
+        const alternatives = availableItems.slice(1, 4).map(m => m.item.name).join(', ');
+        responseMsg = `I matched this as your best pick: ${firstItem.quantity}x ${firstItem.item.name}. ✅\n\n${alternatives ? `Similar dishes: ${alternatives}\n\n` : ''}${upsell}`;
       }
 
       return {
         message: responseMsg,
         action: 'add_item',
-        matchedItems: availableItems,
+        matchedItems: [firstItem],
+        suggestedItems: availableItems.slice(1, 4).map(m => m.item),
         intent,
         entities,
       };

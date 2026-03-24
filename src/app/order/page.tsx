@@ -26,6 +26,7 @@ interface ChatMessage {
   id: string;
   role: 'bot' | 'user';
   content: string;
+  createdAt: number;
   options?: { label: string; value: string }[];
   showMenu?: boolean;
   showCart?: boolean;
@@ -138,6 +139,16 @@ function OrderContent() {
   useEffect(() => {
     try { localStorage.setItem('netrikxr-favorites', JSON.stringify(favorites)); } catch (_) {}
   }, [favorites]);
+
+  // If the customer empties cart after the flow completes, start a fresh add-on baseline.
+  useEffect(() => {
+    if (cart.length === 0 && !waitingForConfirmation) {
+      setSubmittedQuantities({});
+      setLastOrderWasAddOn(false);
+      setLastSubmittedItemsCount(0);
+      setLastSubmittedSubtotal(0);
+    }
+  }, [cart.length, waitingForConfirmation]);
 
   // Toggle favorite
   const toggleFavorite = (itemId: number) => {
@@ -327,6 +338,7 @@ function OrderContent() {
       id: Date.now().toString(),
       role: 'bot',
       content,
+      createdAt: Date.now(),
       options,
       ...extra
     };
@@ -334,7 +346,7 @@ function OrderContent() {
   };
 
   const addUserMessage = (content: string) => {
-    setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content }]);
+    setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content, createdAt: Date.now() }]);
   };
 
   // Handle PWA install from chatbot
@@ -581,6 +593,8 @@ function OrderContent() {
         break;
       case 'done':
         addUserMessage('Done');
+        setWaitingForConfirmation(false);
+        setCurrentOrderId(null);
         addBotMessage('One last thing! How was everything? ⭐', undefined, { showRating: true });
         break;
       default:
@@ -951,6 +965,11 @@ function OrderContent() {
     }
     
     setShowThankYou(true);
+    setCart([]);
+    setSubmittedQuantities({});
+    setLastOrderWasAddOn(false);
+    setLastSubmittedItemsCount(0);
+    setLastSubmittedSubtotal(0);
   };
 
   const generatePDF = () => {
@@ -1068,7 +1087,9 @@ function OrderContent() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col">
+    <div className="fixed inset-0 bg-black text-white flex flex-col chat-surface">
+      <div className="chat-ambient-bubble chat-ambient-bubble-a" />
+      <div className="chat-ambient-bubble chat-ambient-bubble-b" />
       {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
       <div className="status-bar-spacer" />
 
@@ -1172,6 +1193,9 @@ function OrderContent() {
                   >
                     <p className={`leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium' : 'text-[15px]'}`}>{msg.content}</p>
                   </div>
+                  <p className={`mt-1 text-[10px] ${msg.role === 'user' ? 'text-right text-gray-500' : 'text-left text-gray-500'}`}>
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
 
                   {/* Quick Options */}
                   {msg.options && msg.options.length > 0 && (
