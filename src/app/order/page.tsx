@@ -1,11 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef, Suspense } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import type { MenuItem } from '@/lib/types';
-import { processChatMessage, type ConversationContext } from '@/lib/chatbot';
+import { processChatMessage, type ChatbotResponse, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import jsPDF from 'jspdf';
 import { 
@@ -333,7 +333,7 @@ function OrderContent() {
     }, 100);
   }, [chatMessages]);
 
-  const addBotMessage = (content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) => {
+  function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const msg: ChatMessage = {
       id: Date.now().toString(),
       role: 'bot',
@@ -343,10 +343,49 @@ function OrderContent() {
       ...extra
     };
     setChatMessages(prev => [...prev, msg]);
-  };
+  }
 
   const addUserMessage = (content: string) => {
     setChatMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content, createdAt: Date.now() }]);
+  };
+
+  const humanizeBotResponse = async (userMessage: string, baseResponse: ChatbotResponse): Promise<ChatbotResponse> => {
+    if (!baseResponse.message?.trim()) return baseResponse;
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 4500);
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userMessage,
+          baseMessage: baseResponse.message,
+          intent: baseResponse.intent,
+          entities: baseResponse.entities,
+        }),
+        signal: controller.signal,
+      });
+
+      window.clearTimeout(timeoutId);
+
+      if (!res.ok) return baseResponse;
+
+      const data = await res.json() as { message?: string };
+      const improvedMessage = data.message?.trim();
+
+      if (!improvedMessage) return baseResponse;
+
+      return {
+        ...baseResponse,
+        message: improvedMessage,
+      };
+    } catch {
+      return baseResponse;
+    }
   };
 
   // Handle PWA install from chatbot
@@ -718,12 +757,13 @@ function OrderContent() {
     setUserInput('');
 
     // Use custom chatbot engine with conversation context
-    const response = processChatMessage(
+    const baseResponse = processChatMessage(
       input, 
       menuItems, 
       cart.map(c => ({ id: c.id, name: c.name, quantity: c.quantity })),
       conversationContext
     );
+    const response = await humanizeBotResponse(input, baseResponse);
 
     // Update conversation context based on response
     setConversationContext(prev => {
