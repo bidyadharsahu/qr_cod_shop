@@ -111,6 +111,7 @@ function OrderContent() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
@@ -1127,7 +1128,7 @@ function OrderContent() {
   }
 
   return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col chat-surface">
+    <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden chat-surface" style={{ height: '100dvh' }}>
       <div className="chat-ambient-bubble chat-ambient-bubble-a" />
       <div className="chat-ambient-bubble chat-ambient-bubble-b" />
       {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
@@ -1136,7 +1137,7 @@ function OrderContent() {
       {/* ========================================== */}
       {/* FIXED HEADER - Native App Style */}
       {/* ========================================== */}
-      <header className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-b px-4 py-3 z-50" style={{ borderColor: `${theme.primary}33` }}>
+      <header className="flex-shrink-0 sticky top-0 bg-black/95 backdrop-blur-xl border-b px-4 py-3 z-50" style={{ borderColor: `${theme.primary}33` }}>
         {/* Offline indicator */}
         {!isOnline && (
           <div className="bg-red-500/20 border border-red-500/40 rounded-lg px-3 py-1.5 mb-2 text-center">
@@ -1202,7 +1203,7 @@ function OrderContent() {
       {/* SCROLLABLE CHAT AREA - Only this scrolls */}
       {/* ========================================== */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        <div className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-4">
+        <div className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-6">
           <AnimatePresence mode="popLayout">
             {chatMessages.map((msg) => (
               <motion.div
@@ -1525,7 +1526,37 @@ function OrderContent() {
       {/* ========================================== */}
       {/* FIXED INPUT BAR - Native App Style */}
       {/* ========================================== */}
-      <div className="flex-shrink-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-bottom">
+      {cart.length > 0 && (
+        <div className="flex-shrink-0 px-4 pb-2 safe-bottom-mini">
+          <div
+            className="max-w-lg mx-auto rounded-2xl px-3.5 py-2.5 flex items-center justify-between"
+            style={{ background: '#111111', border: `1px solid ${theme.primary}66`, boxShadow: `0 10px 24px ${theme.primary}22` }}
+          >
+            <button
+              onClick={() => handleOptionClick('cart')}
+              className="flex items-center gap-2 text-left min-w-0"
+            >
+              <span className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-black" style={{ background: theme.primary }}>
+                {totalCartItems}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[12px] text-gray-400 leading-tight">Your cart</p>
+                <p className="text-[14px] font-semibold truncate" style={{ color: theme.primary }}>${subtotal.toFixed(2)}</p>
+              </div>
+            </button>
+            <button
+              onClick={handleCheckout}
+              disabled={loading || waitingForConfirmation}
+              className="px-4 py-2 rounded-xl text-black text-[13px] font-bold active:scale-95 transition-transform disabled:opacity-50"
+              style={{ background: theme.primary }}
+            >
+              {loading ? 'Placing...' : waitingForConfirmation ? 'Pending...' : 'Checkout'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-shrink-0 sticky bottom-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-bottom">
         <form onSubmit={handleSendMessage} className="flex gap-3 max-w-lg mx-auto">
           <input
             ref={inputRef}
@@ -1552,11 +1583,37 @@ function OrderContent() {
 
       {/* CSS for safe areas and scrollbar */}
       <style jsx global>{`
-        .safe-area-top {
-          padding-top: env(safe-area-inset-top, 0);
+        .status-bar-spacer {
+          height: env(safe-area-inset-top, 0px);
         }
-        .safe-area-bottom {
+        .safe-bottom {
           padding-bottom: env(safe-area-inset-bottom, 0);
+        }
+        .safe-bottom-mini {
+          padding-bottom: calc(env(safe-area-inset-bottom, 0px) * 0.35);
+        }
+        .chat-surface {
+          background:
+            radial-gradient(1200px 700px at -10% -20%, rgba(245, 158, 11, 0.08), transparent 60%),
+            radial-gradient(900px 500px at 110% 120%, rgba(245, 158, 11, 0.06), transparent 60%),
+            #000;
+        }
+        .message-bubble {
+          box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
+        }
+        .cart-pulse {
+          animation: cartPulse 1.8s ease-in-out infinite;
+        }
+        .animate-bounce-subtle {
+          animation: bounceSubtle 1.4s ease-in-out infinite;
+        }
+        @keyframes cartPulse {
+          0%, 100% { transform: scale(1); }
+          50% { transform: scale(1.06); }
+        }
+        @keyframes bounceSubtle {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-2px); }
         }
         .scrollbar-hide::-webkit-scrollbar {
           display: none;
