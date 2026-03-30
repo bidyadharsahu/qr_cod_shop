@@ -14,8 +14,22 @@ import {
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard
+  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, Copy, Settings, WandSparkles, Printer
 } from 'lucide-react';
+
+interface PaymentGatewayStatus {
+  stripeConfigured: boolean;
+  paypalConfigured: boolean;
+  mode: 'sandbox' | 'live';
+  anyProviderConfigured: boolean;
+}
+
+const COMPANY_PROFILE = {
+  name: 'netrikxr.shop',
+  subtitle: 'Admin Panel',
+  logo: '/icons/icon-192x192.png',
+  logoHint: 'Logo Placeholder',
+};
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -47,9 +61,17 @@ export default function AdminDashboard() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [showSetupChecklistModal, setShowSetupChecklistModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
   const [paymentModalData, setPaymentModalData] = useState<Order | null>(null);
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
+  const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<PaymentGatewayStatus>({
+    stripeConfigured: false,
+    paypalConfigured: false,
+    mode: 'sandbox',
+    anyProviderConfigured: false,
+  });
+  const [paymentGatewayLoading, setPaymentGatewayLoading] = useState(true);
   
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
@@ -69,6 +91,73 @@ export default function AdminDashboard() {
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
     return 'https://qr-cod-shop.vercel.app';
+  };
+
+  const printOrderBill = (order: Order) => {
+    if (typeof window === 'undefined') return;
+
+    const popup = window.open('', '_blank', 'width=420,height=720');
+    if (!popup) {
+      showToast('Pop-up blocked. Please allow pop-ups to print bill.', 'error');
+      return;
+    }
+
+    const itemsHtml = (order.items || [])
+      .map(item => `<tr><td>${item.quantity}x ${item.name}</td><td style="text-align:right;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`)
+      .join('');
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Bill - ${order.receipt_id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 18px; color: #111; }
+            .brand { text-align: center; margin-bottom: 12px; }
+            .logo { width: 56px; height: 56px; border-radius: 10px; display:block; margin: 0 auto 6px; }
+            .meta { font-size: 12px; color: #555; margin-bottom: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 13px; }
+            td { padding: 6px 0; border-bottom: 1px solid #ececec; }
+            .totals { margin-top: 10px; font-size: 13px; }
+            .totals div { display:flex; justify-content:space-between; padding: 3px 0; }
+            .grand { font-weight: 700; font-size: 16px; border-top: 1px solid #ddd; margin-top: 6px; padding-top: 6px; }
+          </style>
+        </head>
+        <body>
+          <div class="brand">
+            <img class="logo" src="${getBaseUrl()}${COMPANY_PROFILE.logo}" alt="Logo" />
+            <h3 style="margin:0;">${COMPANY_PROFILE.name}</h3>
+            <p style="margin:2px 0 0; font-size: 12px; color:#666;">${COMPANY_PROFILE.logoHint}</p>
+          </div>
+          <div class="meta">
+            <div>Receipt: ${order.receipt_id}</div>
+            <div>Table: ${order.table_number}</div>
+            <div>Date: ${new Date(order.created_at).toLocaleString()}</div>
+          </div>
+          <table>
+            ${itemsHtml}
+          </table>
+          <div class="totals">
+            <div><span>Subtotal</span><span>$${order.subtotal.toFixed(2)}</span></div>
+            <div><span>Tax</span><span>$${(order.tax_amount || 0).toFixed(2)}</span></div>
+            <div><span>Tip</span><span>$${(order.tip_amount || 0).toFixed(2)}</span></div>
+            <div class="grand"><span>Total</span><span>$${order.total.toFixed(2)}</span></div>
+          </div>
+        </body>
+      </html>
+    `);
+
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const copyToClipboard = async (value: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      showToast(`${label} copied`);
+    } catch {
+      showToast(`Could not copy ${label}`, 'error');
+    }
   };
 
   // Auth check - using sessionStorage
@@ -446,6 +535,23 @@ export default function AdminDashboard() {
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    const fetchPaymentGatewayStatus = async () => {
+      try {
+        const res = await fetch('/api/payment/status');
+        if (!res.ok) return;
+        const data = await res.json() as PaymentGatewayStatus;
+        setPaymentGatewayStatus(data);
+      } catch {
+        // Keep default fallback state.
+      } finally {
+        setPaymentGatewayLoading(false);
+      }
+    };
+
+    fetchPaymentGatewayStatus();
+  }, []);
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
@@ -551,9 +657,14 @@ export default function AdminDashboard() {
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
             {/* Site Name */}
-            <div className="flex-shrink-0">
-              <p className="font-bold text-base" style={{ color: theme.primary }}>netrikxr.shop</p>
-              <p className="text-xs text-gray-500">Admin Panel</p>
+            <div className="flex-shrink-0 flex items-center gap-2.5 min-w-0">
+              <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-900">
+                <Image src={COMPANY_PROFILE.logo} alt="Company logo" fill sizes="36px" className="object-cover" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-base truncate" style={{ color: theme.primary }}>{COMPANY_PROFILE.name}</p>
+                <p className="text-[11px] text-gray-500 truncate">{COMPANY_PROFILE.subtitle} • {COMPANY_PROFILE.logoHint}</p>
+              </div>
             </div>
 
             {/* Tampa Timezone Clock */}
@@ -601,6 +712,10 @@ export default function AdminDashboard() {
                 <QrCode className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">QR Codes</span>
               </button>
+              <button onClick={() => setShowSetupChecklistModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
+                <Settings className="w-5 h-5" />
+                <span className="hidden xl:inline text-sm">Setup</span>
+              </button>
               <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
                 <LogOut className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">Log Out</span>
@@ -630,41 +745,70 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 hover:border-zinc-600 transition-colors">
+            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 hover:border-zinc-600 transition-colors shadow-sm min-h-[112px]">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Today&apos;s Orders</p>
                 <p className="text-xl font-bold">{todayOrders.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <DollarSign className="w-4 h-4 text-green-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Revenue</p>
                 <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
                 <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
                   <Clock className="w-4 h-4 text-red-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Pending</p>
                 <p className="text-xl font-bold">{pendingOrders}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <Users className="w-4 h-4 text-purple-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Active Tables</p>
                 <p className="text-xl font-bold">{activeTables}/{tables.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
                 <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
                   <Clock className="w-4 h-4" style={{ color: theme.primary }} />
                 </div>
                 <p className="text-gray-400 text-xs">Est. Wait</p>
                 <p className="text-xl font-bold" style={{ color: theme.primary }}>{estimatedWaitMinutes}m</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border p-4" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: theme.primary }}>Payment Gateway Readiness</p>
+                  <p className="text-xs text-gray-300 mt-0.5">
+                    {paymentGatewayLoading
+                      ? 'Checking gateway setup status...'
+                      : (paymentGatewayStatus.anyProviderConfigured
+                        ? `At least one gateway is enabled (${paymentGatewayStatus.mode} mode).`
+                        : 'No online gateway keys detected. Cash flow stays fully active.')}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <span className={`px-2 py-1 rounded-md border ${paymentGatewayStatus.stripeConfigured ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'}`}>
+                    Stripe: {paymentGatewayStatus.stripeConfigured ? 'Ready' : 'Setup Pending'}
+                  </span>
+                  <span className={`px-2 py-1 rounded-md border ${paymentGatewayStatus.paypalConfigured ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'}`}>
+                    PayPal: {paymentGatewayStatus.paypalConfigured ? 'Ready' : 'Setup Pending'}
+                  </span>
+                  <button
+                    onClick={() => setShowSetupChecklistModal(true)}
+                    className="px-2 py-1 rounded-md border border-white/20 text-gray-100 hover:bg-white/10 transition-colors"
+                  >
+                    Setup Checklist
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -714,7 +858,13 @@ export default function AdminDashboard() {
                 <span className="text-xs text-gray-500">Live from current day orders</span>
               </div>
               {topSellingItemsToday.length === 0 ? (
-                <p className="text-sm text-gray-500">No dish sales yet today.</p>
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-6 text-center">
+                  <div className="w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-3" style={{ background: `${theme.primary}22` }}>
+                    <WandSparkles className="w-6 h-6" style={{ color: theme.primary }} />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-200">No dish sales yet today</p>
+                  <p className="text-xs text-gray-500 mt-1">Once orders arrive, your top-selling dishes will appear here automatically.</p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {topSellingItemsToday.map((item, index) => (
@@ -737,23 +887,31 @@ export default function AdminDashboard() {
                   <h3 className="font-semibold">Orders Per Hour</h3>
                   <span className="text-xs text-gray-500">Today</span>
                 </div>
-                <div className="h-28 flex items-end gap-1">
-                  {hourlyTrend.map(point => (
-                    <div key={`orders-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
-                      <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
-                        <div
-                          className="absolute inset-x-0 bottom-0 rounded-sm"
-                          style={{
-                            height: `${point.orderHeight}%`,
-                            background: `linear-gradient(to top, ${theme.primary}, ${theme.primaryDark})`,
-                          }}
-                          title={`${point.orders} order(s) at ${point.hour.toString().padStart(2, '0')}:00`}
-                        />
+                {todayOrders.length === 0 ? (
+                  <div className="h-28 rounded-lg border border-zinc-700 bg-zinc-900/70 flex flex-col items-center justify-center text-center px-4">
+                    <Clock className="w-6 h-6 text-gray-500 mb-2" />
+                    <p className="text-sm text-gray-300">No hourly order data yet</p>
+                    <p className="text-xs text-gray-500 mt-1">Bars will animate in as your first orders come in.</p>
+                  </div>
+                ) : (
+                  <div className="h-28 flex items-end gap-1">
+                    {hourlyTrend.map(point => (
+                      <div key={`orders-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
+                        <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
+                          <div
+                            className="absolute inset-x-0 bottom-0 rounded-sm"
+                            style={{
+                              height: `${point.orderHeight}%`,
+                              background: `linear-gradient(to top, ${theme.primary}, ${theme.primaryDark})`,
+                            }}
+                            title={`${point.orders} order(s) at ${point.hour.toString().padStart(2, '0')}:00`}
+                          />
+                        </div>
+                        <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
                       </div>
-                      <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
@@ -761,20 +919,28 @@ export default function AdminDashboard() {
                   <h3 className="font-semibold">Revenue Per Hour</h3>
                   <span className="text-xs text-gray-500">Paid orders only</span>
                 </div>
-                <div className="h-28 flex items-end gap-1">
-                  {hourlyTrend.map(point => (
-                    <div key={`revenue-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
-                      <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
-                        <div
-                          className="absolute inset-x-0 bottom-0 rounded-sm bg-emerald-400"
-                          style={{ height: `${point.revenueHeight}%` }}
-                          title={`${formatCurrency(point.revenue)} at ${point.hour.toString().padStart(2, '0')}:00`}
-                        />
+                {todayPaidOrders.length === 0 ? (
+                  <div className="h-28 rounded-lg border border-zinc-700 bg-zinc-900/70 flex flex-col items-center justify-center text-center px-4">
+                    <DollarSign className="w-6 h-6 text-gray-500 mb-2" />
+                    <p className="text-sm text-gray-300">No paid revenue yet</p>
+                    <p className="text-xs text-gray-500 mt-1">Revenue bars appear once first payment is recorded.</p>
+                  </div>
+                ) : (
+                  <div className="h-28 flex items-end gap-1">
+                    {hourlyTrend.map(point => (
+                      <div key={`revenue-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
+                        <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
+                          <div
+                            className="absolute inset-x-0 bottom-0 rounded-sm bg-emerald-400"
+                            style={{ height: `${point.revenueHeight}%` }}
+                            title={`${formatCurrency(point.revenue)} at ${point.hour.toString().padStart(2, '0')}:00`}
+                          />
+                        </div>
+                        <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
                       </div>
-                      <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -957,7 +1123,13 @@ export default function AdminDashboard() {
               </div>
 
               {filteredPaymentEvents.length === 0 ? (
-                <p className="text-sm text-gray-500">No payment events captured yet.</p>
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900/80 p-6 text-center">
+                  <div className="w-12 h-12 mx-auto rounded-full bg-sky-500/15 flex items-center justify-center mb-3">
+                    <CreditCard className="w-6 h-6 text-sky-300" />
+                  </div>
+                  <p className="text-sm font-semibold text-gray-200">No payment events captured yet</p>
+                  <p className="text-xs text-gray-500 mt-1">Run a test checkout or cash record action and the timeline will populate instantly.</p>
+                </div>
               ) : (
                 <div className="max-h-80 overflow-y-auto pr-1 space-y-2">
                   {filteredPaymentEvents.map((event) => {
@@ -1055,6 +1227,9 @@ export default function AdminDashboard() {
                     </div>
 
                     <div className="flex flex-wrap gap-2">
+                      <button onClick={() => printOrderBill(order)} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                        <Printer className="w-4 h-4" /> Print Bill
+                      </button>
                       {order.status === 'pending' && (
                         <>
                           <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
@@ -1314,6 +1489,92 @@ export default function AdminDashboard() {
                 <button onClick={addTable} className="w-full py-3 text-black rounded-lg font-semibold transition-colors" style={{ background: theme.primary }}>
                   Add Table
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Setup Checklist Modal */}
+      <AnimatePresence>
+        {showSetupChecklistModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center sticky top-0 bg-zinc-800 rounded-t-2xl">
+                <div>
+                  <h2 className="text-xl font-bold">Payment Setup Checklist</h2>
+                  <p className="text-xs text-gray-500 mt-1">No credentials now is fine. Keep cash flow active and finish setup later.</p>
+                </div>
+                <button onClick={() => setShowSetupChecklistModal(false)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
+                  <p className="text-sm font-semibold text-white mb-2">1. Webhook endpoints</p>
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-zinc-700 p-3">
+                      <p className="text-xs text-gray-400 mb-1">Stripe webhook URL</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-200 break-all flex-1">{getBaseUrl()}/api/payment/webhook/stripe</p>
+                        <button onClick={() => copyToClipboard(`${getBaseUrl()}/api/payment/webhook/stripe`, 'Stripe webhook URL')} className="px-2 py-1 rounded border border-zinc-600 text-xs text-gray-200 hover:bg-zinc-700">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-zinc-700 p-3">
+                      <p className="text-xs text-gray-400 mb-1">PayPal webhook URL</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-gray-200 break-all flex-1">{getBaseUrl()}/api/payment/webhook/paypal</p>
+                        <button onClick={() => copyToClipboard(`${getBaseUrl()}/api/payment/webhook/paypal`, 'PayPal webhook URL')} className="px-2 py-1 rounded border border-zinc-600 text-xs text-gray-200 hover:bg-zinc-700">
+                          <Copy className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
+                  <p className="text-sm font-semibold text-white mb-2">2. Environment variables to set later</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {[
+                      'NEXT_PUBLIC_SUPABASE_URL',
+                      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
+                      'SUPABASE_SERVICE_ROLE_KEY',
+                      'NEXT_PUBLIC_SITE_URL',
+                      'STRIPE_SECRET_KEY',
+                      'STRIPE_WEBHOOK_SECRET',
+                      'PAYPAL_CLIENT_ID',
+                      'PAYPAL_CLIENT_SECRET',
+                      'PAYPAL_MODE',
+                      'PAYPAL_WEBHOOK_ID'
+                    ].map((key) => (
+                      <div key={key} className="px-2.5 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-gray-200 font-mono">
+                        {key}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
+                  <p className="text-sm font-semibold text-white mb-2">3. Branding and bill printing</p>
+                  <ul className="space-y-1 text-xs text-gray-300">
+                    <li>• Header uses a logo placeholder at {COMPANY_PROFILE.logo}.</li>
+                    <li>• To print any bill: Orders tab → order card → Print Bill.</li>
+                    <li>• Printed bill includes receipt, table, item list, totals, and logo.</li>
+                  </ul>
+                </div>
+
+                <div className="rounded-xl border p-4" style={{ borderColor: `${theme.primary}55`, background: `${theme.primary}12` }}>
+                  <p className="text-sm font-semibold" style={{ color: theme.primary }}>Current behavior without credentials</p>
+                  <ul className="mt-2 space-y-1 text-xs text-gray-300">
+                    <li>• Ordering flow works normally.</li>
+                    <li>• Cash payment remains fully active.</li>
+                    <li>• Online payment buttons show setup-pending state.</li>
+                    <li>• Payment timeline starts populating once gateways are configured.</li>
+                  </ul>
+                </div>
               </div>
             </motion.div>
           </motion.div>

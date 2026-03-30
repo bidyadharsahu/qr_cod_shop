@@ -51,6 +51,13 @@ interface QueuedCheckout {
   queuedAt: number;
 }
 
+interface PaymentGatewayStatus {
+  stripeConfigured: boolean;
+  paypalConfigured: boolean;
+  mode: 'sandbox' | 'live';
+  anyProviderConfigured: boolean;
+}
+
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
 const formatDayLabel = (timestamp: number): string => {
@@ -162,6 +169,7 @@ function OrderContent() {
   const [latestOrderIdForPayment, setLatestOrderIdForPayment] = useState<number | null>(null);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState<string | null>(null);
   const [paymentLoading, setPaymentLoading] = useState<'card' | 'paypal' | null>(null);
+  const [cashPaymentLoading, setCashPaymentLoading] = useState(false);
   const [paymentVerifying, setPaymentVerifying] = useState(false);
   const [lastPaymentProvider, setLastPaymentProvider] = useState<'card' | 'paypal' | null>(null);
   const [menuLoading, setMenuLoading] = useState(true);
@@ -169,6 +177,13 @@ function OrderContent() {
   const [menuReloadTick, setMenuReloadTick] = useState(0);
   const [queuedCheckout, setQueuedCheckout] = useState<QueuedCheckout | null>(null);
   const [retryingQueuedCheckout, setRetryingQueuedCheckout] = useState(false);
+  const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<PaymentGatewayStatus>({
+    stripeConfigured: false,
+    paypalConfigured: false,
+    mode: 'sandbox',
+    anyProviderConfigured: false,
+  });
+  const [paymentGatewayLoading, setPaymentGatewayLoading] = useState(true);
   const [submittedQuantities, setSubmittedQuantities] = useState<Record<number, number>>({});
   const [lastSubmittedSubtotal, setLastSubmittedSubtotal] = useState(0);
   const [lastSubmittedItemsCount, setLastSubmittedItemsCount] = useState(0);
@@ -278,6 +293,23 @@ function OrderContent() {
       localStorage.removeItem(CHECKOUT_QUEUE_KEY);
     }
   }, [tableNumber]);
+
+  useEffect(() => {
+    const fetchPaymentGatewayStatus = async () => {
+      try {
+        const res = await fetch('/api/payment/status');
+        if (!res.ok) return;
+        const data = await res.json() as PaymentGatewayStatus;
+        setPaymentGatewayStatus(data);
+      } catch {
+        // Keep default fallback state.
+      } finally {
+        setPaymentGatewayLoading(false);
+      }
+    };
+
+    fetchPaymentGatewayStatus();
+  }, []);
 
   // If the customer empties cart after the flow completes, start a fresh add-on baseline.
   useEffect(() => {
@@ -1272,6 +1304,19 @@ function OrderContent() {
   };
 
   const handleOnlinePayment = async (provider: 'card' | 'paypal') => {
+    const providerConfigured = provider === 'card'
+      ? paymentGatewayStatus.stripeConfigured
+      : paymentGatewayStatus.paypalConfigured;
+
+    if (!providerConfigured) {
+      setPaymentStatusMessage(
+        provider === 'card'
+          ? 'Card payment is in setup mode right now. Please pay cash to manager.'
+          : 'PayPal is in setup mode right now. Please pay cash to manager.'
+      );
+      return;
+    }
+
     if (!paymentOrderId || !receiptId) {
       setPaymentStatusMessage('Place an order first before paying online.');
       return;
@@ -1305,6 +1350,69 @@ function OrderContent() {
       setPaymentStatusMessage('Unable to start payment right now. Please try again.');
     } finally {
       setPaymentLoading(null);
+    }
+  };
+
+  const handleCashPaidToManager = async () => {
+    if (!paymentOrderId || !receiptId) {
+      setPaymentStatusMessage('Place an order first before confirming cash payment.');
+      return;
+    }
+
+    const confirmed = window.confirm('Confirm that you paid cash to the manager?');
+    if (!confirmed) return;
+
+    setCashPaymentLoading(true);
+    setPaymentStatusMessage(null);
+
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'paid',
+          payment_status: 'paid',
+          payment_method: 'cash',
+          payment_type: 'direct_cash',
+          transaction_id: `cash-${Date.now()}`,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', paymentOrderId);
+
+      if (error) {
+        setPaymentStatusMessage('Could not confirm cash payment right now. Please ask manager to confirm.');
+        return;
+      }
+
+      await supabase
+        .from('restaurant_tables')
+        .update({ status: 'available', current_order_id: null })
+        .eq('table_number', Number(tableNumber));
+
+      await supabase
+        .from('payment_event_audit')
+        .insert({
+          order_id: paymentOrderId,
+          receipt_id: receiptId,
+          provider: 'system',
+          event_type: 'cash_paid_to_manager_customer_confirmed',
+          status: 'success',
+          amount: total,
+          currency: 'USD',
+          transaction_id: `cash-${Date.now()}`,
+          source: 'customer-bill',
+          event_time: new Date().toISOString(),
+          raw_payload: { table_number: tableNumber },
+        });
+
+      setPaymentStatusMessage('Cash payment confirmed. Thank you!');
+      addBotMessage('✅ Cash payment marked as paid. Thanks for dining with us!', [
+        { label: '⭐ Rate Experience', value: 'done' },
+        { label: '🍽️ Order More', value: 'menu' }
+      ]);
+    } catch {
+      setPaymentStatusMessage('Could not confirm cash payment right now. Please ask manager to confirm.');
+    } finally {
+      setCashPaymentLoading(false);
     }
   };
 
@@ -1858,27 +1966,52 @@ function OrderContent() {
                       </div>
                       <div className="rounded-xl p-3 text-center" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
                         <p className="font-medium text-[14px]" style={{ color: theme.primary }}>💵 Pay cash to the manager</p>
+                        <button
+                          onClick={handleCashPaidToManager}
+                          disabled={cashPaymentLoading}
+                          className="mt-2 w-full py-2 rounded-lg text-black text-[12px] font-semibold disabled:opacity-60"
+                          style={{ background: theme.primary }}
+                        >
+                          {cashPaymentLoading ? 'Confirming...' : 'I Paid to Manager (Cash)'}
+                        </button>
                       </div>
                       <div className="rounded-xl p-3 border border-sky-500/30 bg-sky-500/10 space-y-2">
                         <p className="text-[13px] font-medium text-sky-300 text-center">Or pay online securely (USD)</p>
+                        {!paymentGatewayLoading && !paymentGatewayStatus.anyProviderConfigured && (
+                          <p className="text-[12px] text-center text-amber-200">Online payment setup pending. Cash flow is active.</p>
+                        )}
+                        {!paymentGatewayLoading && paymentGatewayStatus.anyProviderConfigured && paymentGatewayStatus.mode === 'sandbox' && (
+                          <div className="flex justify-center">
+                            <button
+                              onClick={() => setPaymentStatusMessage('Test mode active: only sandbox/test payments will work right now.')}
+                              className="px-2.5 py-1 rounded-full border border-sky-300/30 bg-sky-500/15 text-[11px] font-semibold text-sky-100"
+                            >
+                              Test Mode Active
+                            </button>
+                          </div>
+                        )}
                         {paymentVerifying && (
                           <p className="text-[12px] text-center text-sky-100">Verifying payment status...</p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <button
                             onClick={() => handleOnlinePayment('card')}
-                            disabled={paymentLoading !== null}
+                            disabled={paymentLoading !== null || paymentGatewayLoading || !paymentGatewayStatus.stripeConfigured}
                             className="w-full py-2.5 px-3 rounded-xl font-semibold text-[13px] bg-white text-black disabled:opacity-60"
                           >
                             <CreditCard className="w-4 h-4 inline mr-1" />
-                            {paymentLoading === 'card' ? 'Connecting...' : 'Pay by Card'}
+                            {paymentLoading === 'card'
+                              ? 'Connecting...'
+                              : (paymentGatewayStatus.stripeConfigured ? 'Pay by Card' : 'Card Setup Pending')}
                           </button>
                           <button
                             onClick={() => handleOnlinePayment('paypal')}
-                            disabled={paymentLoading !== null}
+                            disabled={paymentLoading !== null || paymentGatewayLoading || !paymentGatewayStatus.paypalConfigured}
                             className="w-full py-2.5 px-3 rounded-xl font-semibold text-[13px] bg-[#0070ba] text-white disabled:opacity-60"
                           >
-                            {paymentLoading === 'paypal' ? 'Connecting...' : 'Pay with PayPal'}
+                            {paymentLoading === 'paypal'
+                              ? 'Connecting...'
+                              : (paymentGatewayStatus.paypalConfigured ? 'Pay with PayPal' : 'PayPal Setup Pending')}
                           </button>
                         </div>
                         {paymentStatusMessage && (
