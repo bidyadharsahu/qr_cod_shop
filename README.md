@@ -37,17 +37,20 @@ Webhook endpoints to configure in provider dashboards:
 - Stripe: `/api/payment/webhook/stripe`
 - PayPal: `/api/payment/webhook/paypal`
 
-## Database Upgrade For Dish Photos
+## Database Upgrades
 
 Run these SQL files in Supabase SQL editor:
 
 1. `ADD_MENU_IMAGE_COLUMN.sql`
 2. `ADD_SAMPLE_MENU_PHOTOS.sql`
 3. `ADD_PAYMENT_EVENT_AUDIT_TABLE.sql`
+4. `ADD_APP_SETTINGS_TABLE.sql`
 
 After this, admins can edit each dish photo URL from the menu modal. Chatbot/menu cards update live via realtime sync.
 
 The payment audit table powers the admin payment timeline panel, including checkout creation, verify attempts, webhook events, and cash-payment records.
+
+The app settings table stores company branding (business name, subtitle, logo URL, and logo hint) used by the admin dashboard and printable reports.
 
 ## Local Run
 

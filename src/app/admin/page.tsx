@@ -14,7 +14,7 @@ import {
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, Copy, Settings, WandSparkles, Printer
+  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette
 } from 'lucide-react';
 
 interface PaymentGatewayStatus {
@@ -24,7 +24,7 @@ interface PaymentGatewayStatus {
   anyProviderConfigured: boolean;
 }
 
-const COMPANY_PROFILE = {
+const DEFAULT_COMPANY_PROFILE = {
   name: 'netrikxr.shop',
   subtitle: 'Admin Panel',
   logo: '/icons/icon-192x192.png',
@@ -61,7 +61,7 @@ export default function AdminDashboard() {
   const [showQRModal, setShowQRModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [showAddTableModal, setShowAddTableModal] = useState(false);
-  const [showSetupChecklistModal, setShowSetupChecklistModal] = useState(false);
+  const [showBrandingModal, setShowBrandingModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
   const [paymentModalData, setPaymentModalData] = useState<Order | null>(null);
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
@@ -72,6 +72,14 @@ export default function AdminDashboard() {
     anyProviderConfigured: false,
   });
   const [paymentGatewayLoading, setPaymentGatewayLoading] = useState(true);
+  const [companyProfile, setCompanyProfile] = useState(DEFAULT_COMPANY_PROFILE);
+  const [brandingForm, setBrandingForm] = useState({
+    name: DEFAULT_COMPANY_PROFILE.name,
+    subtitle: DEFAULT_COMPANY_PROFILE.subtitle,
+    logo: DEFAULT_COMPANY_PROFILE.logo,
+    logoHint: DEFAULT_COMPANY_PROFILE.logoHint,
+  });
+  const [savingBranding, setSavingBranding] = useState(false);
   
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
@@ -124,9 +132,9 @@ export default function AdminDashboard() {
         </head>
         <body>
           <div class="brand">
-            <img class="logo" src="${getBaseUrl()}${COMPANY_PROFILE.logo}" alt="Logo" />
-            <h3 style="margin:0;">${COMPANY_PROFILE.name}</h3>
-            <p style="margin:2px 0 0; font-size: 12px; color:#666;">${COMPANY_PROFILE.logoHint}</p>
+            <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
+            <h3 style="margin:0;">${companyProfile.name}</h3>
+            <p style="margin:2px 0 0; font-size: 12px; color:#666;">${companyProfile.logoHint}</p>
           </div>
           <div class="meta">
             <div>Receipt: ${order.receipt_id}</div>
@@ -151,13 +159,186 @@ export default function AdminDashboard() {
     popup.print();
   };
 
-  const copyToClipboard = async (value: string, label: string) => {
+  const escapeCsv = (value: string | number | null | undefined) => {
+    const raw = value === null || value === undefined ? '' : String(value);
+    return `"${raw.replace(/"/g, '""')}"`;
+  };
+
+  const fetchBrandingSettings = useCallback(async () => {
+    const { data } = await supabase
+      .from('app_settings')
+      .select('business_name, admin_subtitle, logo_url, logo_hint')
+      .eq('id', 1)
+      .maybeSingle();
+
+    if (!data) return;
+
+    const next = {
+      name: data.business_name || DEFAULT_COMPANY_PROFILE.name,
+      subtitle: data.admin_subtitle || DEFAULT_COMPANY_PROFILE.subtitle,
+      logo: data.logo_url || DEFAULT_COMPANY_PROFILE.logo,
+      logoHint: data.logo_hint || DEFAULT_COMPANY_PROFILE.logoHint,
+    };
+
+    setCompanyProfile(next);
+    setBrandingForm(next);
+  }, []);
+
+  const saveBrandingSettings = async () => {
+    setSavingBranding(true);
     try {
-      await navigator.clipboard.writeText(value);
-      showToast(`${label} copied`);
-    } catch {
-      showToast(`Could not copy ${label}`, 'error');
+      const payload = {
+        id: 1,
+        business_name: brandingForm.name.trim() || DEFAULT_COMPANY_PROFILE.name,
+        admin_subtitle: brandingForm.subtitle.trim() || DEFAULT_COMPANY_PROFILE.subtitle,
+        logo_url: brandingForm.logo.trim() || DEFAULT_COMPANY_PROFILE.logo,
+        logo_hint: brandingForm.logoHint.trim() || DEFAULT_COMPANY_PROFILE.logoHint,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('app_settings').upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        showToast('Could not save branding settings. Run app settings SQL first.', 'error');
+        return;
+      }
+
+      const next = {
+        name: payload.business_name,
+        subtitle: payload.admin_subtitle,
+        logo: payload.logo_url,
+        logoHint: payload.logo_hint,
+      };
+      setCompanyProfile(next);
+      showToast('Branding saved successfully');
+      setShowBrandingModal(false);
+    } finally {
+      setSavingBranding(false);
     }
+  };
+
+  const printDailyClosingReport = (
+    todayOrdersSnapshot: Order[],
+    todayPaidOrdersSnapshot: Order[],
+    todayRevenueSnapshot: number,
+    todayCashCount: number,
+    todayOnlineCount: number,
+    todayCashAmount: number,
+    todayOnlineAmount: number,
+    todayCancelledCount: number
+  ) => {
+    if (typeof window === 'undefined') return;
+
+    const popup = window.open('', '_blank', 'width=900,height=1200');
+    if (!popup) {
+      showToast('Pop-up blocked. Please allow pop-ups to print report.', 'error');
+      return;
+    }
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Daily Closing Report</title>
+          <style>
+            @page { size: A4; margin: 18mm; }
+            body { font-family: Arial, sans-serif; color: #111; }
+            .head { display:flex; align-items:center; gap:12px; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-bottom: 14px; }
+            .logo { width: 54px; height: 54px; border-radius: 10px; }
+            .title { margin:0; font-size: 20px; }
+            .sub { margin:2px 0 0; color:#666; font-size:12px; }
+            .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom: 12px; }
+            .card { border:1px solid #ddd; border-radius:10px; padding:10px; }
+            .card h4 { margin:0 0 6px; font-size: 13px; color:#444; }
+            .big { font-size: 24px; font-weight: 700; margin: 0; }
+            table { width:100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border-bottom: 1px solid #eee; padding: 6px; font-size: 12px; text-align:left; }
+            th { background:#fafafa; }
+          </style>
+        </head>
+        <body>
+          <div class="head">
+            <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
+            <div>
+              <h1 class="title">${companyProfile.name} - Daily Closing Report</h1>
+              <p class="sub">${new Date().toLocaleString()} • ${companyProfile.logoHint}</p>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="card"><h4>Total Orders</h4><p class="big">${todayOrdersSnapshot.length}</p></div>
+            <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${todayRevenueSnapshot.toFixed(2)}</p></div>
+            <div class="card"><h4>Cash Payments</h4><p class="big">${todayCashCount} • $${todayCashAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Online Payments</h4><p class="big">${todayOnlineCount} • $${todayOnlineAmount.toFixed(2)}</p></div>
+          </div>
+          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${todayPaidOrdersSnapshot.length} • Cancelled: ${todayCancelledCount}</p></div>
+          <table>
+            <thead>
+              <tr><th>Receipt</th><th>Table</th><th>Status</th><th>Payment</th><th>Total</th><th>Created</th></tr>
+            </thead>
+            <tbody>
+              ${todayOrdersSnapshot.map(order => `<tr><td>${order.receipt_id}</td><td>${order.table_number}</td><td>${order.status}</td><td>${order.payment_status}</td><td>$${order.total.toFixed(2)}</td><td>${new Date(order.created_at).toLocaleString()}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `);
+
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const exportTodayAccountingCsv = (todayOrdersSnapshot: Order[], todayPaymentEventsSnapshot: PaymentEventAudit[]) => {
+    const lines: string[] = [];
+    lines.push('SECTION,TYPE,ORDER_ID,RECEIPT_ID,TABLE,STATUS,PAYMENT_STATUS,PAYMENT_TYPE,TOTAL,EVENT_TYPE,EVENT_STATUS,PROVIDER,TRANSACTION_ID,SOURCE,TIME');
+
+    for (const order of todayOrdersSnapshot) {
+      lines.push([
+        escapeCsv('orders'),
+        escapeCsv('order_row'),
+        escapeCsv(order.id),
+        escapeCsv(order.receipt_id),
+        escapeCsv(order.table_number),
+        escapeCsv(order.status),
+        escapeCsv(order.payment_status),
+        escapeCsv(order.payment_type),
+        escapeCsv(order.total.toFixed(2)),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(order.transaction_id),
+        escapeCsv(''),
+        escapeCsv(order.created_at),
+      ].join(','));
+    }
+
+    for (const evt of todayPaymentEventsSnapshot) {
+      lines.push([
+        escapeCsv('payments'),
+        escapeCsv('event_row'),
+        escapeCsv(evt.order_id),
+        escapeCsv(evt.receipt_id),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(evt.amount ?? ''),
+        escapeCsv(evt.event_type),
+        escapeCsv(evt.status),
+        escapeCsv(evt.provider),
+        escapeCsv(evt.transaction_id),
+        escapeCsv(evt.source),
+        escapeCsv(evt.event_time || evt.created_at),
+      ].join(','));
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `accounting-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported');
   };
 
   // Auth check - using sessionStorage
@@ -425,6 +606,13 @@ export default function AdminDashboard() {
   const paymentCaptureRate = todayOrders.length > 0 ? (todayPaidOrders.length / todayOrders.length) * 100 : 0;
   const onlinePaymentsToday = todayPaidOrders.filter(o => o.payment_type === 'chatbot_payment').length;
   const cashPaymentsToday = todayPaidOrders.filter(o => o.payment_type === 'direct_cash').length;
+  const onlineAmountToday = todayPaidOrders
+    .filter(o => o.payment_type === 'chatbot_payment')
+    .reduce((sum, o) => sum + o.total, 0);
+  const cashAmountToday = todayPaidOrders
+    .filter(o => o.payment_type === 'direct_cash' || o.payment_method === 'cash')
+    .reduce((sum, o) => sum + o.total, 0);
+  const todayPaymentEvents = paymentEvents.filter(evt => new Date(evt.event_time || evt.created_at).toDateString() === new Date().toDateString());
   const topSellingItemsToday = (() => {
     const map = new Map<string, { qty: number; amount: number }>();
     for (const order of todayOrders) {
@@ -552,6 +740,11 @@ export default function AdminDashboard() {
     fetchPaymentGatewayStatus();
   }, []);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchBrandingSettings();
+  }, [isAuthenticated, fetchBrandingSettings]);
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
@@ -653,17 +846,17 @@ export default function AdminDashboard() {
       </AnimatePresence>
 
       {/* Header with horizontal menu */}
-      <header className="bg-zinc-800 border-b border-zinc-700 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-14 sm:h-16 gap-2 sm:gap-4">
+      <header className="bg-zinc-900/95 backdrop-blur-xl border-b border-zinc-800 sticky top-0 z-40">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 sm:h-[74px] gap-3 sm:gap-5">
             {/* Site Name */}
             <div className="flex-shrink-0 flex items-center gap-2.5 min-w-0">
               <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-900">
-                <Image src={COMPANY_PROFILE.logo} alt="Company logo" fill sizes="36px" className="object-cover" />
+                <Image src={companyProfile.logo} alt="Company logo" fill sizes="36px" className="object-cover" />
               </div>
               <div className="min-w-0">
-                <p className="font-bold text-base truncate" style={{ color: theme.primary }}>{COMPANY_PROFILE.name}</p>
-                <p className="text-[11px] text-gray-500 truncate">{COMPANY_PROFILE.subtitle} • {COMPANY_PROFILE.logoHint}</p>
+                <p className="font-bold text-base truncate" style={{ color: theme.primary }}>{companyProfile.name}</p>
+                <p className="text-[11px] text-gray-500 truncate">{companyProfile.subtitle} • {companyProfile.logoHint}</p>
               </div>
             </div>
 
@@ -674,12 +867,12 @@ export default function AdminDashboard() {
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="flex items-center gap-1 sm:gap-2 overflow-x-auto">
+            <nav className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto px-1">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-1.5 px-3 sm:px-5 py-2 rounded-lg text-sm sm:text-base font-semibold transition-colors whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                     activeTab === tab.id 
                       ? 'text-white' 
                       : 'text-gray-400 hover:text-white hover:bg-zinc-700'
@@ -708,15 +901,11 @@ export default function AdminDashboard() {
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center">{waiterCalls.length}</span>
                 </div>
               )}
-              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
+              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800">
                 <QrCode className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">QR Codes</span>
               </button>
-              <button onClick={() => setShowSetupChecklistModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
-                <Settings className="w-5 h-5" />
-                <span className="hidden xl:inline text-sm">Setup</span>
-              </button>
-              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors">
+              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800">
                 <LogOut className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
@@ -729,10 +918,10 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-7">
             {/* Mobile Clock & Theme - Only shows on small screens */}
             <div className="md:hidden rounded-xl p-4 text-center" style={{ background: `linear-gradient(to right, ${theme.primary}1a, ${theme.primaryDark || theme.primary}1a)`, border: `1px solid ${theme.primary}4d` }}>
               <div className="flex items-center justify-center gap-2 mb-1">
@@ -745,36 +934,36 @@ export default function AdminDashboard() {
             </div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 hover:border-zinc-600 transition-colors shadow-sm min-h-[112px]">
+            <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 hover:border-zinc-600 transition-colors shadow-sm min-h-[118px]">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Today&apos;s Orders</p>
                 <p className="text-xl font-bold">{todayOrders.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <DollarSign className="w-4 h-4 text-green-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Revenue</p>
                 <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
                 <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
                   <Clock className="w-4 h-4 text-red-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Pending</p>
                 <p className="text-xl font-bold">{pendingOrders}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <Users className="w-4 h-4 text-purple-400" />
                 </div>
                 <p className="text-gray-400 text-xs">Active Tables</p>
                 <p className="text-xl font-bold">{activeTables}/{tables.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-xl p-3 sm:p-4 border border-zinc-700 shadow-sm min-h-[112px]">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
                 <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
                   <Clock className="w-4 h-4" style={{ color: theme.primary }} />
                 </div>
@@ -783,7 +972,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="rounded-xl border p-4" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
+            <div className="rounded-2xl border p-4" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold" style={{ color: theme.primary }}>Payment Gateway Readiness</p>
@@ -802,19 +991,46 @@ export default function AdminDashboard() {
                   <span className={`px-2 py-1 rounded-md border ${paymentGatewayStatus.paypalConfigured ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'}`}>
                     PayPal: {paymentGatewayStatus.paypalConfigured ? 'Ready' : 'Setup Pending'}
                   </span>
-                  <button
-                    onClick={() => setShowSetupChecklistModal(true)}
-                    className="px-2 py-1 rounded-md border border-white/20 text-gray-100 hover:bg-white/10 transition-colors"
-                  >
-                    Setup Checklist
-                  </button>
                 </div>
               </div>
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button
+                onClick={() => setShowBrandingModal(true)}
+                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Palette className="w-4 h-4" style={{ color: theme.primary }} />
+                  <span className="text-sm font-semibold">Company Branding</span>
+                </div>
+                <p className="text-xs text-gray-500">Edit logo URL and business name</p>
+              </button>
+              <button
+                onClick={() => printDailyClosingReport(todayOrders, todayPaidOrders, todayRevenue, cashPaymentsToday, onlinePaymentsToday, cashAmountToday, onlineAmountToday, todayCancelledOrders)}
+                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Printer className="w-4 h-4 text-emerald-300" />
+                  <span className="text-sm font-semibold">Print Daily Closing (A4)</span>
+                </div>
+                <p className="text-xs text-gray-500">Cash, online, and order summary</p>
+              </button>
+              <button
+                onClick={() => exportTodayAccountingCsv(todayOrders, todayPaymentEvents)}
+                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Download className="w-4 h-4 text-sky-300" />
+                  <span className="text-sm font-semibold">Export Accountant CSV</span>
+                </div>
+                <p className="text-xs text-gray-500">Today orders + payment timeline</p>
+              </button>
+            </div>
+
             {/* Analytics KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs uppercase tracking-wide text-gray-400">Avg Ticket</p>
                   <TrendingUp className="w-4 h-4 text-emerald-400" />
@@ -823,7 +1039,7 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500 mt-1">Based on paid orders today</p>
               </div>
 
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs uppercase tracking-wide text-gray-400">Payment Capture</p>
                   <DollarSign className="w-4 h-4 text-sky-400" />
@@ -832,7 +1048,7 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500 mt-1">{todayPaidOrders.length}/{todayOrders.length || 0} orders paid</p>
               </div>
 
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs uppercase tracking-wide text-gray-400">Online vs Cash</p>
                   <CreditCard className="w-4 h-4" style={{ color: theme.primary }} />
@@ -841,7 +1057,7 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500 mt-1">{cashPaymentsToday} cash today</p>
               </div>
 
-              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs uppercase tracking-wide text-gray-400">Cancellations</p>
                   <AlertTriangle className="w-4 h-4 text-rose-400" />
@@ -1470,6 +1686,84 @@ export default function AdminDashboard() {
         )}
       </AnimatePresence>
 
+      {/* Branding Modal */}
+      <AnimatePresence>
+        {showBrandingModal && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-lg w-full">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
+                <h2 className="text-xl font-bold">Company Branding</h2>
+                <button onClick={() => setShowBrandingModal(false)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Business Name</label>
+                  <input
+                    type="text"
+                    value={brandingForm.name}
+                    onChange={(e) => setBrandingForm(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none"
+                    placeholder="Your business name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Admin Subtitle</label>
+                  <input
+                    type="text"
+                    value={brandingForm.subtitle}
+                    onChange={(e) => setBrandingForm(prev => ({ ...prev, subtitle: e.target.value }))}
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none"
+                    placeholder="Admin Panel"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Logo URL</label>
+                  <input
+                    type="url"
+                    value={brandingForm.logo}
+                    onChange={(e) => setBrandingForm(prev => ({ ...prev, logo: e.target.value }))}
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none"
+                    placeholder="/icons/icon-192x192.png"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Logo Hint</label>
+                  <input
+                    type="text"
+                    value={brandingForm.logoHint}
+                    onChange={(e) => setBrandingForm(prev => ({ ...prev, logoHint: e.target.value }))}
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none"
+                    placeholder="Logo Placeholder"
+                  />
+                </div>
+                <div className="rounded-xl border border-zinc-700 bg-zinc-900 p-3">
+                  <p className="text-xs text-gray-500 mb-2">Preview</p>
+                  <div className="flex items-center gap-3">
+                    <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-800">
+                      <Image src={brandingForm.logo || DEFAULT_COMPANY_PROFILE.logo} alt="Brand preview" fill sizes="40px" className="object-cover" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-white">{brandingForm.name || DEFAULT_COMPANY_PROFILE.name}</p>
+                      <p className="text-xs text-gray-400">{brandingForm.subtitle || DEFAULT_COMPANY_PROFILE.subtitle}</p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={saveBrandingSettings}
+                  disabled={savingBranding}
+                  className="w-full py-3 text-black rounded-lg font-semibold transition-colors disabled:opacity-60"
+                  style={{ background: theme.primary }}
+                >
+                  {savingBranding ? 'Saving...' : 'Save Branding'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Add Table Modal */}
       <AnimatePresence>
         {showAddTableModal && (
@@ -1489,92 +1783,6 @@ export default function AdminDashboard() {
                 <button onClick={addTable} className="w-full py-3 text-black rounded-lg font-semibold transition-colors" style={{ background: theme.primary }}>
                   Add Table
                 </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Setup Checklist Modal */}
-      <AnimatePresence>
-        {showSetupChecklistModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6 border-b border-zinc-700 flex justify-between items-center sticky top-0 bg-zinc-800 rounded-t-2xl">
-                <div>
-                  <h2 className="text-xl font-bold">Payment Setup Checklist</h2>
-                  <p className="text-xs text-gray-500 mt-1">No credentials now is fine. Keep cash flow active and finish setup later.</p>
-                </div>
-                <button onClick={() => setShowSetupChecklistModal(false)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-5">
-                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
-                  <p className="text-sm font-semibold text-white mb-2">1. Webhook endpoints</p>
-                  <div className="space-y-3">
-                    <div className="rounded-lg border border-zinc-700 p-3">
-                      <p className="text-xs text-gray-400 mb-1">Stripe webhook URL</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-gray-200 break-all flex-1">{getBaseUrl()}/api/payment/webhook/stripe</p>
-                        <button onClick={() => copyToClipboard(`${getBaseUrl()}/api/payment/webhook/stripe`, 'Stripe webhook URL')} className="px-2 py-1 rounded border border-zinc-600 text-xs text-gray-200 hover:bg-zinc-700">
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="rounded-lg border border-zinc-700 p-3">
-                      <p className="text-xs text-gray-400 mb-1">PayPal webhook URL</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-gray-200 break-all flex-1">{getBaseUrl()}/api/payment/webhook/paypal</p>
-                        <button onClick={() => copyToClipboard(`${getBaseUrl()}/api/payment/webhook/paypal`, 'PayPal webhook URL')} className="px-2 py-1 rounded border border-zinc-600 text-xs text-gray-200 hover:bg-zinc-700">
-                          <Copy className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
-                  <p className="text-sm font-semibold text-white mb-2">2. Environment variables to set later</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      'NEXT_PUBLIC_SUPABASE_URL',
-                      'NEXT_PUBLIC_SUPABASE_ANON_KEY',
-                      'SUPABASE_SERVICE_ROLE_KEY',
-                      'NEXT_PUBLIC_SITE_URL',
-                      'STRIPE_SECRET_KEY',
-                      'STRIPE_WEBHOOK_SECRET',
-                      'PAYPAL_CLIENT_ID',
-                      'PAYPAL_CLIENT_SECRET',
-                      'PAYPAL_MODE',
-                      'PAYPAL_WEBHOOK_ID'
-                    ].map((key) => (
-                      <div key={key} className="px-2.5 py-2 rounded-md bg-zinc-800 border border-zinc-700 text-xs text-gray-200 font-mono">
-                        {key}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-4">
-                  <p className="text-sm font-semibold text-white mb-2">3. Branding and bill printing</p>
-                  <ul className="space-y-1 text-xs text-gray-300">
-                    <li>• Header uses a logo placeholder at {COMPANY_PROFILE.logo}.</li>
-                    <li>• To print any bill: Orders tab → order card → Print Bill.</li>
-                    <li>• Printed bill includes receipt, table, item list, totals, and logo.</li>
-                  </ul>
-                </div>
-
-                <div className="rounded-xl border p-4" style={{ borderColor: `${theme.primary}55`, background: `${theme.primary}12` }}>
-                  <p className="text-sm font-semibold" style={{ color: theme.primary }}>Current behavior without credentials</p>
-                  <ul className="mt-2 space-y-1 text-xs text-gray-300">
-                    <li>• Ordering flow works normally.</li>
-                    <li>• Cash payment remains fully active.</li>
-                    <li>• Online payment buttons show setup-pending state.</li>
-                    <li>• Payment timeline starts populating once gateways are configured.</li>
-                  </ul>
-                </div>
               </div>
             </motion.div>
           </motion.div>
