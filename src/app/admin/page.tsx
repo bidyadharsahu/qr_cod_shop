@@ -24,6 +24,8 @@ interface PaymentGatewayStatus {
   anyProviderConfigured: boolean;
 }
 
+type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
+
 const DEFAULT_COMPANY_PROFILE = {
   name: 'netrikxr.shop',
   subtitle: 'Admin Panel',
@@ -48,6 +50,7 @@ export default function AdminDashboard() {
   
   // Theme
   const [theme, setTheme] = useState<AppTheme>(getCurrentTheme());
+  const [uiTone, setUiTone] = useState<AdminUiTone>('fintech');
   
   // Waiter calls
   const [waiterCalls, setWaiterCalls] = useState<Order[]>([]);
@@ -724,6 +727,19 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('admin_ui_tone') as AdminUiTone | null;
+    if (stored === 'corporate' || stored === 'luxury' || stored === 'fintech') {
+      setUiTone(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('admin_ui_tone', uiTone);
+  }, [uiTone]);
+
+  useEffect(() => {
     const fetchPaymentGatewayStatus = async () => {
       try {
         const res = await fetch('/api/payment/status');
@@ -760,8 +776,17 @@ export default function AdminDashboard() {
     { id: 'tables', icon: Grid3X3, label: 'Tables' },
   ];
 
+  const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
+    { id: 'corporate', label: 'Corporate' },
+    { id: 'luxury', label: 'Luxury' },
+    { id: 'fintech', label: 'Fintech' },
+  ];
+
   return (
-    <div className="min-h-screen bg-zinc-900 text-white">
+    <div className={`admin-shell admin-tone-${uiTone} min-h-screen text-white relative overflow-x-clip`}>
+      <div className="admin-orb admin-orb-a" />
+      <div className="admin-orb admin-orb-b" />
+      <div className="admin-orb admin-orb-c" />
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -846,16 +871,16 @@ export default function AdminDashboard() {
       </AnimatePresence>
 
       {/* Header with horizontal menu */}
-      <header className="bg-zinc-900/95 backdrop-blur-xl border-b border-zinc-800 sticky top-0 z-40">
+      <header className="bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/90 sticky top-0 z-40 shadow-[0_8px_30px_rgba(0,0,0,0.28)]">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-[74px] gap-3 sm:gap-5">
             {/* Site Name */}
-            <div className="flex-shrink-0 flex items-center gap-2.5 min-w-0">
-              <div className="relative w-9 h-9 rounded-lg overflow-hidden border border-zinc-700 bg-zinc-900">
+            <div className="flex-shrink-0 flex items-center gap-3 min-w-0">
+              <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-inner shadow-black/50">
                 <Image src={companyProfile.logo} alt="Company logo" fill sizes="36px" className="object-cover" />
               </div>
               <div className="min-w-0">
-                <p className="font-bold text-base truncate" style={{ color: theme.primary }}>{companyProfile.name}</p>
+                <p className="font-semibold text-base tracking-tight truncate" style={{ color: theme.primary }}>{companyProfile.name}</p>
                 <p className="text-[11px] text-gray-500 truncate">{companyProfile.subtitle} • {companyProfile.logoHint}</p>
               </div>
             </div>
@@ -867,7 +892,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto px-1">
+            <nav className="admin-nav flex items-center gap-1.5 sm:gap-2 overflow-x-auto px-1.5 py-1 rounded-xl border border-zinc-800/90 bg-zinc-900/70">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
@@ -875,7 +900,7 @@ export default function AdminDashboard() {
                   className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                     activeTab === tab.id 
                       ? 'text-white' 
-                      : 'text-gray-400 hover:text-white hover:bg-zinc-700'
+                      : 'text-gray-400 hover:text-white hover:bg-zinc-800'
                   }`}
                   style={activeTab === tab.id ? { background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}4d` } : {}}
                 >
@@ -889,11 +914,22 @@ export default function AdminDashboard() {
             </nav>
 
             {/* Right side actions */}
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               {/* Theme badge */}
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}33` }}>
                 <Sparkles className="w-3 h-3" />
                 {theme.occasion === 'default' ? 'Classic' : theme.name}
+              </div>
+              <div className="hidden xl:flex items-center gap-1 rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1">
+                {toneOptions.map((tone) => (
+                  <button
+                    key={tone.id}
+                    onClick={() => setUiTone(tone.id)}
+                    className={`tone-chip px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-colors ${uiTone === tone.id ? 'is-active' : ''}`}
+                  >
+                    {tone.label}
+                  </button>
+                ))}
               </div>
               {waiterCalls.length > 0 && (
                 <div className="relative">
@@ -901,11 +937,11 @@ export default function AdminDashboard() {
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center">{waiterCalls.length}</span>
                 </div>
               )}
-              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800">
+              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800/90 border border-transparent hover:border-zinc-700/80">
                 <QrCode className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">QR Codes</span>
               </button>
-              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800">
+              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800/90 border border-transparent hover:border-zinc-700/80">
                 <LogOut className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
@@ -918,12 +954,46 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-12 relative z-[1]">
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-7">
+            <div className="admin-panel rounded-2xl p-5 sm:p-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Operations Hub</p>
+                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Executive Dashboard</h1>
+                  <p className="text-sm text-gray-400 mt-1">Live orders, payments, and table operations in one clean workflow.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2">
+                    <p className="text-[11px] text-gray-500 uppercase">Open Orders</p>
+                    <p className="text-lg font-semibold text-white">{pendingOrders}</p>
+                  </div>
+                  <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2">
+                    <p className="text-[11px] text-gray-500 uppercase">Paid Today</p>
+                    <p className="text-lg font-semibold text-emerald-300">{todayPaidOrders.length}</p>
+                  </div>
+                </div>
+              </div>
+              <div className="xl:hidden mt-4 flex flex-wrap items-center gap-2">
+                <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Tone</p>
+                <div className="flex items-center gap-1 rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1">
+                  {toneOptions.map((tone) => (
+                    <button
+                      key={tone.id}
+                      onClick={() => setUiTone(tone.id)}
+                      className={`tone-chip px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-colors ${uiTone === tone.id ? 'is-active' : ''}`}
+                    >
+                      {tone.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Mobile Clock & Theme - Only shows on small screens */}
-            <div className="md:hidden rounded-xl p-4 text-center" style={{ background: `linear-gradient(to right, ${theme.primary}1a, ${theme.primaryDark || theme.primary}1a)`, border: `1px solid ${theme.primary}4d` }}>
+            <div className="md:hidden rounded-2xl p-4 text-center" style={{ background: `linear-gradient(to right, ${theme.primary}1a, ${theme.primaryDark || theme.primary}1a)`, border: `1px solid ${theme.primary}4d` }}>
               <div className="flex items-center justify-center gap-2 mb-1">
                 <Sparkles className="w-4 h-4" style={{ color: theme.primary }} />
                 <span className="text-xs font-medium" style={{ color: theme.primary }}>{theme.name} Theme</span>
@@ -972,7 +1042,7 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="rounded-2xl border p-4" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
+            <div className="rounded-2xl border p-4 shadow-[0_10px_30px_rgba(0,0,0,0.2)]" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold" style={{ color: theme.primary }}>Payment Gateway Readiness</p>
@@ -995,10 +1065,10 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button
                 onClick={() => setShowBrandingModal(true)}
-                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Palette className="w-4 h-4" style={{ color: theme.primary }} />
@@ -1008,7 +1078,7 @@ export default function AdminDashboard() {
               </button>
               <button
                 onClick={() => printDailyClosingReport(todayOrders, todayPaidOrders, todayRevenue, cashPaymentsToday, onlinePaymentsToday, cashAmountToday, onlineAmountToday, todayCancelledOrders)}
-                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Printer className="w-4 h-4 text-emerald-300" />
@@ -1018,7 +1088,7 @@ export default function AdminDashboard() {
               </button>
               <button
                 onClick={() => exportTodayAccountingCsv(todayOrders, todayPaymentEvents)}
-                className="rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-4 py-3 text-left transition-colors"
+                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Download className="w-4 h-4 text-sky-300" />
@@ -1068,7 +1138,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Top selling dishes */}
-            <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+            <div className="admin-panel rounded-2xl p-4 sm:p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Top Selling Dishes (Today)</h3>
                 <span className="text-xs text-gray-500">Live from current day orders</span>
@@ -1084,7 +1154,7 @@ export default function AdminDashboard() {
               ) : (
                 <div className="space-y-2">
                   {topSellingItemsToday.map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-lg px-3 py-2">
+                    <div key={item.name} className="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-xl px-3 py-2.5">
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">#{index + 1} {item.name}</p>
                         <p className="text-xs text-gray-500">Qty sold: {item.qty}</p>
@@ -1098,7 +1168,7 @@ export default function AdminDashboard() {
 
             {/* Mini hourly trend bars */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+              <div className="admin-panel rounded-2xl p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold">Orders Per Hour</h3>
                   <span className="text-xs text-gray-500">Today</span>
@@ -1130,7 +1200,7 @@ export default function AdminDashboard() {
                 )}
               </div>
 
-              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+              <div className="admin-panel rounded-2xl p-4 sm:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold">Revenue Per Hour</h3>
                   <span className="text-xs text-gray-500">Paid orders only</span>
@@ -1162,7 +1232,7 @@ export default function AdminDashboard() {
 
             {/* Waiter Calls Banner */}
             {waiterCalls.length > 0 && (
-              <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-4">
+              <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-2xl p-4">
                 <div className="flex items-center gap-3 mb-3">
                   <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
                   <h3 className="font-bold text-orange-400">Active Waiter Calls ({waiterCalls.length})</h3>
@@ -1185,28 +1255,28 @@ export default function AdminDashboard() {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl p-4 text-left transition-colors">
+              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <QrCode className="w-4 h-4 text-purple-400" />
                 </div>
                 <p className="font-medium text-sm">Print QR Codes</p>
                 <p className="text-xs text-gray-500">For all tables</p>
               </button>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <Plus className="w-4 h-4 text-green-400" />
                 </div>
                 <p className="font-medium text-sm">Add Menu Item</p>
                 <p className="text-xs text-gray-500">New product</p>
               </button>
-              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <Grid3X3 className="w-4 h-4 text-blue-400" />
                 </div>
                 <p className="font-medium text-sm">Add Table</p>
                 <p className="text-xs text-gray-500">New seating</p>
               </button>
-              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
                 <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
                   <ShoppingBag className="w-4 h-4" style={{ color: theme.primary }} />
                 </div>
@@ -1218,7 +1288,7 @@ export default function AdminDashboard() {
             {/* Recent Orders & Tables */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Recent Orders */}
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+              <div className="admin-panel rounded-2xl p-4">
                 <h2 className="text-base font-semibold mb-3">Recent Orders</h2>
                 {orders.length === 0 ? (
                   <p className="text-gray-500 text-center py-8">No orders yet</p>
@@ -1245,7 +1315,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Tables Overview */}
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-4">
+              <div className="admin-panel rounded-2xl p-4">
                 <h2 className="text-base font-semibold mb-3">Tables</h2>
                 {tables.length === 0 ? (
                   <p className="text-gray-500 text-center py-6">No tables configured</p>
@@ -1271,8 +1341,8 @@ export default function AdminDashboard() {
 
         {/* Orders Tab */}
         {activeTab === 'orders' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <h1 className="text-xl font-bold">Orders</h1>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-gray-400">Est. wait:</span>
@@ -1281,7 +1351,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Search & Filters */}
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="admin-panel rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -1332,7 +1402,7 @@ export default function AdminDashboard() {
 
             <p className="text-xs text-gray-500">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found</p>
 
-            <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+            <div className="admin-panel rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Payment Event Timeline</h3>
                 <span className="text-xs text-gray-500">Latest {filteredPaymentEvents.length} events</span>
@@ -1389,7 +1459,7 @@ export default function AdminDashboard() {
             </div>
 
             {filteredOrders.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+              <div className="admin-panel rounded-2xl p-10 text-center">
                 <ShoppingBag className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm">No orders yet</p>
               </div>
@@ -1399,7 +1469,7 @@ export default function AdminDashboard() {
                   <motion.div
                     key={order.id}
                     layout
-                    className={`rounded-lg p-3 border ${isAddOnOrder(order) ? 'order-addon-card border-amber-500/40' : 'bg-zinc-800 border-zinc-700'}`}
+                    className={`rounded-xl p-4 border ${isAddOnOrder(order) ? 'order-addon-card border-amber-500/40' : 'bg-zinc-800/95 border-zinc-700'}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
@@ -1481,8 +1551,8 @@ export default function AdminDashboard() {
 
         {/* Menu Tab */}
         {activeTab === 'menu' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            <div className="flex items-center justify-between">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
               <h1 className="text-xl font-bold">Menu</h1>
               <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
                 <Plus className="w-4 h-4" /> Add Item
@@ -1490,7 +1560,7 @@ export default function AdminDashboard() {
             </div>
             
             {menuItems.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+              <div className="admin-panel rounded-2xl p-10 text-center">
                 <UtensilsCrossed className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm mb-4">No menu items yet</p>
                 <button onClick={() => setShowMenuModal(true)} className="px-5 py-2 text-black rounded-lg font-medium text-sm" style={{ background: theme.primary }}>
@@ -1500,7 +1570,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {menuItems.map(item => (
-                  <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-lg p-3 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
+                  <motion.div key={item.id} layout className={`bg-zinc-800/95 border rounded-2xl p-3.5 shadow-sm ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
                     <div className="relative h-32 mb-3 rounded-lg overflow-hidden border border-zinc-700">
                       <Image
                         src={item.image_url || getDefaultMenuImage(item.name, item.category)}
@@ -1537,8 +1607,8 @@ export default function AdminDashboard() {
 
         {/* Tables Tab */}
         {activeTab === 'tables' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-            <div className="flex items-center justify-between">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
               <h1 className="text-xl font-bold">Tables</h1>
               <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
                 <Plus className="w-4 h-4" /> Add Table
@@ -1546,7 +1616,7 @@ export default function AdminDashboard() {
             </div>
             
             {tables.length === 0 ? (
-              <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
+              <div className="admin-panel rounded-2xl p-10 text-center">
                 <Grid3X3 className="w-10 h-10 text-gray-600 mx-auto mb-3" />
                 <p className="text-gray-500 text-sm mb-4">No tables configured</p>
                 <button onClick={() => setShowAddTableModal(true)} className="px-5 py-2 text-black rounded-lg font-medium text-sm" style={{ background: theme.primary }}>
@@ -1556,7 +1626,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 {tables.map(table => (
-                  <motion.div key={table.id} layout className={`bg-zinc-800 border rounded-lg p-3 text-center ${
+                  <motion.div key={table.id} layout className={`bg-zinc-800/95 border rounded-2xl p-3 text-center shadow-sm ${
                     table.status === 'available' ? 'border-teal-500/30' :
                     table.status === 'occupied' ? 'border-red-500/30' :
                     'border-amber-500/30'

@@ -760,6 +760,338 @@ button {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+.admin-shell {
+  --admin-bg-a: rgba(20, 184, 166, 0.08);
+  --admin-bg-b: rgba(59, 130, 246, 0.08);
+  --admin-panel-bg: rgba(24, 24, 27, 0.72);
+  --admin-panel-border: rgba(63, 63, 70, 0.7);
+  --admin-orb-a: rgba(20, 184, 166, 0.3);
+  --admin-orb-b: rgba(59, 130, 246, 0.26);
+  --admin-orb-c: rgba(234, 179, 8, 0.2);
+  --admin-heading-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-body-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-heading-weight: 650;
+  --admin-heading-tracking: -0.01em;
+  --admin-body-tracking: 0;
+  --admin-muted-opacity: 0.92;
+  --admin-kpi-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-kpi-weight: 700;
+  --admin-kpi-tracking: -0.015em;
+  --admin-body-size: 0.92rem;
+  --admin-heading-size: 1rem;
+  --admin-kpi-xl-size: 1.85rem;
+  --admin-kpi-lg-size: 1.42rem;
+  --admin-kpi-md-size: 1.2rem;
+  --admin-label-transform: uppercase;
+  --admin-label-tracking: 0.08em;
+  --admin-label-size: 0.72rem;
+  --admin-panel-glow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  background:
+    radial-gradient(circle at 10% 10%, var(--admin-bg-a), transparent 34%),
+    radial-gradient(circle at 88% 14%, var(--admin-bg-b), transparent 30%),
+    linear-gradient(180deg, #0a0a0c 0%, #09090b 44%, #08080a 100%);
+}
+
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3,
+.admin-shell h4 {
+  font-family: var(--admin-heading-font);
+  font-weight: var(--admin-heading-weight);
+  letter-spacing: var(--admin-heading-tracking);
+}
+
+.admin-shell p,
+.admin-shell span,
+.admin-shell button,
+.admin-shell input,
+.admin-shell select,
+.admin-shell option,
+.admin-shell label {
+  font-family: var(--admin-body-font);
+  font-size: var(--admin-body-size);
+  letter-spacing: var(--admin-body-tracking);
+}
+
+.admin-shell .text-base.font-semibold,
+.admin-shell .text-base.font-bold,
+.admin-shell .text-xl.font-semibold,
+.admin-shell .text-xl.font-bold,
+.admin-shell .text-2xl.font-semibold,
+.admin-shell .text-2xl.font-bold {
+  font-size: var(--admin-heading-size);
+}
+
+.admin-shell .text-xl.font-bold,
+.admin-shell .text-2xl.font-bold,
+.admin-shell .text-3xl.font-bold {
+  font-family: var(--admin-kpi-font);
+  font-weight: var(--admin-kpi-weight);
+  letter-spacing: var(--admin-kpi-tracking);
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-shell .text-xl.font-bold {
+  font-size: var(--admin-kpi-md-size);
+}
+
+.admin-shell .text-2xl.font-bold {
+  font-size: var(--admin-kpi-lg-size);
+}
+
+.admin-shell .text-3xl.font-bold {
+  font-size: var(--admin-kpi-xl-size);
+}
+
+.admin-shell .text-xs.uppercase {
+  text-transform: var(--admin-label-transform);
+  letter-spacing: var(--admin-label-tracking);
+  font-size: var(--admin-label-size);
+}
+
+.admin-shell .text-gray-400,
+.admin-shell .text-gray-500 {
+  opacity: var(--admin-muted-opacity);
+}
+
+.admin-panel {
+  background: var(--admin-panel-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--admin-panel-border);
+  box-shadow: var(--admin-panel-glow);
+}
+
+.admin-nav::-webkit-scrollbar {
+  height: 0;
+}
+
+.admin-orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(70px);
+  opacity: 0.24;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.admin-orb-a {
+  width: 260px;
+  height: 260px;
+  top: -80px;
+  left: -20px;
+  background: var(--admin-orb-a);
+}
+
+.admin-orb-b {
+  width: 300px;
+  height: 300px;
+  top: 20%;
+  right: -100px;
+  background: var(--admin-orb-b);
+}
+
+.admin-orb-c {
+  width: 280px;
+  height: 280px;
+  bottom: -80px;
+  left: 30%;
+  background: var(--admin-orb-c);
+}
+
+.admin-tone-corporate {
+  --admin-bg-a: rgba(71, 85, 105, 0.12);
+  --admin-bg-b: rgba(30, 41, 59, 0.16);
+  --admin-panel-bg: rgba(18, 24, 33, 0.85);
+  --admin-panel-border: rgba(100, 116, 139, 0.42);
+  --admin-orb-a: rgba(71, 85, 105, 0.28);
+  --admin-orb-b: rgba(51, 65, 85, 0.26);
+  --admin-orb-c: rgba(15, 23, 42, 0.3);
+  --admin-heading-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-body-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-heading-weight: 620;
+  --admin-heading-tracking: -0.012em;
+  --admin-body-tracking: -0.003em;
+  --admin-body-size: 0.88rem;
+  --admin-heading-size: 0.98rem;
+  --admin-kpi-xl-size: 1.78rem;
+  --admin-kpi-lg-size: 1.36rem;
+  --admin-kpi-md-size: 1.12rem;
+  --admin-muted-opacity: 0.84;
+  --admin-kpi-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-kpi-weight: 680;
+  --admin-kpi-tracking: -0.012em;
+  --admin-label-transform: uppercase;
+  --admin-label-tracking: 0.1em;
+  --admin-label-size: 0.68rem;
+  --admin-panel-glow: 0 8px 20px rgba(2, 6, 23, 0.18);
+}
+
+.admin-tone-luxury {
+  --admin-bg-a: rgba(245, 158, 11, 0.14);
+  --admin-bg-b: rgba(168, 85, 247, 0.1);
+  --admin-panel-bg: rgba(27, 22, 16, 0.82);
+  --admin-panel-border: rgba(217, 119, 6, 0.36);
+  --admin-orb-a: rgba(245, 158, 11, 0.28);
+  --admin-orb-b: rgba(180, 83, 9, 0.24);
+  --admin-orb-c: rgba(217, 119, 6, 0.2);
+  --admin-heading-font: Georgia, "Times New Roman", serif;
+  --admin-body-font: "Palatino Linotype", "Book Antiqua", Palatino, serif;
+  --admin-heading-weight: 600;
+  --admin-heading-tracking: 0.004em;
+  --admin-body-tracking: 0.004em;
+  --admin-body-size: 0.94rem;
+  --admin-heading-size: 1.02rem;
+  --admin-kpi-xl-size: 1.9rem;
+  --admin-kpi-lg-size: 1.45rem;
+  --admin-kpi-md-size: 1.18rem;
+  --admin-muted-opacity: 0.72;
+  --admin-kpi-font: Georgia, "Times New Roman", serif;
+  --admin-kpi-weight: 600;
+  --admin-kpi-tracking: 0.01em;
+  --admin-label-transform: none;
+  --admin-label-tracking: 0.03em;
+  --admin-label-size: 0.74rem;
+  --admin-panel-glow: 0 16px 42px rgba(180, 83, 9, 0.2);
+}
+
+.admin-tone-fintech {
+  --admin-bg-a: rgba(20, 184, 166, 0.08);
+  --admin-bg-b: rgba(59, 130, 246, 0.08);
+  --admin-panel-bg: rgba(24, 24, 27, 0.72);
+  --admin-panel-border: rgba(63, 63, 70, 0.7);
+  --admin-orb-a: rgba(20, 184, 166, 0.3);
+  --admin-orb-b: rgba(59, 130, 246, 0.26);
+  --admin-orb-c: rgba(234, 179, 8, 0.2);
+  --admin-heading-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-body-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-heading-weight: 700;
+  --admin-heading-tracking: -0.016em;
+  --admin-body-tracking: -0.004em;
+  --admin-body-size: 0.9rem;
+  --admin-heading-size: 1rem;
+  --admin-kpi-xl-size: 1.86rem;
+  --admin-kpi-lg-size: 1.4rem;
+  --admin-kpi-md-size: 1.14rem;
+  --admin-muted-opacity: 0.9;
+  --admin-kpi-font: "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --admin-kpi-weight: 700;
+  --admin-kpi-tracking: -0.01em;
+  --admin-label-transform: uppercase;
+  --admin-label-tracking: 0.12em;
+  --admin-label-size: 0.68rem;
+  --admin-panel-glow: 0 12px 32px rgba(6, 182, 212, 0.14);
+}
+
+.admin-tone-corporate .admin-panel .text-xs.uppercase {
+  color: #a5b4c7;
+}
+
+.admin-tone-luxury .admin-panel {
+  color: #efe4d1;
+}
+
+.admin-tone-luxury .admin-panel .text-gray-400,
+.admin-tone-luxury .admin-panel .text-gray-500 {
+  color: #d2bea2;
+}
+
+.admin-tone-fintech .admin-panel {
+  border-color: rgba(56, 189, 248, 0.28);
+}
+
+.admin-tone-fintech .admin-panel .grid {
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-tone-fintech .admin-panel .text-xs.uppercase {
+  color: #93c5fd;
+}
+
+@media (max-width: 640px) {
+  .admin-tone-corporate {
+    --admin-body-size: 0.84rem;
+    --admin-heading-size: 0.94rem;
+    --admin-kpi-xl-size: 1.56rem;
+    --admin-kpi-lg-size: 1.25rem;
+    --admin-kpi-md-size: 1.02rem;
+    --admin-label-size: 0.64rem;
+  }
+
+  .admin-tone-luxury {
+    --admin-body-size: 0.9rem;
+    --admin-heading-size: 0.98rem;
+    --admin-kpi-xl-size: 1.64rem;
+    --admin-kpi-lg-size: 1.3rem;
+    --admin-kpi-md-size: 1.05rem;
+    --admin-label-size: 0.7rem;
+  }
+
+  .admin-tone-fintech {
+    --admin-body-size: 0.86rem;
+    --admin-heading-size: 0.95rem;
+    --admin-kpi-xl-size: 1.6rem;
+    --admin-kpi-lg-size: 1.27rem;
+    --admin-kpi-md-size: 1.03rem;
+    --admin-label-size: 0.65rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .admin-tone-corporate {
+    --admin-body-size: 0.9rem;
+    --admin-heading-size: 1rem;
+    --admin-kpi-xl-size: 1.9rem;
+    --admin-kpi-lg-size: 1.48rem;
+    --admin-kpi-md-size: 1.2rem;
+    --admin-label-size: 0.68rem;
+  }
+
+  .admin-tone-luxury {
+    --admin-body-size: 0.98rem;
+    --admin-heading-size: 1.07rem;
+    --admin-kpi-xl-size: 2.02rem;
+    --admin-kpi-lg-size: 1.56rem;
+    --admin-kpi-md-size: 1.24rem;
+    --admin-label-size: 0.76rem;
+  }
+
+  .admin-tone-fintech {
+    --admin-body-size: 0.92rem;
+    --admin-heading-size: 1.02rem;
+    --admin-kpi-xl-size: 1.95rem;
+    --admin-kpi-lg-size: 1.5rem;
+    --admin-kpi-md-size: 1.22rem;
+    --admin-label-size: 0.69rem;
+  }
+}
+
+.tone-chip {
+  color: #a1a1aa;
+  border: 1px solid transparent;
+}
+
+.tone-chip:hover {
+  color: #fafafa;
+  background: rgba(39, 39, 42, 0.8);
+}
+
+.tone-chip.is-active {
+  color: #fafafa;
+  background: rgba(15, 23, 42, 0.7);
+  border-color: rgba(59, 130, 246, 0.5);
+}
+
+.admin-tone-luxury .tone-chip.is-active {
+  background: rgba(120, 53, 15, 0.62);
+  border-color: rgba(217, 119, 6, 0.6);
+}
+
+.admin-tone-corporate .tone-chip.is-active {
+  background: rgba(30, 41, 59, 0.75);
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
 /* Better grid spacing */
 .dashboard-grid {
   display: grid;
