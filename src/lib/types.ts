@@ -3,6 +3,7 @@ export interface MenuItem {
   name: string;
   price: number;
   category: string;
+  image_url?: string | null;
   available: boolean;
   created_at?: string;
   updated_at?: string;
@@ -25,6 +26,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   category: string;
+  image_url?: string | null;
 }
 
 export interface Order {
@@ -45,4 +47,20 @@ export interface Order {
   rating: number | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface PaymentEventAudit {
+  id: number;
+  order_id: number | null;
+  receipt_id: string | null;
+  provider: 'stripe' | 'paypal' | 'system' | null;
+  event_type: string;
+  status: 'received' | 'success' | 'failed' | 'skipped';
+  amount: number | null;
+  currency: string | null;
+  transaction_id: string | null;
+  source: string | null;
+  event_time: string;
+  raw_payload?: Record<string, unknown> | null;
+  created_at: string;
 }

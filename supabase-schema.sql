@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
   name TEXT NOT NULL,
   price DECIMAL(10,2) NOT NULL,
   category TEXT NOT NULL,
+  image_url TEXT,
   available BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()

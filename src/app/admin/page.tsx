@@ -8,12 +8,13 @@ import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 import { getCurrentTheme, type AppTheme } from '@/lib/themes';
-import type { Order, MenuItem, RestaurantTable } from '@/lib/types';
+import type { Order, MenuItem, RestaurantTable, PaymentEventAudit } from '@/lib/types';
+import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp
+  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -23,6 +24,7 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
+  const [paymentEvents, setPaymentEvents] = useState<PaymentEventAudit[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'menu' | 'tables'>('dashboard');
   const [notifications, setNotifications] = useState<Order[]>([]);
   
@@ -50,7 +52,7 @@ export default function AdminDashboard() {
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
   
   // Forms
-  const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '' });
+  const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
   const [tableNumberInput, setTableNumberInput] = useState('');
   
   // Toast
@@ -118,7 +120,7 @@ export default function AdminDashboard() {
 
   const fetchMenu = useCallback(async () => {
     const { data } = await supabase.from('menu_items').select('*').order('category', { ascending: true });
-    if (data) setMenuItems(data as MenuItem[]);
+    if (data) setMenuItems((data as MenuItem[]).map(withResolvedMenuImage));
   }, []);
 
   const fetchTables = useCallback(async () => {
@@ -126,10 +128,20 @@ export default function AdminDashboard() {
     if (data) setTables(data as RestaurantTable[]);
   }, []);
 
+  const fetchPaymentEvents = useCallback(async () => {
+    const { data } = await supabase
+      .from('payment_event_audit')
+      .select('*')
+      .order('event_time', { ascending: false })
+      .limit(120);
+
+    if (data) setPaymentEvents(data as PaymentEventAudit[]);
+  }, []);
+
   // Initial fetch & realtime
   useEffect(() => {
     if (!isAuthenticated) return;
-    fetchOrders(); fetchMenu(); fetchTables();
+    fetchOrders(); fetchMenu(); fetchTables(); fetchPaymentEvents();
 
     const ordersSub = supabase.channel('orders-rt')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
@@ -146,13 +158,15 @@ export default function AdminDashboard() {
 
     const menuSub = supabase.channel('menu-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchMenu()).subscribe();
     const tablesSub = supabase.channel('tables-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables' }, () => fetchTables()).subscribe();
+    const paymentEventsSub = supabase.channel('payment-events-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'payment_event_audit' }, () => fetchPaymentEvents()).subscribe();
 
     return () => {
       supabase.removeChannel(ordersSub);
       supabase.removeChannel(menuSub);
       supabase.removeChannel(tablesSub);
+      supabase.removeChannel(paymentEventsSub);
     };
-  }, [isAuthenticated, fetchOrders, fetchMenu, fetchTables]);
+  }, [isAuthenticated, fetchOrders, fetchMenu, fetchTables, fetchPaymentEvents]);
 
   // Real-time payment modal updates
   useEffect(() => {
@@ -217,6 +231,19 @@ export default function AdminDashboard() {
       payment_type: 'direct_cash'
     }).eq('id', showPaymentModal.id);
     await supabase.from('restaurant_tables').update({ status: 'available', current_order_id: null }).eq('table_number', showPaymentModal.table_number);
+    await supabase.from('payment_event_audit').insert({
+      order_id: showPaymentModal.id,
+      receipt_id: showPaymentModal.receipt_id,
+      provider: 'system',
+      event_type: 'cash_payment_recorded',
+      status: 'success',
+      amount: showPaymentModal.total,
+      currency: 'USD',
+      transaction_id: showPaymentModal.receipt_id,
+      source: 'admin-dashboard',
+      event_time: new Date().toISOString(),
+      raw_payload: { payment_type: 'direct_cash' },
+    });
     showToast('Payment recorded!');
     setShowPaymentModal(null);
   };
@@ -226,7 +253,15 @@ export default function AdminDashboard() {
     if (!menuForm.name || !menuForm.price || !menuForm.category) {
       showToast('Please fill all fields', 'error'); return;
     }
-    const data = { name: menuForm.name.trim(), price: parseFloat(menuForm.price), category: menuForm.category.trim(), available: true };
+    const normalizedName = menuForm.name.trim();
+    const normalizedCategory = menuForm.category.trim();
+    const data = {
+      name: normalizedName,
+      price: parseFloat(menuForm.price),
+      category: normalizedCategory,
+      image_url: menuForm.imageUrl.trim() || getDefaultMenuImage(normalizedName, normalizedCategory),
+      available: editMenuItem ? editMenuItem.available : true,
+    };
     try {
       if (editMenuItem) {
         const { error } = await supabase.from('menu_items').update(data).eq('id', editMenuItem.id);
@@ -236,7 +271,7 @@ export default function AdminDashboard() {
         if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
       }
       showToast(editMenuItem ? 'Item updated!' : 'Item added!');
-      setShowMenuModal(false); setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' });
+      setShowMenuModal(false); setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' });
       fetchMenu(); // Refresh data
     } catch (err: any) {
       showToast(`Error: ${err.message}`, 'error');
@@ -295,6 +330,49 @@ export default function AdminDashboard() {
   const todayRevenue = orders.filter(o => o.payment_status === 'paid' && new Date(o.created_at).toDateString() === new Date().toDateString()).reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = orders.filter(o => o.status === 'pending').length;
   const activeTables = tables.filter(t => t.status !== 'available').length;
+  const todayCancelledOrders = todayOrders.filter(o => o.status === 'cancelled').length;
+  const todayPaidOrders = todayOrders.filter(o => o.payment_status === 'paid');
+  const avgOrderValue = todayPaidOrders.length > 0 ? todayRevenue / todayPaidOrders.length : 0;
+  const paymentCaptureRate = todayOrders.length > 0 ? (todayPaidOrders.length / todayOrders.length) * 100 : 0;
+  const onlinePaymentsToday = todayPaidOrders.filter(o => o.payment_type === 'chatbot_payment').length;
+  const cashPaymentsToday = todayPaidOrders.filter(o => o.payment_type === 'direct_cash').length;
+  const topSellingItemsToday = (() => {
+    const map = new Map<string, { qty: number; amount: number }>();
+    for (const order of todayOrders) {
+      for (const item of order.items || []) {
+        const existing = map.get(item.name) || { qty: 0, amount: 0 };
+        map.set(item.name, {
+          qty: existing.qty + item.quantity,
+          amount: existing.amount + (item.price * item.quantity),
+        });
+      }
+    }
+
+    return Array.from(map.entries())
+      .map(([name, value]) => ({ name, ...value }))
+      .sort((a, b) => b.qty - a.qty)
+      .slice(0, 5);
+  })();
+  const hourlyTrend = (() => {
+    const points = Array.from({ length: 24 }, (_, hour) => ({ hour, orders: 0, revenue: 0 }));
+
+    for (const order of todayOrders) {
+      const hour = new Date(order.created_at).getHours();
+      points[hour].orders += 1;
+      if (order.payment_status === 'paid') {
+        points[hour].revenue += order.total;
+      }
+    }
+
+    const maxOrders = Math.max(1, ...points.map(point => point.orders));
+    const maxRevenue = Math.max(1, ...points.map(point => point.revenue));
+
+    return points.map(point => ({
+      ...point,
+      orderHeight: Math.max(8, Math.round((point.orders / maxOrders) * 100)),
+      revenueHeight: Math.max(8, Math.round((point.revenue / maxRevenue) * 100)),
+    }));
+  })();
   
   // Estimated wait time based on pending/preparing orders
   const estimatedWaitMinutes = useMemo(() => {
@@ -334,6 +412,26 @@ export default function AdminDashboard() {
     const newCount = filteredOrders.filter(isNewOrder).length;
     return { addOnCount, newCount };
   }, [filteredOrders]);
+
+  const filteredPaymentEvents = useMemo(() => {
+    const q = orderSearch.trim().toLowerCase();
+
+    return paymentEvents.filter(event => {
+      const matchesSearch = !q
+        || String(event.order_id || '').includes(q)
+        || (event.receipt_id || '').toLowerCase().includes(q)
+        || (event.event_type || '').toLowerCase().includes(q)
+        || (event.source || '').toLowerCase().includes(q)
+        || (event.transaction_id || '').toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (orderTableFilter === 'all') return true;
+
+      const orderMatch = orders.find(o => o.id === event.order_id);
+      return orderMatch?.table_number.toString() === orderTableFilter;
+    }).slice(0, 60);
+  }, [paymentEvents, orderSearch, orderTableFilter, orders]);
 
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
@@ -570,6 +668,116 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            {/* Analytics KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Avg Ticket</p>
+                  <TrendingUp className="w-4 h-4 text-emerald-400" />
+                </div>
+                <p className="text-2xl font-bold text-emerald-300">{formatCurrency(avgOrderValue)}</p>
+                <p className="text-xs text-gray-500 mt-1">Based on paid orders today</p>
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Payment Capture</p>
+                  <DollarSign className="w-4 h-4 text-sky-400" />
+                </div>
+                <p className="text-2xl font-bold text-sky-300">{paymentCaptureRate.toFixed(0)}%</p>
+                <p className="text-xs text-gray-500 mt-1">{todayPaidOrders.length}/{todayOrders.length || 0} orders paid</p>
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Online vs Cash</p>
+                  <CreditCard className="w-4 h-4" style={{ color: theme.primary }} />
+                </div>
+                <p className="text-xl font-bold" style={{ color: theme.primary }}>{onlinePaymentsToday} online</p>
+                <p className="text-xs text-gray-500 mt-1">{cashPaymentsToday} cash today</p>
+              </div>
+
+              <div className="bg-zinc-800 rounded-xl p-4 border border-zinc-700">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs uppercase tracking-wide text-gray-400">Cancellations</p>
+                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+                </div>
+                <p className="text-2xl font-bold text-rose-300">{todayCancelledOrders}</p>
+                <p className="text-xs text-gray-500 mt-1">Keep this as low as possible</p>
+              </div>
+            </div>
+
+            {/* Top selling dishes */}
+            <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">Top Selling Dishes (Today)</h3>
+                <span className="text-xs text-gray-500">Live from current day orders</span>
+              </div>
+              {topSellingItemsToday.length === 0 ? (
+                <p className="text-sm text-gray-500">No dish sales yet today.</p>
+              ) : (
+                <div className="space-y-2">
+                  {topSellingItemsToday.map((item, index) => (
+                    <div key={item.name} className="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">#{index + 1} {item.name}</p>
+                        <p className="text-xs text-gray-500">Qty sold: {item.qty}</p>
+                      </div>
+                      <p className="text-sm font-semibold" style={{ color: theme.primary }}>{formatCurrency(item.amount)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Mini hourly trend bars */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold">Orders Per Hour</h3>
+                  <span className="text-xs text-gray-500">Today</span>
+                </div>
+                <div className="h-28 flex items-end gap-1">
+                  {hourlyTrend.map(point => (
+                    <div key={`orders-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
+                      <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
+                        <div
+                          className="absolute inset-x-0 bottom-0 rounded-sm"
+                          style={{
+                            height: `${point.orderHeight}%`,
+                            background: `linear-gradient(to top, ${theme.primary}, ${theme.primaryDark})`,
+                          }}
+                          title={`${point.orders} order(s) at ${point.hour.toString().padStart(2, '0')}:00`}
+                        />
+                      </div>
+                      <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold">Revenue Per Hour</h3>
+                  <span className="text-xs text-gray-500">Paid orders only</span>
+                </div>
+                <div className="h-28 flex items-end gap-1">
+                  {hourlyTrend.map(point => (
+                    <div key={`revenue-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
+                      <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
+                        <div
+                          className="absolute inset-x-0 bottom-0 rounded-sm bg-emerald-400"
+                          style={{ height: `${point.revenueHeight}%` }}
+                          title={`${formatCurrency(point.revenue)} at ${point.hour.toString().padStart(2, '0')}:00`}
+                        />
+                      </div>
+                      <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Waiter Calls Banner */}
             {waiterCalls.length > 0 && (
               <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-xl p-4">
@@ -602,7 +810,7 @@ export default function AdminDashboard() {
                 <p className="font-medium text-sm">Print QR Codes</p>
                 <p className="text-xs text-gray-500">For all tables</p>
               </button>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg p-3 text-left transition-colors">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <Plus className="w-4 h-4 text-green-400" />
                 </div>
@@ -742,6 +950,56 @@ export default function AdminDashboard() {
 
             <p className="text-xs text-gray-500">{filteredOrders.length} order{filteredOrders.length !== 1 ? 's' : ''} found</p>
 
+            <div className="bg-zinc-800 border border-zinc-700 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">Payment Event Timeline</h3>
+                <span className="text-xs text-gray-500">Latest {filteredPaymentEvents.length} events</span>
+              </div>
+
+              {filteredPaymentEvents.length === 0 ? (
+                <p className="text-sm text-gray-500">No payment events captured yet.</p>
+              ) : (
+                <div className="max-h-80 overflow-y-auto pr-1 space-y-2">
+                  {filteredPaymentEvents.map((event) => {
+                    const orderForEvent = orders.find(o => o.id === event.order_id);
+                    const statusClass = event.status === 'success'
+                      ? 'text-emerald-300 border-emerald-500/40 bg-emerald-500/10'
+                      : event.status === 'failed'
+                        ? 'text-rose-300 border-rose-500/40 bg-rose-500/10'
+                        : event.status === 'received'
+                          ? 'text-sky-300 border-sky-500/40 bg-sky-500/10'
+                          : 'text-amber-300 border-amber-500/40 bg-amber-500/10';
+
+                    return (
+                      <div key={event.id} className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-3">
+                        <div className="flex items-start justify-between gap-3 mb-1.5">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{event.event_type}</p>
+                            <p className="text-xs text-gray-500">
+                              {new Date(event.event_time || event.created_at).toLocaleString()} • {event.source || 'unknown source'}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded-full border text-[11px] uppercase ${statusClass}`}>{event.status}</span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-2 text-xs text-gray-300">
+                          <p>Order: <span className="text-white">{event.order_id || '-'}</span></p>
+                          <p>Table: <span className="text-white">{orderForEvent?.table_number || '-'}</span></p>
+                          <p>Provider: <span className="text-white uppercase">{event.provider || '-'}</span></p>
+                          <p>Amount: <span className="text-white">{event.amount ? formatCurrency(event.amount) : '-'}</span></p>
+                        </div>
+
+                        <div className="mt-1.5 grid grid-cols-1 xl:grid-cols-2 gap-2 text-xs text-gray-400">
+                          <p className="truncate">Receipt: <span className="text-gray-200">{event.receipt_id || '-'}</span></p>
+                          <p className="truncate">Transaction: <span className="text-gray-200">{event.transaction_id || '-'}</span></p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
             {filteredOrders.length === 0 ? (
               <div className="bg-zinc-800 border border-zinc-700 rounded-lg p-10 text-center">
                 <ShoppingBag className="w-10 h-10 text-gray-600 mx-auto mb-3" />
@@ -835,7 +1093,7 @@ export default function AdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
             <div className="flex items-center justify-between">
               <h1 className="text-xl font-bold">Menu</h1>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '' }); setShowMenuModal(true); }} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
                 <Plus className="w-4 h-4" /> Add Item
               </button>
             </div>
@@ -852,6 +1110,15 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {menuItems.map(item => (
                   <motion.div key={item.id} layout className={`bg-zinc-800 border rounded-lg p-3 ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
+                    <div className="relative h-32 mb-3 rounded-lg overflow-hidden border border-zinc-700">
+                      <Image
+                        src={item.image_url || getDefaultMenuImage(item.name, item.category)}
+                        alt={item.name}
+                        fill
+                        sizes="(max-width: 768px) 100vw, 33vw"
+                        className="object-cover"
+                      />
+                    </div>
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <span className="px-2 py-0.5 rounded text-xs" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}33`, color: theme.primary }}>{item.category}</span>
@@ -863,7 +1130,7 @@ export default function AdminDashboard() {
                       <button onClick={() => toggleAvailability(item)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
                         {item.available ? '✓ Available' : '✗ Unavailable'}
                       </button>
-                      <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category }); setShowMenuModal(true); }} className="px-2 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-md">
+                      <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category, imageUrl: item.image_url || '' }); setShowMenuModal(true); }} className="px-2 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-md">
                         <Edit className="w-3.5 h-3.5" />
                       </button>
                       <button onClick={() => deleteMenuItem(item.id)} className="px-2 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md">
@@ -990,6 +1257,34 @@ export default function AdminDashboard() {
                   <datalist id="cat-list">
                     {[...new Set(menuItems.map(i => i.category))].map(cat => <option key={cat} value={cat} />)}
                   </datalist>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">Photo URL</label>
+                  <input
+                    type="url"
+                    value={menuForm.imageUrl}
+                    onChange={(e) => setMenuForm({ ...menuForm, imageUrl: e.target.value })}
+                    className="w-full px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-lg focus:border-zinc-500 focus:outline-none"
+                    placeholder="https://..."
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMenuForm(prev => ({ ...prev, imageUrl: getDefaultMenuImage(prev.name || 'Dish', prev.category || 'Mains') }))}
+                    className="mt-2 text-xs px-3 py-1.5 rounded-md bg-zinc-700 hover:bg-zinc-600 transition-colors"
+                  >
+                    Use Free Stock Food Photo
+                  </button>
+                </div>
+                <div className="rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
+                  <div className="relative h-36 w-full">
+                    <Image
+                      src={menuForm.imageUrl || getDefaultMenuImage(menuForm.name || 'Dish', menuForm.category || 'Mains')}
+                      alt="Dish preview"
+                      fill
+                      sizes="100vw"
+                      className="object-cover"
+                    />
+                  </div>
                 </div>
                 <button onClick={saveMenuItem} className="w-full py-3 text-black rounded-lg font-semibold transition-colors" style={{ background: theme.primary }}>
                   {editMenuItem ? 'Update Item' : 'Add Item'}

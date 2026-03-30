@@ -1,17 +1,19 @@
 'use client';
 
-import { useState, useEffect, useRef, Suspense, useMemo } from 'react';
+import { useState, useEffect, useRef, Suspense, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSearchParams } from 'next/navigation';
+import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import type { MenuItem } from '@/lib/types';
 import { processChatMessage, type ChatbotResponse, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
+import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
 import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
   FileText, Check, MessageCircle, Download, 
-  Heart, PhoneCall, Clock, Sparkles, Flame
+  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard
 } from 'lucide-react';
 import { calculateOrderTotal } from '@/lib/calculations';
 
@@ -34,6 +36,22 @@ interface ChatMessage {
   showRating?: boolean;
   showBill?: boolean;
 }
+
+interface PendingCheckoutItem {
+  id: number;
+  name: string;
+  quantity: number;
+  price: number;
+}
+
+interface QueuedCheckout {
+  tableNumber: string;
+  pendingItems: PendingCheckoutItem[];
+  isAddOnOrder: boolean;
+  queuedAt: number;
+}
+
+const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
 const formatDayLabel = (timestamp: number): string => {
   const date = new Date(timestamp);
@@ -141,6 +159,16 @@ function OrderContent() {
   const [lastAskedItem, setLastAskedItem] = useState<MenuItem | null>(null);
   const [conversationContext, setConversationContext] = useState<ConversationContext>({ preferences: [] });
   const [orderCount, setOrderCount] = useState(0);
+  const [latestOrderIdForPayment, setLatestOrderIdForPayment] = useState<number | null>(null);
+  const [paymentStatusMessage, setPaymentStatusMessage] = useState<string | null>(null);
+  const [paymentLoading, setPaymentLoading] = useState<'card' | 'paypal' | null>(null);
+  const [paymentVerifying, setPaymentVerifying] = useState(false);
+  const [lastPaymentProvider, setLastPaymentProvider] = useState<'card' | 'paypal' | null>(null);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuLoadError, setMenuLoadError] = useState<string | null>(null);
+  const [menuReloadTick, setMenuReloadTick] = useState(0);
+  const [queuedCheckout, setQueuedCheckout] = useState<QueuedCheckout | null>(null);
+  const [retryingQueuedCheckout, setRetryingQueuedCheckout] = useState(false);
   const [submittedQuantities, setSubmittedQuantities] = useState<Record<number, number>>({});
   const [lastSubmittedSubtotal, setLastSubmittedSubtotal] = useState(0);
   const [lastSubmittedItemsCount, setLastSubmittedItemsCount] = useState(0);
@@ -178,6 +206,36 @@ function OrderContent() {
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
+  const paymentOrderId = latestOrderIdForPayment || currentOrderId;
+
+  const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
+
+  const getPendingItemsFromCart = (): PendingCheckoutItem[] => {
+    return cart
+      .map(item => {
+        const alreadySubmitted = submittedQuantities[item.id] || 0;
+        const unsentQty = Math.max(0, item.quantity - alreadySubmitted);
+        return {
+          id: item.id,
+          name: item.name,
+          quantity: unsentQty,
+          price: item.price,
+        };
+      })
+      .filter(item => item.quantity > 0);
+  };
+
+  const saveQueuedCheckout = useCallback((queued: QueuedCheckout | null) => {
+    try {
+      if (!queued) {
+        localStorage.removeItem(CHECKOUT_QUEUE_KEY);
+        return;
+      }
+      localStorage.setItem(CHECKOUT_QUEUE_KEY, JSON.stringify(queued));
+    } catch {
+      // Local storage can fail in private mode; UI still handles in-memory fallback.
+    }
+  }, []);
 
   // Track online/offline state
   useEffect(() => {
@@ -203,6 +261,23 @@ function OrderContent() {
   useEffect(() => {
     try { localStorage.setItem('netrikxr-favorites', JSON.stringify(favorites)); } catch (_) {}
   }, [favorites]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CHECKOUT_QUEUE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as QueuedCheckout;
+      if (!parsed?.pendingItems?.length) {
+        localStorage.removeItem(CHECKOUT_QUEUE_KEY);
+        return;
+      }
+      if (parsed.tableNumber === tableNumber) {
+        setQueuedCheckout(parsed);
+      }
+    } catch {
+      localStorage.removeItem(CHECKOUT_QUEUE_KEY);
+    }
+  }, [tableNumber]);
 
   // If the customer empties cart after the flow completes, start a fresh add-on baseline.
   useEffect(() => {
@@ -296,8 +371,17 @@ function OrderContent() {
   // Initial fetch + real-time menu sync
   useEffect(() => {
     const fetchMenu = async () => {
-      const { data } = await supabase.from('menu_items').select('*').eq('available', true).order('category');
-      if (data) setMenuItems(data as MenuItem[]);
+      try {
+        setMenuLoadError(null);
+        const { data, error } = await supabase.from('menu_items').select('*').eq('available', true).order('category');
+        if (error) {
+          setMenuLoadError('Could not sync menu. Pull to refresh or tap retry.');
+          return;
+        }
+        if (data) setMenuItems((data as MenuItem[]).map(withResolvedMenuImage));
+      } finally {
+        setMenuLoading(false);
+      }
     };
     fetchMenu();
 
@@ -326,7 +410,73 @@ function OrderContent() {
       window.removeEventListener('pwa-resume', handleResume);
       window.removeEventListener('pwa-online', handleResume);
     };
-  }, []);
+  }, [menuReloadTick]);
+
+  // Verify payment on return from Stripe or PayPal checkout pages.
+  useEffect(() => {
+    const paymentState = searchParams.get('payment');
+    const provider = searchParams.get('provider');
+    const orderIdRaw = searchParams.get('order');
+
+    if (!paymentState || !provider || !orderIdRaw) return;
+
+    if (paymentState === 'cancel') {
+      setLastPaymentProvider(provider === 'paypal' ? 'paypal' : 'card');
+      setPaymentStatusMessage('Payment was cancelled. You can try again any time.');
+      return;
+    }
+
+    if (paymentState !== 'success') return;
+
+    const orderId = Number(orderIdRaw);
+    if (!Number.isFinite(orderId)) return;
+
+    const verifyPayment = async () => {
+      setPaymentVerifying(true);
+      try {
+        const payload: { provider: 'stripe' | 'paypal'; orderId: number; sessionId?: string; paypalToken?: string } = {
+          provider: provider === 'paypal' ? 'paypal' : 'stripe',
+          orderId,
+        };
+
+        if (provider === 'paypal') {
+          const token = searchParams.get('token');
+          if (!token) return;
+          payload.paypalToken = token;
+        } else {
+          const sessionId = searchParams.get('session_id');
+          if (!sessionId) return;
+          payload.sessionId = sessionId;
+        }
+
+        const res = await fetch('/api/payment/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await res.json() as { success?: boolean };
+        if (data.success) {
+          setLastPaymentProvider(null);
+          setPaymentStatusMessage('Payment successful. Your order is marked as paid.');
+          addBotMessage('✅ Payment received successfully! Your order is now marked as paid.', [
+            { label: '🍽️ Order More', value: 'menu' },
+            { label: '⭐ Rate Experience', value: 'done' }
+          ]);
+        } else {
+          setLastPaymentProvider(provider === 'paypal' ? 'paypal' : 'card');
+          setPaymentStatusMessage('We could not verify payment automatically. Please contact staff.');
+        }
+      } catch {
+        setLastPaymentProvider(provider === 'paypal' ? 'paypal' : 'card');
+        setPaymentStatusMessage('Payment verification failed. Please contact staff if amount was charged.');
+      } finally {
+        setPaymentVerifying(false);
+      }
+    };
+
+    verifyPayment();
+  }, [searchParams]);
 
   // Listen for order confirmation/cancellation from admin
   useEffect(() => {
@@ -921,62 +1071,32 @@ function OrderContent() {
       setIsBotTyping(false);
     }
   };
-const handleCheckout = async () => {
-    if (cart.length === 0) {
-      addBotMessage('Your cart is empty! Add some items first.', [{ label: '📋 View Menu', value: 'menu' }]);
-      return;
-    }
+  const submitPendingOrder = useCallback(async (
+    pendingItems: PendingCheckoutItem[],
+    isAddOnOrder: boolean,
+    source: 'live' | 'queued'
+  ) => {
+    if (pendingItems.length === 0) return { success: false, reason: 'empty' as const };
 
-    if (!navigator.onLine) {
-      addBotMessage('📡 You\'re offline! Please check your internet connection and try again.', [{ label: '🔄 Try Again', value: 'checkout' }]);
-      return;
-    }
+    if (source === 'queued') setRetryingQueuedCheckout(true);
+    else setLoading(true);
 
-    setLoading(true);
-    addUserMessage('Place my order');
-
-    const pendingItems = cart
-      .map(item => {
-        const alreadySubmitted = submittedQuantities[item.id] || 0;
-        const unsentQty = Math.max(0, item.quantity - alreadySubmitted);
-        return {
-          id: item.id,
-          name: item.name,
-          quantity: unsentQty,
-          price: item.price
-        };
-      })
-      .filter(item => item.quantity > 0);
-
-    if (pendingItems.length === 0) {
-      setLoading(false);
-      addBotMessage(
-        'I do not see any new items to send. Add or increase an item first, then place order again.',
-        [
-          { label: '🍽️ Add More', value: 'menu' },
-          { label: '🛒 View Cart', value: 'cart' }
-        ]
-      );
-      return;
-    }
-
-    const pendingSubtotal = pendingItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const pendingTax = calculateOrderTotal(pendingSubtotal, 0).taxAmount;
-    const pendingTotal = pendingSubtotal + pendingTax;
-    const isAddOnOrder = Object.keys(submittedQuantities).length > 0;
+    const pendingSubtotalAmount = pendingItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    const pendingTax = calculateOrderTotal(pendingSubtotalAmount, 0).taxAmount;
+    const pendingTotal = pendingSubtotalAmount + pendingTax;
     const itemCount = pendingItems.reduce((sum, item) => sum + item.quantity, 0);
-    
+
     const receiptPrefix = isAddOnOrder ? 'ADD' : 'ORD';
     const receipt = `${receiptPrefix}-${tableNumber}-${Date.now().toString().slice(-6)}`;
     setReceiptId(receipt);
-    setLastSubmittedSubtotal(pendingSubtotal);
+    setLastSubmittedSubtotal(pendingSubtotalAmount);
     setLastSubmittedItemsCount(itemCount);
     setLastOrderWasAddOn(isAddOnOrder);
 
     const orderData = {
       table_number: parseInt(tableNumber),
       items: pendingItems,
-      subtotal: pendingSubtotal,
+      subtotal: pendingSubtotalAmount,
       tip_amount: 0,
       tax_amount: pendingTax,
       total: pendingTotal,
@@ -988,44 +1108,132 @@ const handleCheckout = async () => {
         : 'NEW_ORDER | initial order from chatbot'
     };
 
-    const { data: insertedData, error } = await supabase.from('orders').insert(orderData).select();
-    setLoading(false);
+    try {
+      const { data: insertedData, error } = await supabase.from('orders').insert(orderData).select();
 
-    if (error) {
-      console.error('Order error:', error);
-      addBotMessage(`❌ Error: ${error.message || 'Could not place order'}. Please try again.`, [{ label: '🔄 Try Again', value: 'checkout' }]);
-      return;
-    }
+      if (error) {
+        console.error('Order error:', error);
+        return { success: false, reason: 'insert_error' as const, message: error.message || 'Could not place order' };
+      }
 
-    if (insertedData && insertedData[0]) {
-      setCurrentOrderId(insertedData[0].id);
+      if (insertedData && insertedData[0]) {
+        setCurrentOrderId(insertedData[0].id);
+        setLatestOrderIdForPayment(insertedData[0].id);
+      }
+
       setSubmittedQuantities(prev => {
         const next = { ...prev };
-        for (const item of cart) {
-          next[item.id] = item.quantity;
+        for (const item of pendingItems) {
+          next[item.id] = (next[item.id] || 0) + item.quantity;
         }
         return next;
       });
+
+      setOrderPlaced(true);
+      setWaitingForConfirmation(true);
+
+      const newCount = orderCount + 1;
+      setOrderCount(newCount);
+      try { localStorage.setItem('netrikxr-order-count', newCount.toString()); } catch (_) {}
+
+      const waitMin = Math.min(3 + itemCount, 12);
+      setEstimatedWait(waitMin);
+
+      if (source === 'queued') {
+        setQueuedCheckout(null);
+        saveQueuedCheckout(null);
+      }
+
+      addBotMessage(
+        `${source === 'queued' ? '🌐 Reconnected and sent queued order!' : '📤'} ${isAddOnOrder ? 'Add-on Order' : 'Order'} Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nItems: ${itemCount}\nSubtotal: $${pendingSubtotalAmount.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
+        [{ label: '🔔 Call Waiter', value: 'call_waiter' }]
+      );
+
+      return { success: true as const };
+    } catch {
+      return { success: false, reason: 'network' as const, message: 'Network error while placing order' };
+    } finally {
+      if (source === 'queued') setRetryingQueuedCheckout(false);
+      else setLoading(false);
+    }
+  }, [orderCount, saveQueuedCheckout, tableNumber]);
+
+  const retryQueuedCheckout = useCallback(async () => {
+    if (!queuedCheckout || !navigator.onLine || retryingQueuedCheckout || waitingForConfirmation) return;
+
+    const result = await submitPendingOrder(queuedCheckout.pendingItems, queuedCheckout.isAddOnOrder, 'queued');
+    if (!result.success) {
+      addBotMessage(
+        'Still unable to sync queued order. We will retry automatically when network is stable.',
+        [{ label: '🔄 Retry Now', value: 'checkout' }]
+      );
+    }
+  }, [queuedCheckout, retryingQueuedCheckout, submitPendingOrder, waitingForConfirmation]);
+
+  useEffect(() => {
+    if (!isOnline || !queuedCheckout || retryingQueuedCheckout || waitingForConfirmation) return;
+    retryQueuedCheckout();
+  }, [isOnline, queuedCheckout, retryingQueuedCheckout, retryQueuedCheckout, waitingForConfirmation]);
+
+  const handleCheckout = async () => {
+    if (cart.length === 0) {
+      addBotMessage('Your cart is empty! Add some items first.', [{ label: '📋 View Menu', value: 'menu' }]);
+      return;
     }
 
-    setOrderPlaced(true);
-    setWaitingForConfirmation(true);
-    
-    // Increment order count for loyalty
-    const newCount = orderCount + 1;
-    setOrderCount(newCount);
-    try { localStorage.setItem('netrikxr-order-count', newCount.toString()); } catch (_) {}
-    
-    // Estimate wait time (3-8 min based on items)
-    const waitMin = Math.min(3 + itemCount, 12);
-    setEstimatedWait(waitMin);
+    const pendingItems = getPendingItemsFromCart();
+    if (pendingItems.length === 0) {
+      addBotMessage(
+        'I do not see any new items to send. Add or increase an item first, then place order again.',
+        [
+          { label: '🍽️ Add More', value: 'menu' },
+          { label: '🛒 View Cart', value: 'cart' }
+        ]
+      );
+      return;
+    }
 
-    addBotMessage(
-      `📤 ${isAddOnOrder ? 'Add-on Order' : 'Order'} Sent!\n\nReceipt: ${receipt}\nTable: ${tableNumber}\nItems: ${itemCount}\nSubtotal: $${pendingSubtotal.toFixed(2)}\n⏱️ Est. wait: ~${waitMin} min\n\n⏳ Waiting for staff confirmation...`,
-      [
-        { label: '🔔 Call Waiter', value: 'call_waiter' }
-      ]
-    );
+    const isAddOnOrder = Object.keys(submittedQuantities).length > 0;
+
+    if (!navigator.onLine) {
+      const queued: QueuedCheckout = {
+        tableNumber,
+        pendingItems,
+        isAddOnOrder,
+        queuedAt: Date.now(),
+      };
+
+      setQueuedCheckout(queued);
+      saveQueuedCheckout(queued);
+      addBotMessage(
+        '📡 You are offline. I queued your order and will auto-send it when internet reconnects.',
+        [{ label: '🛒 View Cart', value: 'cart' }]
+      );
+      return;
+    }
+
+    addUserMessage('Place my order');
+    const result = await submitPendingOrder(pendingItems, isAddOnOrder, 'live');
+
+    if (!result.success) {
+      if (result.reason === 'network') {
+        const queued: QueuedCheckout = {
+          tableNumber,
+          pendingItems,
+          isAddOnOrder,
+          queuedAt: Date.now(),
+        };
+        setQueuedCheckout(queued);
+        saveQueuedCheckout(queued);
+        addBotMessage(
+          '📡 Network was unstable. I queued your order and will retry automatically once online.',
+          [{ label: '🛒 View Cart', value: 'cart' }]
+        );
+        return;
+      }
+
+      addBotMessage(`❌ Error: ${result.message || 'Could not place order'}. Please try again.`, [{ label: '🔄 Try Again', value: 'checkout' }]);
+    }
   };
 
   const addToCart = (item: MenuItem) => {
@@ -1063,6 +1271,43 @@ const handleCheckout = async () => {
     setSelectedTip(tip);
   };
 
+  const handleOnlinePayment = async (provider: 'card' | 'paypal') => {
+    if (!paymentOrderId || !receiptId) {
+      setPaymentStatusMessage('Place an order first before paying online.');
+      return;
+    }
+
+    setLastPaymentProvider(provider);
+    setPaymentStatusMessage(null);
+    setPaymentLoading(provider);
+
+    try {
+      const response = await fetch('/api/payment/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider,
+          orderId: paymentOrderId,
+          receiptId,
+          amount: total,
+          tableNumber,
+        }),
+      });
+
+      const data = await response.json() as { url?: string; error?: string };
+      if (!response.ok || !data.url) {
+        setPaymentStatusMessage(data.error || 'Online payment is not available right now.');
+        return;
+      }
+
+      window.location.href = data.url;
+    } catch {
+      setPaymentStatusMessage('Unable to start payment right now. Please try again.');
+    } finally {
+      setPaymentLoading(null);
+    }
+  };
+
   const handleRatingSubmit = async () => {
     if (rating === 0) return;
     
@@ -1080,6 +1325,7 @@ const handleCheckout = async () => {
     setShowThankYou(true);
     setCart([]);
     setSubmittedQuantities({});
+    setLatestOrderIdForPayment(null);
     setLastOrderWasAddOn(false);
     setLastSubmittedItemsCount(0);
     setLastSubmittedSubtotal(0);
@@ -1216,6 +1462,44 @@ const handleCheckout = async () => {
             <p className="text-red-400 text-[12px] font-medium">📡 No internet connection</p>
           </div>
         )}
+        {menuLoading && (
+          <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 mb-2 text-center">
+            <p className="text-gray-300 text-[12px] font-medium">Syncing latest menu...</p>
+          </div>
+        )}
+        {menuLoadError && (
+          <div className="rounded-lg px-3 py-2 mb-2 border border-amber-500/40 bg-amber-500/10 flex items-center justify-between gap-2">
+            <p className="text-amber-300 text-[12px] font-medium">{menuLoadError}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuLoading(true);
+                setMenuReloadTick(v => v + 1);
+              }}
+              className="px-2 py-1 rounded-md text-[11px] font-semibold bg-amber-500/20 text-amber-200 hover:bg-amber-500/30"
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {queuedCheckout && (
+          <div className="rounded-lg px-3 py-2 mb-2 border border-sky-500/35 bg-sky-500/10 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sky-200 text-[12px] font-semibold">Queued order pending sync</p>
+              <p className="text-sky-100/80 text-[11px]">
+                {queuedCheckout.pendingItems.reduce((sum, item) => sum + item.quantity, 0)} item(s) • queued at {new Date(queuedCheckout.queuedAt).toLocaleTimeString()}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!isOnline || retryingQueuedCheckout || waitingForConfirmation}
+              onClick={() => retryQueuedCheckout()}
+              className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-500/20 text-sky-100 disabled:opacity-50"
+            >
+              {retryingQueuedCheckout ? 'Retrying...' : 'Retry'}
+            </button>
+          </div>
+        )}
         {/* Waiting for confirmation indicator */}
         {waitingForConfirmation && (
           <div className="rounded-lg px-3 py-1.5 mb-2 flex items-center justify-center gap-2" style={{ background: `${theme.primary}1a`, borderColor: `${theme.primary}4d`, borderWidth: 1, borderStyle: 'solid' }}>
@@ -1236,7 +1520,7 @@ const handleCheckout = async () => {
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, boxShadow: `0 4px 15px ${theme.primary}33` }}>
-              <img src="/icons/icon-96x96.png" alt="N" className="w-7 h-7 rounded-md" />
+              <Image src="/icons/icon-96x96.png" alt="N" width={28} height={28} className="rounded-md" />
             </div>
             <div>
               <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>Coasis</p>
@@ -1376,8 +1660,17 @@ const handleCheckout = async () => {
                             const inCart = cart.find(c => c.id === item.id);
                             const isFav = favorites.includes(item.id);
                             return (
-                              <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
-                                <div className="flex-1 min-w-0 mr-2">
+                              <div key={item.id} className="flex items-center justify-between gap-2 p-2.5 bg-zinc-900/80 border border-zinc-800 rounded-xl">
+                                <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-zinc-700 flex-shrink-0">
+                                  <Image
+                                    src={getDisplayImage(item)}
+                                    alt={item.name}
+                                    fill
+                                    sizes="80px"
+                                    className="object-cover"
+                                  />
+                                </div>
+                                <div className="flex-1 min-w-0 mr-1">
                                   <div className="flex items-center gap-1.5">
                                     <p className="font-medium text-[14px] truncate">{item.name}</p>
                                     {idx < 3 && <Flame className="w-3.5 h-3.5 flex-shrink-0 text-orange-400" />}
@@ -1428,7 +1721,16 @@ const handleCheckout = async () => {
                     <div className="mt-4 space-y-3">
                       {cart.map(item => (
                         <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
-                          <div className="flex-1 mr-3">
+                          <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 mr-3 flex-shrink-0">
+                            <Image
+                              src={getDisplayImage(item)}
+                              alt={item.name}
+                              fill
+                              sizes="64px"
+                              className="object-cover"
+                            />
+                          </div>
+                          <div className="flex-1 mr-3 min-w-0">
                             <p className="font-medium text-[14px]">{item.name}</p>
                             <p className="text-[12px] text-gray-500">${item.price.toFixed(2)} each</p>
                           </div>
@@ -1556,6 +1858,50 @@ const handleCheckout = async () => {
                       </div>
                       <div className="rounded-xl p-3 text-center" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
                         <p className="font-medium text-[14px]" style={{ color: theme.primary }}>💵 Pay cash to the manager</p>
+                      </div>
+                      <div className="rounded-xl p-3 border border-sky-500/30 bg-sky-500/10 space-y-2">
+                        <p className="text-[13px] font-medium text-sky-300 text-center">Or pay online securely (USD)</p>
+                        {paymentVerifying && (
+                          <p className="text-[12px] text-center text-sky-100">Verifying payment status...</p>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <button
+                            onClick={() => handleOnlinePayment('card')}
+                            disabled={paymentLoading !== null}
+                            className="w-full py-2.5 px-3 rounded-xl font-semibold text-[13px] bg-white text-black disabled:opacity-60"
+                          >
+                            <CreditCard className="w-4 h-4 inline mr-1" />
+                            {paymentLoading === 'card' ? 'Connecting...' : 'Pay by Card'}
+                          </button>
+                          <button
+                            onClick={() => handleOnlinePayment('paypal')}
+                            disabled={paymentLoading !== null}
+                            className="w-full py-2.5 px-3 rounded-xl font-semibold text-[13px] bg-[#0070ba] text-white disabled:opacity-60"
+                          >
+                            {paymentLoading === 'paypal' ? 'Connecting...' : 'Pay with PayPal'}
+                          </button>
+                        </div>
+                        {paymentStatusMessage && (
+                          <p className="text-[12px] text-center text-sky-100">{paymentStatusMessage}</p>
+                        )}
+                        {paymentStatusMessage && !paymentVerifying && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleOnlinePayment(lastPaymentProvider || 'card')}
+                              disabled={paymentLoading !== null}
+                              className="w-full py-2 px-3 rounded-lg border border-white/20 text-white text-[12px] font-semibold disabled:opacity-60"
+                            >
+                              Retry {lastPaymentProvider === 'paypal' ? 'PayPal' : 'Card'}
+                            </button>
+                            <button
+                              onClick={() => handleOnlinePayment(lastPaymentProvider === 'paypal' ? 'card' : 'paypal')}
+                              disabled={paymentLoading !== null}
+                              className="w-full py-2 px-3 rounded-lg border border-sky-300/30 text-sky-100 text-[12px] font-semibold disabled:opacity-60"
+                            >
+                              Try {lastPaymentProvider === 'paypal' ? 'Card' : 'PayPal'}
+                            </button>
+                          </div>
+                        )}
                       </div>
                       <button onClick={generatePDF} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-xl font-medium text-[14px]">
                         <Download className="w-4 h-4" /> Download PDF

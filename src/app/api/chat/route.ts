@@ -20,13 +20,15 @@ const DEFAULT_MODEL = 'meta-llama/llama-3.3-8b-instruct:free';
 
 function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' | 'baseMessage' | 'intent'>>): string {
   return [
-    'Rewrite the assistant reply to sound natural, warm, and human.',
+    'Rewrite the assistant reply to sound natural, warm, and premium-casual (mobile app style).',
     'Hard rules:',
     '- Preserve ordering intent exactly. Do not change action meaning.',
     '- Do not invent dishes, prices, quantities, or policy.',
     '- Keep all factual details from the original response.',
     '- Keep all item names and numbers exactly the same as in the original response.',
     '- Do not add extra recommendations unless already present.',
+    '- Be clear, short sentences, easy to scan on a phone screen.',
+    '- If the user sounds confused, add one short clarifying line.',
     '- Keep it concise (max 110 words).',
     '- Return plain text only (no markdown, no JSON).',
     `User message: ${payload.userMessage}`,
@@ -69,12 +71,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.35,
+        temperature: 0.4,
         max_tokens: 220,
         messages: [
           {
             role: 'system',
-            content: 'You are a restaurant ordering assistant response rewriter. Keep all facts and constraints exactly unchanged.',
+            content: 'You are a restaurant ordering assistant response rewriter. Keep all facts and constraints exactly unchanged while improving clarity, confidence, and conversational warmth.',
           },
           {
             role: 'user',
