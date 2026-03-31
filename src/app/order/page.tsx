@@ -257,6 +257,7 @@ function OrderContent() {
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [showConfirmationFlash, setShowConfirmationFlash] = useState(false);
+  const [showPartyBooster, setShowPartyBooster] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const [canInstallPWA, setCanInstallPWA] = useState(false);
@@ -305,6 +306,7 @@ function OrderContent() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmationFlashTimerRef = useRef<number | null>(null);
+  const partyBoosterTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
   const voiceStatusTimerRef = useRef<number | null>(null);
 
@@ -326,7 +328,30 @@ function OrderContent() {
   const orderDockState: 'pending' | 'unsent' | 'confirmed' = showConfirmationFlash
     ? 'confirmed'
     : (waitingForConfirmation ? 'pending' : 'unsent');
-  const orderDockAccent = orderDockState === 'unsent' ? theme.primary : '#22c55e';
+  const confirmationTone = useMemo(() => {
+    const isHoliday = theme.occasion === 'holiday';
+    const isWeekend = theme.id === 'weekend' || theme.id === 'miamisunday';
+
+    if (isHoliday) {
+      return {
+        accent: theme.accent,
+        cardBackground: `linear-gradient(135deg, ${theme.primary}24, ${theme.accent}1f, rgba(17, 17, 17, 0.96))`,
+      };
+    }
+
+    if (isWeekend) {
+      return {
+        accent: theme.primary,
+        cardBackground: `linear-gradient(135deg, ${theme.primary}26, ${theme.primaryLight}1f, rgba(17, 17, 17, 0.96))`,
+      };
+    }
+
+    return {
+      accent: theme.primary,
+      cardBackground: `linear-gradient(135deg, ${theme.primary}20, ${theme.primaryDark}1f, rgba(17, 17, 17, 0.95))`,
+    };
+  }, [theme]);
+  const orderDockAccent = orderDockState === 'confirmed' ? confirmationTone.accent : theme.primary;
   const orderDockTitle = orderDockState === 'confirmed'
     ? 'Order confirmed'
     : (orderDockState === 'pending' ? 'Pending confirmation' : 'Ready to send');
@@ -391,11 +416,24 @@ function OrderContent() {
     };
   }, []);
 
-  // Apply occasion-based theme on mount
+  // Apply occasion-based theme automatically using Tampa-aware logic.
   useEffect(() => {
-    const currentTheme = getCurrentTheme();
-    setTheme(currentTheme);
-    applyTheme(currentTheme);
+    const syncTheme = () => {
+      const currentTheme = getCurrentTheme();
+      setTheme(currentTheme);
+      applyTheme(currentTheme);
+    };
+
+    syncTheme();
+    const interval = window.setInterval(syncTheme, 60000);
+    window.addEventListener('focus', syncTheme);
+    document.addEventListener('visibilitychange', syncTheme);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', syncTheme);
+      document.removeEventListener('visibilitychange', syncTheme);
+    };
   }, []);
 
   // Persist favorites
@@ -451,6 +489,9 @@ function OrderContent() {
     return () => {
       if (confirmationFlashTimerRef.current) {
         window.clearTimeout(confirmationFlashTimerRef.current);
+      }
+      if (partyBoosterTimerRef.current) {
+        window.clearTimeout(partyBoosterTimerRef.current);
       }
     };
   }, []);
@@ -656,12 +697,19 @@ function OrderContent() {
             setWaitingForConfirmation(false);
             setCurrentOrderId(null);
             setShowConfirmationFlash(true);
+            setShowPartyBooster(true);
             if (confirmationFlashTimerRef.current) {
               window.clearTimeout(confirmationFlashTimerRef.current);
             }
             confirmationFlashTimerRef.current = window.setTimeout(() => {
               setShowConfirmationFlash(false);
             }, 1200);
+            if (partyBoosterTimerRef.current) {
+              window.clearTimeout(partyBoosterTimerRef.current);
+            }
+            partyBoosterTimerRef.current = window.setTimeout(() => {
+              setShowPartyBooster(false);
+            }, 2600);
             addBotMessage(
               `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
               [
@@ -1824,6 +1872,33 @@ function OrderContent() {
     <div className="fixed inset-0 bg-black text-white flex flex-col overflow-hidden chat-surface" style={{ height: '100dvh' }}>
       <div className="chat-ambient-bubble chat-ambient-bubble-a" />
       <div className="chat-ambient-bubble chat-ambient-bubble-b" />
+
+      <AnimatePresence>
+        {showPartyBooster && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 18 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -8 }}
+            className="pointer-events-none fixed top-20 left-1/2 -translate-x-1/2 z-[70]"
+          >
+            <div
+              className="party-booster rounded-2xl px-4 py-3 border"
+              style={{
+                borderColor: `${confirmationTone.accent}66`,
+                background: confirmationTone.cardBackground,
+                boxShadow: `0 10px 28px ${confirmationTone.accent}29`,
+              }}
+            >
+              <p className="text-sm font-bold" style={{ color: confirmationTone.accent }}>Order Confirmed</p>
+              <p className="text-xs text-gray-200 mt-0.5">Kitchen is on it. Party booster activated.</p>
+              <div className="party-bursts" aria-hidden="true">
+                <span>✨</span><span>🎉</span><span>💥</span><span>✨</span><span>🎊</span>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
       <div className="status-bar-spacer" />
 
@@ -1890,6 +1965,11 @@ function OrderContent() {
             <span className="text-[11px] px-3 py-0.5 rounded-full" style={{ background: `${theme.primary}1a`, color: theme.primary }}>
               {theme.emoji} {theme.name}
             </span>
+          </div>
+        )}
+        {theme.id === 'miamisunday' && (
+          <div className="mb-2 rounded-xl px-3 py-1.5 border border-cyan-400/35 bg-cyan-500/10 miami-wave text-center">
+            <p className="text-[12px] font-semibold text-cyan-200">🌴 Sunday Miami Vibe • Tampa Weekend Mode</p>
           </div>
         )}
         <div className="flex items-center justify-between max-w-lg mx-auto">
@@ -2587,6 +2667,27 @@ function OrderContent() {
         .message-bubble {
           box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
         }
+        .party-booster {
+          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.42);
+        }
+        .party-bursts {
+          margin-top: 6px;
+          display: flex;
+          gap: 8px;
+          justify-content: center;
+        }
+        .party-bursts span {
+          display: inline-block;
+          animation: partyBurst 1.2s ease-in-out infinite;
+        }
+        .party-bursts span:nth-child(2) { animation-delay: 0.15s; }
+        .party-bursts span:nth-child(3) { animation-delay: 0.28s; }
+        .party-bursts span:nth-child(4) { animation-delay: 0.41s; }
+        .party-bursts span:nth-child(5) { animation-delay: 0.56s; }
+        .miami-wave {
+          animation: miamiWave 2.2s ease-in-out infinite;
+          box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15), 0 10px 24px rgba(6, 182, 212, 0.12);
+        }
         .cart-pulse {
           animation: cartPulse 1.8s ease-in-out infinite;
         }
@@ -2629,6 +2730,14 @@ function OrderContent() {
         @keyframes cartPulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.06); }
+        }
+        @keyframes partyBurst {
+          0%, 100% { transform: translateY(0) scale(1); opacity: 0.85; }
+          50% { transform: translateY(-5px) scale(1.15); opacity: 1; }
+        }
+        @keyframes miamiWave {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-1px); }
         }
         @keyframes bounceSubtle {
           0%, 100% { transform: translateY(0); }

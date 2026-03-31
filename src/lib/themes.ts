@@ -244,14 +244,31 @@ const THEMES: Record<string, AppTheme> = {
     botBubbleBorder: 'rgba(233,30,99,0.2)',
     userBubbleBg: '#e91e63',
   },
+  miamisunday: {
+    id: 'miamisunday',
+    occasion: 'weekend',
+    name: 'Miami Sunday',
+    emoji: '🌴',
+    greeting: 'Sunday in Tampa with Miami vibes. Let\'s make it bright and smooth.',
+    primary: '#00c2ff',
+    primaryLight: '#b8f1ff',
+    primaryDark: '#006b8f',
+    accent: '#ff5fa2',
+    headerGradient: 'linear-gradient(135deg, rgba(0,194,255,0.14), rgba(255,95,162,0.1), rgba(10,10,10,0.95))',
+    buttonGradient: 'linear-gradient(135deg, #00c2ff, #ff5fa2)',
+    bgGlow: 'rgba(0,194,255,0.12)',
+    botBubbleBg: 'rgb(14,23,31)',
+    botBubbleBorder: 'rgba(0,194,255,0.28)',
+    userBubbleBg: '#00c2ff',
+  },
 };
 
 export function getCurrentTheme(): AppTheme {
-  const now = new Date();
-  const month = now.getMonth(); // 0-11
-  const day = now.getDate();
-  const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
-  const hour = now.getHours();
+  const tampaNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  const month = tampaNow.getMonth(); // 0-11
+  const day = tampaNow.getDate();
+  const dayOfWeek = tampaNow.getDay(); // 0=Sun, 6=Sat
+  const hour = tampaNow.getHours();
 
   // Holiday themes (exact dates take priority)
   // New Year (Dec 28 - Jan 5)
@@ -272,8 +289,13 @@ export function getCurrentTheme(): AppTheme {
   // Christmas (Dec 15-27)
   if (month === 11 && day >= 15 && day <= 27) return THEMES.christmas;
 
-  // Weekend theme (Fri evening, Sat, Sun)
-  if ((dayOfWeek === 5 && hour >= 17) || dayOfWeek === 6 || (dayOfWeek === 0 && hour < 16)) {
+  // Sunday gets a special Miami-style weekend experience.
+  if (dayOfWeek === 0) {
+    return THEMES.miamisunday;
+  }
+
+  // Weekend theme (Fri evening and Saturday)
+  if ((dayOfWeek === 5 && hour >= 17) || dayOfWeek === 6) {
     return THEMES.weekend;
   }
 
