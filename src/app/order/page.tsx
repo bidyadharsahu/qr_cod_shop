@@ -58,8 +58,6 @@ interface PaymentGatewayStatus {
   anyProviderConfigured: boolean;
 }
 
-type ChatAnimationMode = 'quick' | 'smooth';
-
 interface VoiceRecognitionEvent {
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
 }
@@ -103,7 +101,8 @@ const EXPERIENCE_MEDIA = [
   },
 ];
 
-const FEATURE_VIDEO_URL = 'https://player.vimeo.com/external/434045526.sd.mp4?s=8f9979f8cb6d99f14f4f88364c124593d5e6a5cc&profile_id=164&oauth2_token_id=57447761';
+const FEATURE_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+const FEATURE_VIDEO_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=1200&q=80';
 
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
@@ -238,16 +237,13 @@ function OrderContent() {
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceStatusMessage, setVoiceStatusMessage] = useState<string | null>(null);
-  const [voiceAutoSend, setVoiceAutoSend] = useState(false);
-  const [chatAnimationMode, setChatAnimationMode] = useState<ChatAnimationMode>('smooth');
-  const [showAdvancedAnimationControls, setShowAdvancedAnimationControls] = useState(false);
+  const [featureVideoFailed, setFeatureVideoFailed] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmationFlashTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
-  const voiceAutoSendTimerRef = useRef<number | null>(null);
-  const voiceAutoSendActiveRef = useRef(false);
+  const voiceStatusTimerRef = useRef<number | null>(null);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -280,25 +276,15 @@ function OrderContent() {
   const paymentOrderId = latestOrderIdForPayment || currentOrderId;
 
   const motionProfile = useMemo(() => {
-    if (chatAnimationMode === 'smooth') {
-      const smoothEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
-      return {
-        bubble: { duration: 0.34, ease: smoothEase },
-        panel: { duration: 0.38, ease: smoothEase },
-        dock: { duration: 0.34, ease: smoothEase },
-        typing: { duration: 0.3, ease: smoothEase },
-        badge: { delay: 0.26, type: 'spring' as const, stiffness: 170, damping: 16 },
-      };
-    }
-
+    const smoothEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
     return {
-      bubble: { duration: 0.17, ease: 'easeOut' as const },
-      panel: { duration: 0.22, ease: 'easeOut' as const },
-      dock: { duration: 0.2, ease: 'easeOut' as const },
-      typing: { duration: 0.18, ease: 'easeOut' as const },
-      badge: { delay: 0.15, type: 'spring' as const, stiffness: 280, damping: 18 },
+      bubble: { duration: 0.34, ease: smoothEase },
+      panel: { duration: 0.38, ease: smoothEase },
+      dock: { duration: 0.34, ease: smoothEase },
+      typing: { duration: 0.3, ease: smoothEase },
+      badge: { delay: 0.26, type: 'spring' as const, stiffness: 170, damping: 16 },
     };
-  }, [chatAnimationMode]);
+  }, []);
 
   const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
 
@@ -697,17 +683,9 @@ function OrderContent() {
       if (!transcript) return;
       setUserInput(prev => (prev ? `${prev} ${transcript}` : transcript));
 
-      if (voiceAutoSendActiveRef.current) {
-        setVoiceStatusMessage('Voice captured. Auto-sending...');
-        if (voiceAutoSendTimerRef.current) window.clearTimeout(voiceAutoSendTimerRef.current);
-        voiceAutoSendTimerRef.current = window.setTimeout(() => {
-          inputRef.current?.form?.requestSubmit();
-          setVoiceStatusMessage(null);
-        }, 900);
-      } else {
-        setVoiceStatusMessage('Voice captured. You can edit or send.');
-        setTimeout(() => setVoiceStatusMessage(null), 1800);
-      }
+      setVoiceStatusMessage('Voice captured. You can edit or send.');
+      if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
+      voiceStatusTimerRef.current = window.setTimeout(() => setVoiceStatusMessage(null), 1800);
     };
     recognition.onerror = () => {
       setIsListening(false);
@@ -720,37 +698,11 @@ function OrderContent() {
     setVoiceSupported(true);
 
     return () => {
-      if (voiceAutoSendTimerRef.current) {
-        window.clearTimeout(voiceAutoSendTimerRef.current);
-      }
+      if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
       recognition.stop();
       voiceRecognitionRef.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('netrikxr-voice-autosend');
-    if (stored === '1') setVoiceAutoSend(true);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('netrikxr-chat-animation-mode');
-    if (stored === 'smooth' || stored === 'quick') {
-      setChatAnimationMode(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('netrikxr-voice-autosend', voiceAutoSend ? '1' : '0');
-  }, [voiceAutoSend]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('netrikxr-chat-animation-mode', chatAnimationMode);
-  }, [chatAnimationMode]);
 
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const msg: ChatMessage = {
@@ -1267,7 +1219,6 @@ function OrderContent() {
       return;
     }
 
-    voiceAutoSendActiveRef.current = voiceAutoSend;
     setVoiceStatusMessage('Listening... speak now');
     setIsListening(true);
     try {
@@ -1847,16 +1798,22 @@ function OrderContent() {
           <section className="space-y-2.5 sm:space-y-3">
             <div className="rounded-2xl overflow-hidden border border-zinc-700/70 bg-zinc-900/70">
               <div className="relative h-32 sm:h-36">
-                <video
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  preload="metadata"
-                >
-                  <source src={FEATURE_VIDEO_URL} type="video/mp4" />
-                </video>
+                {featureVideoFailed ? (
+                  <Image src={FEATURE_VIDEO_FALLBACK_IMAGE} alt="Restaurant ambiance" fill sizes="(max-width: 640px) 100vw, 640px" className="object-cover" />
+                ) : (
+                  <video
+                    className="w-full h-full object-cover"
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    preload="metadata"
+                    poster={FEATURE_VIDEO_FALLBACK_IMAGE}
+                    onError={() => setFeatureVideoFailed(true)}
+                  >
+                    <source src={FEATURE_VIDEO_URL} type="video/mp4" />
+                  </video>
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
                 <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:bottom-3 sm:left-3 sm:right-3 flex items-center justify-between gap-2">
                   <div>
@@ -2427,55 +2384,6 @@ function OrderContent() {
         {voiceStatusMessage && (
           <div className="max-w-lg mx-auto mb-2 rounded-xl px-3 py-2 text-[12px] border border-zinc-700 bg-zinc-900/90 text-gray-200">
             {voiceStatusMessage}
-          </div>
-        )}
-        <div className="max-w-lg mx-auto mb-2 flex items-center justify-between gap-2 text-[11px]">
-          <div className="flex items-center gap-2">
-            <span className="text-gray-400">Voice</span>
-            <button
-              type="button"
-              onClick={() => setVoiceAutoSend(prev => !prev)}
-              className="px-2.5 py-1 rounded-lg border font-semibold"
-              style={voiceAutoSend
-                ? { borderColor: `${theme.primary}66`, background: `${theme.primary}1a`, color: theme.primary }
-                : { borderColor: '#3f3f46', background: '#18181b', color: '#a1a1aa' }}
-            >
-              Auto-send {voiceAutoSend ? 'On' : 'Off'}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowAdvancedAnimationControls(prev => !prev)}
-            className="px-2.5 py-1 rounded-lg border font-semibold"
-            style={{ borderColor: '#3f3f46', background: '#18181b', color: '#a1a1aa' }}
-          >
-            Advanced motion
-          </button>
-        </div>
-        {showAdvancedAnimationControls && (
-          <div className="max-w-lg mx-auto mb-2 flex items-center justify-end">
-            <div className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/80 p-1">
-              <button
-                type="button"
-                onClick={() => setChatAnimationMode('quick')}
-                className="px-2 py-1 rounded-md font-semibold"
-                style={chatAnimationMode === 'quick'
-                  ? { background: `${theme.primary}1a`, color: theme.primary }
-                  : { color: '#a1a1aa' }}
-              >
-                Quick
-              </button>
-              <button
-                type="button"
-                onClick={() => setChatAnimationMode('smooth')}
-                className="px-2 py-1 rounded-md font-semibold"
-                style={chatAnimationMode === 'smooth'
-                  ? { background: `${theme.primary}1a`, color: theme.primary }
-                  : { color: '#a1a1aa' }}
-              >
-                Smooth
-              </button>
-            </div>
           </div>
         )}
         <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 max-w-lg mx-auto">

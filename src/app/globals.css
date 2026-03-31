@@ -28,6 +28,8 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 body {
@@ -790,6 +792,7 @@ button {
     radial-gradient(circle at 10% 10%, var(--admin-bg-a), transparent 34%),
     radial-gradient(circle at 88% 14%, var(--admin-bg-b), transparent 30%),
     linear-gradient(180deg, #0a0a0c 0%, #09090b 44%, #08080a 100%);
+  overflow-y: auto;
 }
 
 .admin-shell h1,

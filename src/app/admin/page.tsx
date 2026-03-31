@@ -33,6 +33,25 @@ const DEFAULT_COMPANY_PROFILE = {
   logoHint: 'Logo Placeholder',
 };
 
+const toIsoDay = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const formatIsoDayLabel = (isoDay: string) => {
+  const parts = isoDay.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return isoDay;
+  const d = new Date(parts[0], parts[1] - 1, parts[2]);
+  return d.toLocaleDateString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+  });
+};
+
 export default function AdminDashboard() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -83,6 +102,13 @@ export default function AdminDashboard() {
     logoHint: DEFAULT_COMPANY_PROFILE.logoHint,
   });
   const [savingBranding, setSavingBranding] = useState(false);
+  const [selectedReportDate, setSelectedReportDate] = useState<string>(toIsoDay(new Date()));
+  const [reportFromDate, setReportFromDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return toIsoDay(d);
+  });
+  const [reportToDate, setReportToDate] = useState<string>(toIsoDay(new Date()));
   
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
@@ -221,14 +247,15 @@ export default function AdminDashboard() {
   };
 
   const printDailyClosingReport = (
-    todayOrdersSnapshot: Order[],
-    todayPaidOrdersSnapshot: Order[],
-    todayRevenueSnapshot: number,
-    todayCashCount: number,
-    todayOnlineCount: number,
-    todayCashAmount: number,
-    todayOnlineAmount: number,
-    todayCancelledCount: number
+    reportDateIso: string,
+    reportOrdersSnapshot: Order[],
+    reportPaidOrdersSnapshot: Order[],
+    reportRevenueSnapshot: number,
+    reportCashCount: number,
+    reportOnlineCount: number,
+    reportCashAmount: number,
+    reportOnlineAmount: number,
+    reportCancelledCount: number
   ) => {
     if (typeof window === 'undefined') return;
 
@@ -241,7 +268,7 @@ export default function AdminDashboard() {
     popup.document.write(`
       <html>
         <head>
-          <title>Daily Closing Report</title>
+          <title>Daily Closing Report - ${reportDateIso}</title>
           <style>
             @page { size: A4; margin: 18mm; }
             body { font-family: Arial, sans-serif; color: #111; }
@@ -263,22 +290,22 @@ export default function AdminDashboard() {
             <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
             <div>
               <h1 class="title">${companyProfile.name} - Daily Closing Report</h1>
-              <p class="sub">${new Date().toLocaleString()} • ${companyProfile.logoHint}</p>
+              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} • Printed: ${new Date().toLocaleString()} • ${companyProfile.logoHint}</p>
             </div>
           </div>
           <div class="grid">
-            <div class="card"><h4>Total Orders</h4><p class="big">${todayOrdersSnapshot.length}</p></div>
-            <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${todayRevenueSnapshot.toFixed(2)}</p></div>
-            <div class="card"><h4>Cash Payments</h4><p class="big">${todayCashCount} • $${todayCashAmount.toFixed(2)}</p></div>
-            <div class="card"><h4>Online Payments</h4><p class="big">${todayOnlineCount} • $${todayOnlineAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Total Orders</h4><p class="big">${reportOrdersSnapshot.length}</p></div>
+            <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${reportRevenueSnapshot.toFixed(2)}</p></div>
+            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} • $${reportCashAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} • $${reportOnlineAmount.toFixed(2)}</p></div>
           </div>
-          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${todayPaidOrdersSnapshot.length} • Cancelled: ${todayCancelledCount}</p></div>
+          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} • Cancelled: ${reportCancelledCount}</p></div>
           <table>
             <thead>
               <tr><th>Receipt</th><th>Table</th><th>Status</th><th>Payment</th><th>Total</th><th>Created</th></tr>
             </thead>
             <tbody>
-              ${todayOrdersSnapshot.map(order => `<tr><td>${order.receipt_id}</td><td>${order.table_number}</td><td>${order.status}</td><td>${order.payment_status}</td><td>$${order.total.toFixed(2)}</td><td>${new Date(order.created_at).toLocaleString()}</td></tr>`).join('')}
+              ${reportOrdersSnapshot.map(order => `<tr><td>${order.receipt_id}</td><td>${order.table_number}</td><td>${order.status}</td><td>${order.payment_status}</td><td>$${order.total.toFixed(2)}</td><td>${new Date(order.created_at).toLocaleString()}</td></tr>`).join('')}
             </tbody>
           </table>
         </body>
@@ -290,11 +317,11 @@ export default function AdminDashboard() {
     popup.print();
   };
 
-  const exportTodayAccountingCsv = (todayOrdersSnapshot: Order[], todayPaymentEventsSnapshot: PaymentEventAudit[]) => {
+  const exportTodayAccountingCsv = (reportDateIso: string, reportOrdersSnapshot: Order[], reportPaymentEventsSnapshot: PaymentEventAudit[]) => {
     const lines: string[] = [];
     lines.push('SECTION,TYPE,ORDER_ID,RECEIPT_ID,TABLE,STATUS,PAYMENT_STATUS,PAYMENT_TYPE,TOTAL,EVENT_TYPE,EVENT_STATUS,PROVIDER,TRANSACTION_ID,SOURCE,TIME');
 
-    for (const order of todayOrdersSnapshot) {
+    for (const order of reportOrdersSnapshot) {
       lines.push([
         escapeCsv('orders'),
         escapeCsv('order_row'),
@@ -314,7 +341,7 @@ export default function AdminDashboard() {
       ].join(','));
     }
 
-    for (const evt of todayPaymentEventsSnapshot) {
+    for (const evt of reportPaymentEventsSnapshot) {
       lines.push([
         escapeCsv('payments'),
         escapeCsv('event_row'),
@@ -338,10 +365,69 @@ export default function AdminDashboard() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `accounting-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `accounting-export-${reportDateIso}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('CSV exported');
+  };
+
+  const exportDateRangeAccountingCsv = (
+    fromDateIso: string,
+    toDateIso: string,
+    rangeOrdersSnapshot: Order[],
+    rangePaymentEventsSnapshot: PaymentEventAudit[]
+  ) => {
+    const lines: string[] = [];
+    lines.push('SECTION,TYPE,ORDER_ID,RECEIPT_ID,TABLE,STATUS,PAYMENT_STATUS,PAYMENT_TYPE,TOTAL,EVENT_TYPE,EVENT_STATUS,PROVIDER,TRANSACTION_ID,SOURCE,TIME');
+
+    for (const order of rangeOrdersSnapshot) {
+      lines.push([
+        escapeCsv('orders'),
+        escapeCsv('order_row'),
+        escapeCsv(order.id),
+        escapeCsv(order.receipt_id),
+        escapeCsv(order.table_number),
+        escapeCsv(order.status),
+        escapeCsv(order.payment_status),
+        escapeCsv(order.payment_type),
+        escapeCsv(order.total.toFixed(2)),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(order.transaction_id),
+        escapeCsv(''),
+        escapeCsv(order.created_at),
+      ].join(','));
+    }
+
+    for (const evt of rangePaymentEventsSnapshot) {
+      lines.push([
+        escapeCsv('payments'),
+        escapeCsv('event_row'),
+        escapeCsv(evt.order_id),
+        escapeCsv(evt.receipt_id),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(''),
+        escapeCsv(evt.amount ?? ''),
+        escapeCsv(evt.event_type),
+        escapeCsv(evt.status),
+        escapeCsv(evt.provider),
+        escapeCsv(evt.transaction_id),
+        escapeCsv(evt.source),
+        escapeCsv(evt.event_time || evt.created_at),
+      ].join(','));
+    }
+
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `accounting-export-${fromDateIso}-to-${toDateIso}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Date-range CSV exported');
   };
 
   // Auth check - using sessionStorage
@@ -616,6 +702,29 @@ export default function AdminDashboard() {
     .filter(o => o.payment_type === 'direct_cash' || o.payment_method === 'cash')
     .reduce((sum, o) => sum + o.total, 0);
   const todayPaymentEvents = paymentEvents.filter(evt => new Date(evt.event_time || evt.created_at).toDateString() === new Date().toDateString());
+  const selectedDayOrders = orders.filter(o => toIsoDay(new Date(o.created_at)) === selectedReportDate);
+  const selectedDayPaidOrders = selectedDayOrders.filter(o => o.payment_status === 'paid');
+  const selectedDayRevenue = selectedDayPaidOrders.reduce((sum, o) => sum + o.total, 0);
+  const selectedDayCancelledOrders = selectedDayOrders.filter(o => o.status === 'cancelled').length;
+  const selectedDayOnlineCount = selectedDayPaidOrders.filter(o => o.payment_type === 'chatbot_payment').length;
+  const selectedDayCashCount = selectedDayPaidOrders.filter(o => o.payment_type === 'direct_cash' || o.payment_method === 'cash').length;
+  const selectedDayOnlineAmount = selectedDayPaidOrders
+    .filter(o => o.payment_type === 'chatbot_payment')
+    .reduce((sum, o) => sum + o.total, 0);
+  const selectedDayCashAmount = selectedDayPaidOrders
+    .filter(o => o.payment_type === 'direct_cash' || o.payment_method === 'cash')
+    .reduce((sum, o) => sum + o.total, 0);
+  const selectedDayPaymentEvents = paymentEvents.filter(evt => toIsoDay(new Date(evt.event_time || evt.created_at)) === selectedReportDate);
+  const rangeStartIso = reportFromDate <= reportToDate ? reportFromDate : reportToDate;
+  const rangeEndIso = reportFromDate <= reportToDate ? reportToDate : reportFromDate;
+  const rangeOrders = orders.filter(o => {
+    const day = toIsoDay(new Date(o.created_at));
+    return day >= rangeStartIso && day <= rangeEndIso;
+  });
+  const rangePaymentEvents = paymentEvents.filter(evt => {
+    const day = toIsoDay(new Date(evt.event_time || evt.created_at));
+    return day >= rangeStartIso && day <= rangeEndIso;
+  });
   const topSellingItemsToday = (() => {
     const map = new Map<string, { qty: number; amount: number }>();
     for (const order of todayOrders) {
@@ -662,8 +771,19 @@ export default function AdminDashboard() {
 
   // Separate waiter calls from regular orders
   useEffect(() => {
-    const calls = orders.filter(o => o.receipt_id?.startsWith('CALL-') && o.status === 'pending');
-    setWaiterCalls(calls);
+    const pendingCalls = orders
+      .filter(o => o.receipt_id?.startsWith('CALL-') && o.status === 'pending')
+      .filter(o => Date.now() - new Date(o.created_at).getTime() <= 1000 * 60 * 30)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    const latestByTable = new Map<number, Order>();
+    for (const call of pendingCalls) {
+      if (!latestByTable.has(call.table_number)) {
+        latestByTable.set(call.table_number, call);
+      }
+    }
+
+    setWaiterCalls(Array.from(latestByTable.values()));
   }, [orders]);
 
   // Filtered orders (excluding waiter calls for the orders list)
@@ -715,7 +835,12 @@ export default function AdminDashboard() {
 
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
-    await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', call.id);
+    setWaiterCalls(prev => prev.filter(c => c.id !== call.id));
+    const { error } = await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', call.id);
+    if (error) {
+      showToast('Could not acknowledge waiter call. Please retry.', 'error');
+      return;
+    }
     showToast('Waiter call acknowledged');
   };
 
@@ -1065,6 +1190,65 @@ export default function AdminDashboard() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/60 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Report Date</p>
+                <p className="text-sm text-gray-300">{formatIsoDayLabel(selectedReportDate)}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    setSelectedReportDate(toIsoDay(d));
+                  }}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200"
+                >
+                  Yesterday
+                </button>
+                <button
+                  onClick={() => setSelectedReportDate(toIsoDay(new Date()))}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200"
+                >
+                  Today
+                </button>
+                <input
+                  type="date"
+                  value={selectedReportDate}
+                  onChange={(e) => setSelectedReportDate(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
+                />
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/60 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Date Range Export</p>
+                <p className="text-sm text-gray-300">{formatIsoDayLabel(rangeStartIso)} → {formatIsoDayLabel(rangeEndIso)}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={reportFromDate}
+                  onChange={(e) => setReportFromDate(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
+                />
+                <span className="text-gray-500 text-sm">to</span>
+                <input
+                  type="date"
+                  value={reportToDate}
+                  onChange={(e) => setReportToDate(e.target.value)}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
+                />
+                <button
+                  onClick={() => exportDateRangeAccountingCsv(rangeStartIso, rangeEndIso, rangeOrders, rangePaymentEvents)}
+                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200 font-semibold"
+                >
+                  Export Range CSV
+                </button>
+              </div>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <button
                 onClick={() => setShowBrandingModal(true)}
@@ -1077,24 +1261,34 @@ export default function AdminDashboard() {
                 <p className="text-xs text-gray-500">Edit logo URL and business name</p>
               </button>
               <button
-                onClick={() => printDailyClosingReport(todayOrders, todayPaidOrders, todayRevenue, cashPaymentsToday, onlinePaymentsToday, cashAmountToday, onlineAmountToday, todayCancelledOrders)}
+                onClick={() => printDailyClosingReport(
+                  selectedReportDate,
+                  selectedDayOrders,
+                  selectedDayPaidOrders,
+                  selectedDayRevenue,
+                  selectedDayCashCount,
+                  selectedDayOnlineCount,
+                  selectedDayCashAmount,
+                  selectedDayOnlineAmount,
+                  selectedDayCancelledOrders
+                )}
                 className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Printer className="w-4 h-4 text-emerald-300" />
-                  <span className="text-sm font-semibold">Print Daily Closing (A4)</span>
+                  <span className="text-sm font-semibold">Print Closing (A4)</span>
                 </div>
-                <p className="text-xs text-gray-500">Cash, online, and order summary</p>
+                <p className="text-xs text-gray-500">Selected day cash, online, and order summary</p>
               </button>
               <button
-                onClick={() => exportTodayAccountingCsv(todayOrders, todayPaymentEvents)}
+                onClick={() => exportTodayAccountingCsv(selectedReportDate, selectedDayOrders, selectedDayPaymentEvents)}
                 className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Download className="w-4 h-4 text-sky-300" />
                   <span className="text-sm font-semibold">Export Accountant CSV</span>
                 </div>
-                <p className="text-xs text-gray-500">Today orders + payment timeline</p>
+                <p className="text-xs text-gray-500">Selected day orders + payment timeline</p>
               </button>
             </div>
 
