@@ -358,6 +358,10 @@ function OrderContent() {
   const orderDockCta = orderDockState === 'confirmed'
     ? 'Done'
     : (orderDockState === 'pending' ? 'View' : 'Send now');
+  const hasHeaderBanner = !isOnline || menuLoading || Boolean(menuLoadError) || Boolean(queuedCheckout);
+  const partyBoosterTop = hasHeaderBanner
+    ? 'calc(env(safe-area-inset-top, 0px) + 136px)'
+    : 'calc(env(safe-area-inset-top, 0px) + 84px)';
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
@@ -1879,10 +1883,11 @@ function OrderContent() {
             initial={{ opacity: 0, scale: 0.92, y: 18 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -8 }}
-            className="pointer-events-none fixed top-20 left-1/2 -translate-x-1/2 z-[70]"
+            className="pointer-events-none fixed left-1/2 -translate-x-1/2 z-[90] px-3 sm:px-0"
+            style={{ top: partyBoosterTop }}
           >
             <div
-              className="party-booster rounded-2xl px-4 py-3 border"
+              className="party-booster rounded-2xl px-4 py-3 border max-w-[min(92vw,26rem)]"
               style={{
                 borderColor: `${confirmationTone.accent}66`,
                 background: confirmationTone.cardBackground,
