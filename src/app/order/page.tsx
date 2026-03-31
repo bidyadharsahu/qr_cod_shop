@@ -358,10 +358,6 @@ function OrderContent() {
   const orderDockCta = orderDockState === 'confirmed'
     ? 'Done'
     : (orderDockState === 'pending' ? 'View' : 'Send now');
-  const hasHeaderBanner = !isOnline || menuLoading || Boolean(menuLoadError) || Boolean(queuedCheckout);
-  const partyBoosterTop = hasHeaderBanner
-    ? 'calc(env(safe-area-inset-top, 0px) + 136px)'
-    : 'calc(env(safe-area-inset-top, 0px) + 84px)';
   const calculation = calculateOrderTotal(subtotal, selectedTip);
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
@@ -1877,40 +1873,13 @@ function OrderContent() {
       <div className="chat-ambient-bubble chat-ambient-bubble-a" />
       <div className="chat-ambient-bubble chat-ambient-bubble-b" />
 
-      <AnimatePresence>
-        {showPartyBooster && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.92, y: 18 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: -8 }}
-            className="pointer-events-none fixed left-1/2 -translate-x-1/2 z-[90] px-3 sm:px-0"
-            style={{ top: partyBoosterTop }}
-          >
-            <div
-              className="party-booster rounded-2xl px-4 py-3 border max-w-[min(92vw,26rem)]"
-              style={{
-                borderColor: `${confirmationTone.accent}66`,
-                background: confirmationTone.cardBackground,
-                boxShadow: `0 10px 28px ${confirmationTone.accent}29`,
-              }}
-            >
-              <p className="text-sm font-bold" style={{ color: confirmationTone.accent }}>Order Confirmed</p>
-              <p className="text-xs text-gray-200 mt-0.5">Kitchen is on it. Party booster activated.</p>
-              <div className="party-bursts" aria-hidden="true">
-                <span>✨</span><span>🎉</span><span>💥</span><span>✨</span><span>🎊</span>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
       {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
       <div className="status-bar-spacer" />
 
       {/* ========================================== */}
       {/* FIXED HEADER - Native App Style */}
       {/* ========================================== */}
-      <header className="flex-shrink-0 sticky top-0 bg-black/95 backdrop-blur-xl border-b px-4 py-3 z-50" style={{ borderColor: `${theme.primary}33` }}>
+      <header className="flex-shrink-0 sticky top-0 bg-black/95 backdrop-blur-xl border-b px-4 py-3 z-50 relative overflow-visible" style={{ borderColor: `${theme.primary}33` }}>
         {/* Offline indicator */}
         {!isOnline && (
           <div className="bg-red-500/20 border border-red-500/40 rounded-lg px-3 py-1.5 mb-2 text-center">
@@ -2013,6 +1982,31 @@ function OrderContent() {
             </button>
           </div>
         </div>
+        <AnimatePresence>
+          {showPartyBooster && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: -6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              className="pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 z-[90] px-3 sm:px-0"
+            >
+              <div
+                className="party-booster rounded-2xl px-4 py-3 border max-w-[min(92vw,26rem)]"
+                style={{
+                  borderColor: `${confirmationTone.accent}66`,
+                  background: confirmationTone.cardBackground,
+                  boxShadow: `0 10px 28px ${confirmationTone.accent}29`,
+                }}
+              >
+                <p className="text-sm font-bold" style={{ color: confirmationTone.accent }}>Order Confirmed</p>
+                <p className="text-xs text-gray-200 mt-0.5">Kitchen is on it. Party booster activated.</p>
+                <div className="party-bursts" aria-hidden="true">
+                  <span>✨</span><span>🎉</span><span>💥</span><span>✨</span><span>🎊</span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
 
       {/* ========================================== */}
