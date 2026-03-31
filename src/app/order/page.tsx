@@ -59,6 +59,7 @@ interface PaymentGatewayStatus {
 }
 
 interface VoiceRecognitionEvent {
+  resultIndex?: number;
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
 }
 
@@ -103,6 +104,66 @@ const EXPERIENCE_MEDIA = [
 
 const FEATURE_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
 const FEATURE_VIDEO_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=1200&q=80';
+
+const VOICE_NUMBERS: Record<string, number> = {
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
+const normalizeVoiceText = (raw: string): string => {
+  const lower = raw
+    .toLowerCase()
+    .replace(/\b(pay pal|paper)\b/g, 'paypal')
+    .replace(/\b(sea food)\b/g, 'seafood')
+    .replace(/\b(card payment|pay by card)\b/g, 'card')
+    .replace(/\b(add to cut|add two cart|add to card)\b/g, 'add to cart')
+    .replace(/\b(please|can you|could you|would you|um|uh)\b/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const normalizedWords = lower.split(' ').map((word) => {
+    if (VOICE_NUMBERS[word] !== undefined) return String(VOICE_NUMBERS[word]);
+    return word;
+  });
+
+  return normalizedWords.join(' ').trim();
+};
+
+const getBestMenuVoiceMatch = (items: MenuItem[], query: string): MenuItem | null => {
+  const q = normalizeVoiceText(query);
+  if (!q) return null;
+
+  const queryTokens = q.split(' ').filter(token => token.length > 1);
+  if (queryTokens.length === 0) return null;
+
+  let best: { score: number; item: MenuItem } | null = null;
+
+  for (const item of items) {
+    const name = normalizeVoiceText(item.name);
+    const nameTokens = name.split(' ').filter(token => token.length > 1);
+
+    if (name.includes(q) || q.includes(name)) {
+      const exactScore = 1.2;
+      if (!best || exactScore > best.score) best = { score: exactScore, item };
+      continue;
+    }
+
+    const matches = queryTokens.filter(token => nameTokens.some(nt => nt.startsWith(token) || token.startsWith(nt))).length;
+    const score = matches / Math.max(queryTokens.length, nameTokens.length);
+    if (!best || score > best.score) best = { score, item };
+  }
+
+  return best && best.score >= 0.34 ? best.item : null;
+};
 
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
@@ -237,6 +298,8 @@ function OrderContent() {
   const [isListening, setIsListening] = useState(false);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceStatusMessage, setVoiceStatusMessage] = useState<string | null>(null);
+  const [interimVoiceTranscript, setInterimVoiceTranscript] = useState('');
+  const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState<string | null>(null);
   const [featureVideoFailed, setFeatureVideoFailed] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -676,23 +739,42 @@ function OrderContent() {
 
     const recognition = new SpeechRecognitionCtor();
     recognition.lang = 'en-US';
-    recognition.interimResults = false;
+    recognition.interimResults = true;
     recognition.continuous = false;
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript?.trim();
-      if (!transcript) return;
-      setUserInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+    recognition.onresult = (event: any) => {
+      let finalTranscript = '';
+      let interim = '';
+      const startIndex = typeof event.resultIndex === 'number' ? event.resultIndex : 0;
 
-      setVoiceStatusMessage('Voice captured. You can edit or send.');
-      if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
-      voiceStatusTimerRef.current = window.setTimeout(() => setVoiceStatusMessage(null), 1800);
+      for (let i = startIndex; i < event.results.length; i++) {
+        const part = event.results[i]?.[0]?.transcript || '';
+        if (!part) continue;
+        if (event.results[i].isFinal) finalTranscript += ` ${part}`;
+        else interim += ` ${part}`;
+      }
+
+      if (interim.trim()) {
+        setInterimVoiceTranscript(interim.trim());
+      }
+
+      if (finalTranscript.trim()) {
+        const cleaned = normalizeVoiceText(finalTranscript);
+        if (!cleaned) return;
+        setInterimVoiceTranscript('');
+        setPendingVoiceTranscript(cleaned);
+        setVoiceStatusMessage('Voice captured. Processing command...');
+      }
     };
     recognition.onerror = () => {
       setIsListening(false);
+      setInterimVoiceTranscript('');
       setVoiceStatusMessage('Voice input failed. Try again.');
       setTimeout(() => setVoiceStatusMessage(null), 2200);
     };
-    recognition.onend = () => setIsListening(false);
+    recognition.onend = () => {
+      setIsListening(false);
+      setInterimVoiceTranscript('');
+    };
 
     voiceRecognitionRef.current = recognition;
     setVoiceSupported(true);
@@ -1229,6 +1311,64 @@ function OrderContent() {
       setTimeout(() => setVoiceStatusMessage(null), 2000);
     }
   };
+
+  useEffect(() => {
+    if (!pendingVoiceTranscript) return;
+
+    const spoken = pendingVoiceTranscript;
+    setPendingVoiceTranscript(null);
+
+    const executeIntent = (intent: string) => {
+      handleOptionClick(intent);
+      if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
+      setVoiceStatusMessage('Voice command executed.');
+      voiceStatusTimerRef.current = window.setTimeout(() => setVoiceStatusMessage(null), 1500);
+    };
+
+    if (/(show|open|see).*(menu)|\bmenu\b/.test(spoken)) return executeIntent('menu');
+    if (/(show|open|view).*(cart)|\bcart\b/.test(spoken)) return executeIntent('cart');
+    if (/(checkout|place order|send order)/.test(spoken)) return executeIntent('checkout');
+    if (/(call|need).*(waiter)|\bwaiter\b/.test(spoken)) return executeIntent('call_waiter');
+    if (/(popular|best seller|top)/.test(spoken)) return executeIntent('popular');
+    if (/(seafood|fish|shrimp|lobster)/.test(spoken)) return executeIntent('seafood');
+    if (/(spicy|hot)/.test(spoken)) return executeIntent('spicy');
+    if (/(favorite|favourites|favorites)/.test(spoken)) return executeIntent('favorites');
+    if (/(recommend|suggest)/.test(spoken)) return executeIntent('recommend');
+    if (/(help|how to)/.test(spoken)) return executeIntent('help');
+    if (/(bill|payment|pay now)/.test(spoken)) return executeIntent('pay');
+
+    const addMatch = spoken.match(/(?:add|order|get)\s+(\d+)?\s*(.*)/);
+    if (addMatch) {
+      const quantity = Math.max(1, Number(addMatch[1] || '1'));
+      const dishQuery = addMatch[2]?.trim();
+      const matched = dishQuery ? getBestMenuVoiceMatch(menuItems, dishQuery) : null;
+
+      if (matched) {
+        setCart(prev => {
+          const existing = prev.find(i => i.id === matched.id);
+          if (existing) {
+            return prev.map(i => i.id === matched.id ? { ...i, quantity: i.quantity + quantity } : i);
+          }
+          return [...prev, { ...matched, quantity }];
+        });
+        addBotMessage(`🎤 Added ${quantity}x ${matched.name} from voice command.`, [
+          { label: '🛒 View Cart', value: 'cart' },
+          { label: '➕ Add More', value: 'menu' },
+        ]);
+        if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
+        setVoiceStatusMessage('Voice order added to cart.');
+        voiceStatusTimerRef.current = window.setTimeout(() => setVoiceStatusMessage(null), 1600);
+        return;
+      }
+    }
+
+    setUserInput(prev => (prev ? `${prev} ${spoken}` : spoken));
+    if (voiceStatusTimerRef.current) window.clearTimeout(voiceStatusTimerRef.current);
+    setVoiceStatusMessage('Voice converted to text. Tap send.');
+    voiceStatusTimerRef.current = window.setTimeout(() => setVoiceStatusMessage(null), 1800);
+  // We intentionally depend on transcript/menu data only; function identities are stable enough for this immediate command flow.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingVoiceTranscript, menuItems]);
 
   const submitPendingOrder = useCallback(async (
     pendingItems: PendingCheckoutItem[],
@@ -2384,6 +2524,11 @@ function OrderContent() {
         {voiceStatusMessage && (
           <div className="max-w-lg mx-auto mb-2 rounded-xl px-3 py-2 text-[12px] border border-zinc-700 bg-zinc-900/90 text-gray-200">
             {voiceStatusMessage}
+          </div>
+        )}
+        {isListening && interimVoiceTranscript && (
+          <div className="max-w-lg mx-auto mb-2 rounded-xl px-3 py-2 text-[12px] border border-sky-500/40 bg-sky-500/10 text-sky-100">
+            {interimVoiceTranscript}
           </div>
         )}
         <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 max-w-lg mx-auto">
