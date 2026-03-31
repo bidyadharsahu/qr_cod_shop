@@ -13,7 +13,7 @@ import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
   FileText, Check, MessageCircle, Download, 
-  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard
+  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard, Mic, MicOff, PlayCircle
 } from 'lucide-react';
 import { calculateOrderTotal } from '@/lib/calculations';
 
@@ -57,6 +57,53 @@ interface PaymentGatewayStatus {
   mode: 'sandbox' | 'live';
   anyProviderConfigured: boolean;
 }
+
+type ChatAnimationMode = 'quick' | 'smooth';
+
+interface VoiceRecognitionEvent {
+  results: ArrayLike<ArrayLike<{ transcript: string }>>;
+}
+
+interface VoiceRecognitionInstance {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: VoiceRecognitionEvent) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+interface VoiceRecognitionFactory {
+  new (): VoiceRecognitionInstance;
+}
+
+const EXPERIENCE_MEDIA = [
+  {
+    id: 'signature-steak',
+    title: 'Signature Steaks',
+    subtitle: 'Chef crafted premium cuts',
+    image: 'https://images.unsplash.com/photo-1558030006-450675393462?auto=format&fit=crop&w=900&q=80',
+    action: 'popular',
+  },
+  {
+    id: 'seafood-night',
+    title: 'Seafood Nights',
+    subtitle: 'Fresh ocean flavors',
+    image: 'https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?auto=format&fit=crop&w=900&q=80',
+    action: 'seafood',
+  },
+  {
+    id: 'spicy-specials',
+    title: 'Spicy Specials',
+    subtitle: 'Hot and bold favorites',
+    image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=900&q=80',
+    action: 'spicy',
+  },
+];
+
+const FEATURE_VIDEO_URL = 'https://player.vimeo.com/external/434045526.sd.mp4?s=8f9979f8cb6d99f14f4f88364c124593d5e6a5cc&profile_id=164&oauth2_token_id=57447761';
 
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
@@ -188,10 +235,19 @@ function OrderContent() {
   const [lastSubmittedSubtotal, setLastSubmittedSubtotal] = useState(0);
   const [lastSubmittedItemsCount, setLastSubmittedItemsCount] = useState(0);
   const [lastOrderWasAddOn, setLastOrderWasAddOn] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceStatusMessage, setVoiceStatusMessage] = useState<string | null>(null);
+  const [voiceAutoSend, setVoiceAutoSend] = useState(false);
+  const [chatAnimationMode, setChatAnimationMode] = useState<ChatAnimationMode>('smooth');
+  const [showAdvancedAnimationControls, setShowAdvancedAnimationControls] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmationFlashTimerRef = useRef<number | null>(null);
+  const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
+  const voiceAutoSendTimerRef = useRef<number | null>(null);
+  const voiceAutoSendActiveRef = useRef(false);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -222,6 +278,27 @@ function OrderContent() {
   const { tipAmount, taxAmount, total } = calculation;
   const categories = [...new Set(menuItems.map(i => i.category))];
   const paymentOrderId = latestOrderIdForPayment || currentOrderId;
+
+  const motionProfile = useMemo(() => {
+    if (chatAnimationMode === 'smooth') {
+      const smoothEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
+      return {
+        bubble: { duration: 0.34, ease: smoothEase },
+        panel: { duration: 0.38, ease: smoothEase },
+        dock: { duration: 0.34, ease: smoothEase },
+        typing: { duration: 0.3, ease: smoothEase },
+        badge: { delay: 0.26, type: 'spring' as const, stiffness: 170, damping: 16 },
+      };
+    }
+
+    return {
+      bubble: { duration: 0.17, ease: 'easeOut' as const },
+      panel: { duration: 0.22, ease: 'easeOut' as const },
+      dock: { duration: 0.2, ease: 'easeOut' as const },
+      typing: { duration: 0.18, ease: 'easeOut' as const },
+      badge: { delay: 0.15, type: 'spring' as const, stiffness: 280, damping: 18 },
+    };
+  }, [chatAnimationMode]);
 
   const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
 
@@ -601,6 +678,79 @@ function OrderContent() {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, 100);
   }, [chatMessages, isBotTyping]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const SpeechRecognitionCtor = ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) as VoiceRecognitionFactory | undefined;
+    if (!SpeechRecognitionCtor) {
+      setVoiceSupported(false);
+      return;
+    }
+
+    const recognition = new SpeechRecognitionCtor();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+      if (!transcript) return;
+      setUserInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+
+      if (voiceAutoSendActiveRef.current) {
+        setVoiceStatusMessage('Voice captured. Auto-sending...');
+        if (voiceAutoSendTimerRef.current) window.clearTimeout(voiceAutoSendTimerRef.current);
+        voiceAutoSendTimerRef.current = window.setTimeout(() => {
+          inputRef.current?.form?.requestSubmit();
+          setVoiceStatusMessage(null);
+        }, 900);
+      } else {
+        setVoiceStatusMessage('Voice captured. You can edit or send.');
+        setTimeout(() => setVoiceStatusMessage(null), 1800);
+      }
+    };
+    recognition.onerror = () => {
+      setIsListening(false);
+      setVoiceStatusMessage('Voice input failed. Try again.');
+      setTimeout(() => setVoiceStatusMessage(null), 2200);
+    };
+    recognition.onend = () => setIsListening(false);
+
+    voiceRecognitionRef.current = recognition;
+    setVoiceSupported(true);
+
+    return () => {
+      if (voiceAutoSendTimerRef.current) {
+        window.clearTimeout(voiceAutoSendTimerRef.current);
+      }
+      recognition.stop();
+      voiceRecognitionRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('netrikxr-voice-autosend');
+    if (stored === '1') setVoiceAutoSend(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem('netrikxr-chat-animation-mode');
+    if (stored === 'smooth' || stored === 'quick') {
+      setChatAnimationMode(stored);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('netrikxr-voice-autosend', voiceAutoSend ? '1' : '0');
+  }, [voiceAutoSend]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('netrikxr-chat-animation-mode', chatAnimationMode);
+  }, [chatAnimationMode]);
 
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const msg: ChatMessage = {
@@ -1103,6 +1253,32 @@ function OrderContent() {
       setIsBotTyping(false);
     }
   };
+
+  const toggleVoiceInput = () => {
+    if (!voiceRecognitionRef.current) {
+      setVoiceStatusMessage('Voice input is not supported in this browser.');
+      setTimeout(() => setVoiceStatusMessage(null), 2200);
+      return;
+    }
+
+    if (isListening) {
+      voiceRecognitionRef.current.stop();
+      setIsListening(false);
+      return;
+    }
+
+    voiceAutoSendActiveRef.current = voiceAutoSend;
+    setVoiceStatusMessage('Listening... speak now');
+    setIsListening(true);
+    try {
+      voiceRecognitionRef.current.start();
+    } catch {
+      setIsListening(false);
+      setVoiceStatusMessage('Could not start voice input.');
+      setTimeout(() => setVoiceStatusMessage(null), 2000);
+    }
+  };
+
   const submitPendingOrder = useCallback(async (
     pendingItems: PendingCheckoutItem[],
     isAddOnOrder: boolean,
@@ -1530,7 +1706,7 @@ function OrderContent() {
           <motion.div
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
-            transition={{ delay: 0.2, type: 'spring' }}
+            transition={motionProfile.badge}
             className="w-24 h-24 rounded-full flex items-center justify-center mb-8"
             style={{ background: `linear-gradient(to bottom right, ${theme.primary}, ${theme.primaryDark})` }}
           >
@@ -1667,7 +1843,59 @@ function OrderContent() {
       {/* SCROLLABLE CHAT AREA - Only this scrolls */}
       {/* ========================================== */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        <div className="max-w-lg mx-auto px-4 py-4 space-y-4 pb-6">
+        <div className="max-w-lg mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4 pb-6">
+          <section className="space-y-2.5 sm:space-y-3">
+            <div className="rounded-2xl overflow-hidden border border-zinc-700/70 bg-zinc-900/70">
+              <div className="relative h-32 sm:h-36">
+                <video
+                  className="w-full h-full object-cover"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                >
+                  <source src={FEATURE_VIDEO_URL} type="video/mp4" />
+                </video>
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
+                <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:bottom-3 sm:left-3 sm:right-3 flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[11px] sm:text-[13px] text-white/80">Tonight at Coasis</p>
+                    <p className="text-[14px] sm:text-[16px] font-semibold">Fresh bites, smooth service, secure checkout</p>
+                  </div>
+                  <button
+                    onClick={() => handleOptionClick('menu')}
+                    className="px-3 py-2 rounded-xl text-[12px] font-semibold text-black shrink-0"
+                    style={{ background: theme.primary }}
+                  >
+                    <PlayCircle className="w-4 h-4 inline mr-1" /> Explore
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto scrollbar-hide">
+              <div className="flex gap-3 min-w-max pr-1">
+                {EXPERIENCE_MEDIA.map((card) => (
+                  <button
+                    key={card.id}
+                    onClick={() => handleOptionClick(card.action)}
+                    className="w-52 sm:w-56 rounded-2xl border border-zinc-700/70 bg-zinc-900/70 overflow-hidden text-left"
+                  >
+                    <div className="relative h-20 sm:h-24">
+                      <Image src={card.image} alt={card.title} fill sizes="224px" className="object-cover" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
+                    </div>
+                    <div className="p-2.5 sm:p-3">
+                      <p className="text-[14px] font-semibold leading-tight">{card.title}</p>
+                      <p className="text-[12px] text-gray-400 mt-1">{card.subtitle}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </section>
+
           <AnimatePresence mode="popLayout">
             {chatMessages.map((msg, index) => {
               const previous = chatMessages[index - 1];
@@ -1685,7 +1913,7 @@ function OrderContent() {
               <motion.div
                 initial={{ opacity: 0, y: 15, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.2 }}
+                transition={motionProfile.bubble}
                 className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`${msg.role === 'user' ? 'max-w-[75%]' : 'max-w-[85%]'}`}>
@@ -1738,7 +1966,12 @@ function OrderContent() {
                   {/* MENU DISPLAY */}
                   {/* ========================================== */}
                   {msg.showMenu && (
-                    <div className="mt-4 space-y-3">
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={motionProfile.panel}
+                      className="mt-4 space-y-3"
+                    >
                       {/* Category Pills */}
                       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         <button
@@ -1819,14 +2052,19 @@ function OrderContent() {
                           View Cart ({cart.reduce((s, i) => s + i.quantity, 0)}) • ${subtotal.toFixed(2)}
                         </button>
                       )}
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* ========================================== */}
                   {/* CART DISPLAY */}
                   {/* ========================================== */}
                   {msg.showCart && cart.length > 0 && (
-                    <div className="mt-4 space-y-3">
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={motionProfile.panel}
+                      className="mt-4 space-y-3"
+                    >
                       {cart.map(item => (
                         <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
                           <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 mr-3 flex-shrink-0">
@@ -1870,7 +2108,7 @@ function OrderContent() {
                           {loading ? 'Placing...' : 'Place Order'}
                         </button>
                       </div>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* ========================================== */}
@@ -1915,7 +2153,12 @@ function OrderContent() {
                   {/* BILL DISPLAY */}
                   {/* ========================================== */}
                   {msg.showBill && (
-                    <div className="mt-4 space-y-3">
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      transition={motionProfile.panel}
+                      className="mt-4 space-y-3"
+                    >
                       <div className="bg-zinc-900 rounded-2xl p-4" style={{ border: `1px solid ${theme.primary}4d` }}>
                         <div className="text-center border-b border-zinc-800 pb-3 mb-3">
                           <h3 className="text-lg font-bold" style={{ color: theme.primary }}>netrikxr.shop</h3>
@@ -2042,7 +2285,7 @@ function OrderContent() {
                       <button onClick={() => handleOptionClick('done')} className="w-full py-3 text-black rounded-xl font-bold text-[14px]" style={{ background: theme.primary }}>
                         Done
                       </button>
-                    </div>
+                    </motion.div>
                   )}
 
                   {/* ========================================== */}
@@ -2094,6 +2337,7 @@ function OrderContent() {
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
+                transition={motionProfile.typing}
                 className="flex justify-start"
               >
                 <div className="max-w-[85%]">
@@ -2126,7 +2370,7 @@ function OrderContent() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 14 }}
-            transition={{ duration: 0.24, ease: 'easeOut' }}
+            transition={motionProfile.dock}
             className="flex-shrink-0 px-4 pb-2 safe-bottom-mini"
           >
             <div
@@ -2179,15 +2423,81 @@ function OrderContent() {
         )}
       </AnimatePresence>
 
-      <div className="flex-shrink-0 sticky bottom-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-4 py-3 safe-bottom">
-        <form onSubmit={handleSendMessage} className="flex gap-3 max-w-lg mx-auto">
+      <div className="flex-shrink-0 sticky bottom-0 bg-black/95 backdrop-blur-xl border-t border-zinc-800 px-3 sm:px-4 py-2.5 sm:py-3 safe-bottom">
+        {voiceStatusMessage && (
+          <div className="max-w-lg mx-auto mb-2 rounded-xl px-3 py-2 text-[12px] border border-zinc-700 bg-zinc-900/90 text-gray-200">
+            {voiceStatusMessage}
+          </div>
+        )}
+        <div className="max-w-lg mx-auto mb-2 flex items-center justify-between gap-2 text-[11px]">
+          <div className="flex items-center gap-2">
+            <span className="text-gray-400">Voice</span>
+            <button
+              type="button"
+              onClick={() => setVoiceAutoSend(prev => !prev)}
+              className="px-2.5 py-1 rounded-lg border font-semibold"
+              style={voiceAutoSend
+                ? { borderColor: `${theme.primary}66`, background: `${theme.primary}1a`, color: theme.primary }
+                : { borderColor: '#3f3f46', background: '#18181b', color: '#a1a1aa' }}
+            >
+              Auto-send {voiceAutoSend ? 'On' : 'Off'}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAdvancedAnimationControls(prev => !prev)}
+            className="px-2.5 py-1 rounded-lg border font-semibold"
+            style={{ borderColor: '#3f3f46', background: '#18181b', color: '#a1a1aa' }}
+          >
+            Advanced motion
+          </button>
+        </div>
+        {showAdvancedAnimationControls && (
+          <div className="max-w-lg mx-auto mb-2 flex items-center justify-end">
+            <div className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/80 p-1">
+              <button
+                type="button"
+                onClick={() => setChatAnimationMode('quick')}
+                className="px-2 py-1 rounded-md font-semibold"
+                style={chatAnimationMode === 'quick'
+                  ? { background: `${theme.primary}1a`, color: theme.primary }
+                  : { color: '#a1a1aa' }}
+              >
+                Quick
+              </button>
+              <button
+                type="button"
+                onClick={() => setChatAnimationMode('smooth')}
+                className="px-2 py-1 rounded-md font-semibold"
+                style={chatAnimationMode === 'smooth'
+                  ? { background: `${theme.primary}1a`, color: theme.primary }
+                  : { color: '#a1a1aa' }}
+              >
+                Smooth
+              </button>
+            </div>
+          </div>
+        )}
+        <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 max-w-lg mx-auto">
+          <button
+            type="button"
+            onClick={toggleVoiceInput}
+            disabled={!voiceSupported}
+            className={`w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center border transition-all ${isListening ? 'scale-105' : ''} disabled:opacity-40`}
+            style={isListening
+              ? { background: `${theme.primary}22`, borderColor: theme.primary, color: theme.primary }
+              : { background: '#18181b', borderColor: '#3f3f46', color: '#a1a1aa' }}
+            title={voiceSupported ? (isListening ? 'Stop voice input' : 'Start voice input') : 'Voice input not supported'}
+          >
+            {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </button>
           <input
             ref={inputRef}
             type="text"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
             placeholder="Ask SIA anything..."
-            className="flex-1 px-4 py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:outline-none text-[16px] placeholder-gray-500"
+            className="flex-1 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:outline-none text-[15px] sm:text-[16px] placeholder-gray-500"
             style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
             enterKeyHint="send"
             autoComplete="off"
@@ -2196,7 +2506,7 @@ function OrderContent() {
           <button 
             type="submit" 
             disabled={!userInput.trim()}
-            className="w-12 h-12 text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
+            className="w-11 h-11 sm:w-12 sm:h-12 text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
             style={{ background: theme.primary }}
           >
             <Send className="w-5 h-5" />
