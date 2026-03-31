@@ -2070,6 +2070,72 @@ function OrderContent() {
                 ))}
               </div>
             </div>
+
+            <div className="rounded-2xl border border-zinc-700/70 bg-zinc-900/65 p-2.5 sm:p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[12px] font-semibold" style={{ color: `${theme.primary}e6` }}>Quick actions</p>
+                <span className="text-[11px] text-gray-400">1-tap shortcuts</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleOptionClick('menu')}
+                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left"
+                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primary}14` }}
+                >
+                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primary }}>
+                    <FileText className="w-3.5 h-3.5" /> Menu
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Browse all dishes</p>
+                </button>
+
+                <button
+                  onClick={() => handleOptionClick('cart')}
+                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left relative"
+                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primary}14` }}
+                >
+                  {pendingCartItems > 0 && (
+                    <span className="absolute top-1.5 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold text-black" style={{ background: theme.primary }}>
+                      {pendingCartItems}
+                    </span>
+                  )}
+                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primary }}>
+                    <ShoppingCart className="w-3.5 h-3.5" /> Cart
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Review items</p>
+                </button>
+
+                <button
+                  onClick={() => handleOptionClick('call_waiter')}
+                  disabled={callingWaiter}
+                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left disabled:opacity-50"
+                  style={{ borderColor: `${theme.accent || theme.primary}40`, background: `${theme.accent || theme.primary}14` }}
+                >
+                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.accent || theme.primary }}>
+                    <PhoneCall className="w-3.5 h-3.5" /> {callingWaiter ? 'Calling...' : 'Call waiter'}
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Need help at table</p>
+                </button>
+
+                <button
+                  onClick={() => handleOptionClick('pay')}
+                  disabled={!receiptId && !waitingForConfirmation && cart.length === 0}
+                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left disabled:opacity-50"
+                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primaryDark}22` }}
+                >
+                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primaryLight }}>
+                    <CreditCard className="w-3.5 h-3.5" /> Bill and pay
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">Tips and checkout</p>
+                </button>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-2 px-1">
+                {waitingForConfirmation
+                  ? 'Order sent. Staff confirmation is in progress.'
+                  : (pendingCartItems > 0
+                    ? `${pendingCartItems} unsent item${pendingCartItems > 1 ? 's' : ''} ready to place.`
+                    : 'Use SIA chat or quick actions to move faster.')}
+              </p>
+            </div>
           </section>
 
           <AnimatePresence mode="popLayout">
@@ -2105,18 +2171,18 @@ function OrderContent() {
                   
                   {/* Message Bubble */}
                   <div 
-                    className={`message-bubble rounded-2xl px-4 py-2.5 ${msg.role === 'user' ? 'rounded-br-sm ml-auto user-chat-pop' : 'rounded-bl-sm bot-chat-pop'}`}
+                    className={`message-bubble rounded-2xl px-4 py-2.5 ${msg.role === 'user' ? 'rounded-br-sm ml-auto user-chat-pop msg-bubble-user' : 'rounded-bl-sm bot-chat-pop msg-bubble-bot'}`}
                     style={msg.role === 'user' 
                       ? { background: theme.userBubbleBg, color: '#000' }
                       : { background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }
                     }
                   >
-                    <p className={`leading-relaxed whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium' : 'text-[15px]'}`}>{msg.content}</p>
+                    <p className={`message-copy whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium text-black/95' : 'text-[15px] text-zinc-100'}`}>{msg.content}</p>
                   </div>
-                  <div className={`mt-1 text-[10px] ${msg.role === 'user' ? 'text-right' : 'text-left'} text-gray-500 flex items-center gap-1 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <span>{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div className={`chat-time-row mt-1.5 text-[10px] ${msg.role === 'user' ? 'text-right' : 'text-left'} flex items-center gap-1.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <span className="chat-time-pill">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     {msg.role === 'user' && (
-                      <span className="text-sky-400 text-[11px] leading-none tracking-[-1px]" aria-label="Read">
+                      <span className="chat-read-pill" aria-label="Read">
                         ✓✓
                       </span>
                     )}
@@ -2125,12 +2191,16 @@ function OrderContent() {
                   {/* Quick Options */}
                   {msg.options && msg.options.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
-                      {msg.options.map((opt) => (
+                      {msg.options.map((opt, optIndex) => (
                         <button
                           key={opt.value}
                           onClick={() => handleOptionClick(opt.value)}
-                          className="quick-chip-pop px-3.5 py-2 bg-zinc-900 rounded-xl text-[13px] font-medium active:scale-95 transition-transform"
-                          style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}
+                          className="quick-chip-pop px-3.5 py-2 bg-zinc-900 rounded-xl text-[13px] font-medium active:scale-95"
+                          style={{
+                            border: `1px solid ${theme.primary}4d`,
+                            color: theme.primary,
+                            animationDelay: `${Math.min(optIndex, 5) * 65}ms`,
+                          }}
                         >
                           {opt.label}
                         </button>
@@ -2234,56 +2304,88 @@ function OrderContent() {
                   {/* ========================================== */}
                   {/* CART DISPLAY */}
                   {/* ========================================== */}
-                  {msg.showCart && cart.length > 0 && (
+                  {msg.showCart && (
                     <motion.div
                       initial={{ opacity: 0, y: 12, scale: 0.98 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       transition={motionProfile.panel}
                       className="mt-4 space-y-3"
                     >
-                      {cart.map(item => (
-                        <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
-                          <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 mr-3 flex-shrink-0">
-                            <Image
-                              src={getDisplayImage(item)}
-                              alt={item.name}
-                              fill
-                              sizes="64px"
-                              className="object-cover"
-                            />
+                      {cart.length === 0 ? (
+                        <div className="empty-cart-state rounded-2xl p-4 border" style={{ borderColor: `${theme.primary}40`, background: `linear-gradient(135deg, ${theme.primary}16, rgba(24,24,27,0.95))` }}>
+                          <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${theme.primary}2b` }}>
+                              <ShoppingCart className="w-4 h-4" style={{ color: theme.primary }} />
+                            </div>
+                            <div>
+                              <p className="text-[14px] font-semibold" style={{ color: theme.primaryLight }}>Your cart is waiting</p>
+                              <p className="text-[12px] text-gray-300">Add a few picks to start your order.</p>
+                            </div>
                           </div>
-                          <div className="flex-1 mr-3 min-w-0">
-                            <p className="font-medium text-[14px]">{item.name}</p>
-                            <p className="text-[12px] text-gray-500">${item.price.toFixed(2)} each</p>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            <button onClick={() => updateQuantity(item.id, -1)} className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center active:scale-95">
-                              <Minus className="w-4 h-4" />
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            <button
+                              onClick={() => handleOptionClick('menu')}
+                              className="py-2.5 text-black rounded-xl font-semibold text-[13px] active:scale-[0.98] transition-transform"
+                              style={{ background: theme.primary }}
+                            >
+                              Browse Menu
                             </button>
-                            <span className="w-6 text-center font-bold text-[14px]">{item.quantity}</span>
-                            <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 text-black rounded-lg flex items-center justify-center active:scale-95" style={{ background: theme.primary }}>
-                              <Plus className="w-4 h-4" />
-                            </button>
-                            <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center active:scale-95 ml-1">
-                              <Trash2 className="w-4 h-4" />
+                            <button
+                              onClick={() => handleOptionClick('recommend')}
+                              className="py-2.5 rounded-xl font-medium text-[13px] active:scale-[0.98] transition-transform"
+                              style={{ border: `1px solid ${theme.primary}55`, color: theme.primary }}
+                            >
+                              Ask SIA Picks
                             </button>
                           </div>
                         </div>
-                      ))}
-                      <div className="p-3 rounded-xl" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
-                        <div className="flex justify-between text-lg font-bold">
-                          <span>Total</span>
-                          <span style={{ color: theme.primary }}>${subtotal.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 rounded-xl font-medium text-[14px] active:scale-[0.98]" style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}>
-                          <Plus className="w-4 h-4 inline mr-1" /> Add More
-                        </button>
-                        <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]" style={{ background: theme.primary }}>
-                          {loading ? 'Placing...' : 'Place Order'}
-                        </button>
-                      </div>
+                      ) : (
+                        <>
+                          {cart.map(item => (
+                            <div key={item.id} className="flex items-center justify-between p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl">
+                              <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-zinc-700 mr-3 flex-shrink-0">
+                                <Image
+                                  src={getDisplayImage(item)}
+                                  alt={item.name}
+                                  fill
+                                  sizes="64px"
+                                  className="object-cover"
+                                />
+                              </div>
+                              <div className="flex-1 mr-3 min-w-0">
+                                <p className="font-medium text-[14px]">{item.name}</p>
+                                <p className="text-[12px] text-gray-500">${item.price.toFixed(2)} each</p>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                <button onClick={() => updateQuantity(item.id, -1)} className="w-8 h-8 bg-zinc-800 rounded-lg flex items-center justify-center active:scale-95">
+                                  <Minus className="w-4 h-4" />
+                                </button>
+                                <span className="w-6 text-center font-bold text-[14px]">{item.quantity}</span>
+                                <button onClick={() => updateQuantity(item.id, 1)} className="w-8 h-8 text-black rounded-lg flex items-center justify-center active:scale-95" style={{ background: theme.primary }}>
+                                  <Plus className="w-4 h-4" />
+                                </button>
+                                <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 bg-red-500/20 text-red-400 rounded-lg flex items-center justify-center active:scale-95 ml-1">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                          <div className="p-3 rounded-xl" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
+                            <div className="flex justify-between text-lg font-bold">
+                              <span>Total</span>
+                              <span style={{ color: theme.primary }}>${subtotal.toFixed(2)}</span>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 rounded-xl font-medium text-[14px] active:scale-[0.98]" style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}>
+                              <Plus className="w-4 h-4 inline mr-1" /> Add More
+                            </button>
+                            <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]" style={{ background: theme.primary }}>
+                              {loading ? 'Placing...' : 'Place Order'}
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </motion.div>
                   )}
 
@@ -2666,8 +2768,70 @@ function OrderContent() {
         .message-bubble {
           box-shadow: 0 8px 18px rgba(0, 0, 0, 0.28);
         }
+        .msg-bubble-bot {
+          backdrop-filter: blur(6px);
+        }
+        .msg-bubble-user {
+          box-shadow: 0 10px 22px rgba(0, 0, 0, 0.24);
+        }
+        .message-copy {
+          line-height: 1.56;
+          letter-spacing: 0.012em;
+          text-wrap: pretty;
+        }
+        .chat-time-row {
+          color: #a1a1aa;
+        }
+        .chat-time-pill {
+          border: 1px solid rgba(161, 161, 170, 0.24);
+          border-radius: 999px;
+          padding: 1px 7px;
+          background: rgba(24, 24, 27, 0.72);
+          letter-spacing: 0.04em;
+          font-weight: 500;
+        }
+        .chat-read-pill {
+          color: #7dd3fc;
+          letter-spacing: -0.09em;
+          font-size: 11px;
+          line-height: 1;
+          filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.35));
+        }
         .party-booster {
           box-shadow: 0 18px 38px rgba(0, 0, 0, 0.42);
+        }
+        .quick-action-chip {
+          border-width: 1px;
+          border-style: solid;
+          transition: transform 0.16s ease, border-color 0.2s ease, background 0.2s ease;
+        }
+        .quick-action-chip:active {
+          transform: scale(0.98);
+        }
+        .quick-chip-pop {
+          position: relative;
+          overflow: hidden;
+          transform: translateY(6px) scale(0.98);
+          opacity: 0;
+          animation: chipIn 0.36s ease-out forwards;
+          transition: transform 0.16s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+        .quick-chip-pop::after {
+          content: '';
+          position: absolute;
+          top: 0;
+          left: -140%;
+          width: 52%;
+          height: 100%;
+          background: linear-gradient(110deg, transparent, rgba(255, 255, 255, 0.12), transparent);
+          animation: chipSheen 2.8s ease-in-out infinite;
+          pointer-events: none;
+        }
+        .quick-chip-pop:active {
+          transform: scale(0.96);
+        }
+        .empty-cart-state {
+          box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
         }
         .party-bursts {
           margin-top: 6px;
@@ -2729,6 +2893,17 @@ function OrderContent() {
         @keyframes cartPulse {
           0%, 100% { transform: scale(1); }
           50% { transform: scale(1.06); }
+        }
+        @keyframes chipIn {
+          to {
+            transform: translateY(0) scale(1);
+            opacity: 1;
+          }
+        }
+        @keyframes chipSheen {
+          0%, 65% { left: -140%; }
+          85% { left: 130%; }
+          100% { left: 130%; }
         }
         @keyframes partyBurst {
           0%, 100% { transform: translateY(0) scale(1); opacity: 0.85; }
