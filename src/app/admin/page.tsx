@@ -1460,7 +1460,7 @@ export default function AdminDashboard() {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <div className="hidden lg:flex items-center w-56 xl:w-64 h-10 rounded-xl border border-[#3b3450] bg-[#0e0e11] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[#7c3aed] focus-within:ring-1 focus-within:ring-[#7c3aed]/35 transition-all">
+              <div className="hidden lg:flex items-center w-44 xl:w-52 h-10 rounded-xl border border-[#3b3450] bg-[#0e0e11] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[#7c3aed] focus-within:ring-1 focus-within:ring-[#7c3aed]/35 transition-all">
                 <Search className="w-4 h-4 text-[#958da1] mr-2.5" />
                 <input
                   type="text"
