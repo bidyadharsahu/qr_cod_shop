@@ -5,12 +5,16 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, ArrowLeft } from 'lucide-react';
 
-// Static admin credentials
-const ADMIN_USERNAME = 'hello';
-const ADMIN_PASSWORD = '123456';
+type StaffRole = 'manager' | 'chef';
+
+const STAFF_CREDENTIALS: Record<StaffRole, { username: string; password: string }> = {
+  manager: { username: 'hello', password: '123456' },
+  chef: { username: 'chef', password: 'chef123' },
+};
 
 function LoginContent() {
   const router = useRouter();
+  const [role, setRole] = useState<StaffRole>('manager');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,13 +36,15 @@ function LoginContent() {
     // Small delay for UX
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    // Static credential check
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
-      // Store authentication state in sessionStorage
+    const selected = STAFF_CREDENTIALS[role];
+
+    if (username === selected.username && password === selected.password) {
       sessionStorage.setItem('admin_authenticated', 'true');
+      sessionStorage.setItem('staff_role', role);
+      sessionStorage.setItem('staff_username', username);
       router.push('/admin');
     } else {
-      setError('Invalid username or password');
+      setError(`Invalid ${role} username or password`);
       setLoading(false);
     }
   };
@@ -60,7 +66,7 @@ function LoginContent() {
             {/* Header */}
             <div className="text-center mb-8">
               <h1 className="text-3xl font-bold text-amber-400 mb-2">Staff Portal</h1>
-              <p className="text-gray-400 text-sm">Admin Login</p>
+              <p className="text-gray-400 text-sm">Manager and Chef Login</p>
             </div>
 
             {/* Error Message */}
@@ -71,6 +77,18 @@ function LoginContent() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">Role</label>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as StaffRole)}
+                  className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
+                >
+                  <option value="manager">Manager</option>
+                  <option value="chef">Chef</option>
+                </select>
+              </div>
+
               {/* Username */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
@@ -117,6 +135,10 @@ function LoginContent() {
                   </>
                 )}
               </button>
+
+              <p className="text-[11px] text-zinc-500 text-center">
+                Manager uses dashboard controls. Chef gets kitchen-only workflow.
+              </p>
             </form>
           </div>
         </div>

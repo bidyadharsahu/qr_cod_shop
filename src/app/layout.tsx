@@ -1,28 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import PWARegister from "./pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Coasis - Order",
   description: "Coasis Restaurant Bar & Suites - Scan, Order, Enjoy",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "black-translucent",
-    title: "Coasis",
-    startupImage: [
-      {
-        url: "/icons/icon-512x512.png",
-      },
-    ],
-  },
   formatDetection: {
     telephone: false,
   },
   other: {
-    "mobile-web-app-capable": "yes",
-    "apple-mobile-web-app-capable": "yes",
     "application-name": "Coasis",
     "msapplication-TileColor": "#0a0a0a",
     "msapplication-TileImage": "/icons/icon-144x144.png",
@@ -71,7 +57,6 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased">
-        <PWARegister />
         <Suspense fallback={<Loading />}>
           {children}
         </Suspense>

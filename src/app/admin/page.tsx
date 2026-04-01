@@ -25,6 +25,7 @@ interface PaymentGatewayStatus {
 }
 
 type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
+type StaffRole = 'manager' | 'chef';
 
 const DEFAULT_COMPANY_PROFILE = {
   name: 'netrikxr.shop',
@@ -56,11 +57,13 @@ export default function AdminDashboard() {
   const router = useRouter();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [staffRole, setStaffRole] = useState<StaffRole>('manager');
+  const [staffUser, setStaffUser] = useState<string>('');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [paymentEvents, setPaymentEvents] = useState<PaymentEventAudit[]>([]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'menu' | 'tables'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'kitchen' | 'menu' | 'tables'>('dashboard');
   const [notifications, setNotifications] = useState<Order[]>([]);
   
   // Tampa timezone clock
@@ -85,6 +88,9 @@ export default function AdminDashboard() {
   const [showAddTableModal, setShowAddTableModal] = useState(false);
   const [showBrandingModal, setShowBrandingModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState<Order | null>(null);
+  const [checkoutGateTable, setCheckoutGateTable] = useState<RestaurantTable | null>(null);
+  const [checkoutGateReason, setCheckoutGateReason] = useState('');
+  const [checkoutGateBlockingOrders, setCheckoutGateBlockingOrders] = useState<Order[]>([]);
   const [paymentModalData, setPaymentModalData] = useState<Order | null>(null);
   const [editMenuItem, setEditMenuItem] = useState<MenuItem | null>(null);
   const [paymentGatewayStatus, setPaymentGatewayStatus] = useState<PaymentGatewayStatus>({
@@ -186,6 +192,78 @@ export default function AdminDashboard() {
     popup.document.close();
     popup.focus();
     popup.print();
+  };
+
+  const estimatePrepMinutes = (order: Order) => {
+    const qty = (order.items || []).reduce((sum, item) => sum + item.quantity, 0);
+    return Math.max(10, qty * 4);
+  };
+
+  const printKitchenTicket = (order: Order) => {
+    if (typeof window === 'undefined') return;
+
+    const popup = window.open('', '_blank', 'width=420,height=720');
+    if (!popup) {
+      showToast('Pop-up blocked. Please allow pop-ups to print kitchen ticket.', 'error');
+      return;
+    }
+
+    const itemsHtml = (order.items || [])
+      .map(item => `<tr><td>${item.quantity}x</td><td>${item.name}</td></tr>`)
+      .join('');
+
+    popup.document.write(`
+      <html>
+        <head>
+          <title>Kitchen Ticket - ${order.receipt_id}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 14px; color: #111; }
+            .top { border-bottom: 2px dashed #444; margin-bottom: 8px; padding-bottom: 8px; }
+            h2 { margin: 0; }
+            p { margin: 3px 0; font-size: 12px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+            td { padding: 6px 0; border-bottom: 1px dashed #bbb; font-size: 13px; }
+            .eta { margin-top: 10px; font-weight: bold; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <div class="top">
+            <h2>KITCHEN TICKET</h2>
+            <p>Receipt: ${order.receipt_id}</p>
+            <p>Table: ${order.table_number}</p>
+            <p>Created: ${new Date(order.created_at).toLocaleString()}</p>
+          </div>
+          <table>
+            ${itemsHtml}
+          </table>
+          <p class="eta">Estimated prep: ${estimatePrepMinutes(order)} min</p>
+        </body>
+      </html>
+    `);
+
+    popup.document.close();
+    popup.focus();
+    popup.print();
+  };
+
+  const logPaymentFollowUp = async (order: Order, eventType: 'payment_followup_sent' | 'walkout_risk_flagged') => {
+    await supabase.from('payment_event_audit').insert({
+      order_id: order.id,
+      receipt_id: order.receipt_id,
+      provider: 'system',
+      event_type: eventType,
+      status: 'received',
+      amount: order.total,
+      currency: 'USD',
+      transaction_id: order.transaction_id,
+      source: 'manager-dashboard',
+      event_time: new Date().toISOString(),
+      raw_payload: {
+        table_number: order.table_number,
+        payment_status: order.payment_status,
+        order_status: order.status,
+      },
+    });
   };
 
   const escapeCsv = (value: string | number | null | undefined) => {
@@ -438,7 +516,12 @@ export default function AdminDashboard() {
         router.push('/admin/login'); 
         return; 
       }
+      const storedRole = sessionStorage.getItem('staff_role');
+      const nextRole: StaffRole = storedRole === 'chef' ? 'chef' : 'manager';
+      setStaffRole(nextRole);
+      setStaffUser(sessionStorage.getItem('staff_username') || '');
       setIsAuthenticated(true);
+      setActiveTab(nextRole === 'chef' ? 'kitchen' : 'dashboard');
       setAuthLoading(false);
     };
     checkAuth();
@@ -561,6 +644,8 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     sessionStorage.removeItem('admin_authenticated');
+    sessionStorage.removeItem('staff_role');
+    sessionStorage.removeItem('staff_username');
     router.push('/admin/login');
   };
 
@@ -579,8 +664,30 @@ export default function AdminDashboard() {
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    await supabase.from('orders').update({ status }).eq('id', orderId);
+    await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId);
     showToast(`Order marked as ${status}`);
+  };
+
+  const sendOrderToKitchen = async (order: Order) => {
+    await supabase.from('orders').update({ status: 'preparing', updated_at: new Date().toISOString() }).eq('id', order.id);
+    await supabase.from('payment_event_audit').insert({
+      order_id: order.id,
+      receipt_id: order.receipt_id,
+      provider: 'system',
+      event_type: 'kitchen_ticket_printed',
+      status: 'success',
+      amount: order.total,
+      currency: 'USD',
+      transaction_id: order.transaction_id,
+      source: 'manager-dashboard',
+      event_time: new Date().toISOString(),
+      raw_payload: {
+        table_number: order.table_number,
+        estimated_prep_minutes: estimatePrepMinutes(order),
+      },
+    });
+    printKitchenTicket(order);
+    showToast('Order sent to kitchen and ticket printed');
   };
 
   const handlePayment = async () => {
@@ -679,9 +786,76 @@ export default function AdminDashboard() {
   };
 
   const updateTableStatus = async (id: number, status: string) => {
+    const targetTable = tables.find(t => t.id === id);
+
+    if (status === 'available' && targetTable) {
+      const blocking = orders
+        .filter(o => !o.receipt_id?.startsWith('CALL-'))
+        .filter(o => o.table_number === targetTable.table_number)
+        .filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled');
+
+      if (blocking.length > 0) {
+        setCheckoutGateTable(targetTable);
+        setCheckoutGateReason('');
+        setCheckoutGateBlockingOrders(blocking);
+        showToast('Checkout gate: payment required before table can be available.', 'error');
+        return;
+      }
+    }
+
     const { error } = await supabase.from('restaurant_tables').update({ status }).eq('id', id);
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     fetchTables();
+  };
+
+  const applyCheckoutGateOverride = async () => {
+    if (!checkoutGateTable) return;
+    if (staffRole !== 'manager') {
+      showToast('Only manager can apply checkout override.', 'error');
+      return;
+    }
+
+    const reason = checkoutGateReason.trim();
+    if (!reason) {
+      showToast('Override reason is required.', 'error');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('restaurant_tables')
+      .update({ status: 'available', current_order_id: null })
+      .eq('id', checkoutGateTable.id);
+
+    if (error) {
+      showToast(`Error: ${error.message}`, 'error');
+      return;
+    }
+
+    await supabase.from('payment_event_audit').insert({
+      order_id: checkoutGateBlockingOrders[0]?.id ?? null,
+      receipt_id: checkoutGateBlockingOrders[0]?.receipt_id ?? null,
+      provider: 'system',
+      event_type: 'table_checkout_override',
+      status: 'success',
+      amount: checkoutGateBlockingOrders.reduce((sum, o) => sum + (o.total || 0), 0),
+      currency: 'USD',
+      transaction_id: null,
+      source: 'manager-dashboard',
+      event_time: new Date().toISOString(),
+      raw_payload: {
+        table_number: checkoutGateTable.table_number,
+        reason,
+        staff_user: staffUser || 'manager',
+        unpaid_order_ids: checkoutGateBlockingOrders.map(o => o.id),
+        unpaid_receipts: checkoutGateBlockingOrders.map(o => o.receipt_id),
+      },
+    });
+
+    setCheckoutGateTable(null);
+    setCheckoutGateReason('');
+    setCheckoutGateBlockingOrders([]);
+    fetchTables();
+    showToast('Manager override recorded and table released.');
   };
 
   // Stats
@@ -807,6 +981,27 @@ export default function AdminDashboard() {
     return filtered;
   }, [orders, orderStatusFilter, orderTableFilter, orderSearch]);
 
+  const kitchenOrders = useMemo(() => {
+    return orders
+      .filter(o => !o.receipt_id?.startsWith('CALL-'))
+      .filter(o => ['confirmed', 'preparing', 'served'].includes(o.status))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [orders]);
+
+  const unpaidOrders = useMemo(() => {
+    return orders
+      .filter(o => !o.receipt_id?.startsWith('CALL-'))
+      .filter(o => o.payment_status !== 'paid' && o.status !== 'cancelled')
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }, [orders]);
+
+  const riskyUnpaidOrders = useMemo(() => {
+    return unpaidOrders.filter(order => {
+      const ageMinutes = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+      return order.status === 'served' || ageMinutes >= 45;
+    });
+  }, [unpaidOrders]);
+
   const orderTypeSummary = useMemo(() => {
     const addOnCount = filteredOrders.filter(isAddOnOrder).length;
     const newCount = filteredOrders.filter(isNewOrder).length;
@@ -894,12 +1089,17 @@ export default function AdminDashboard() {
     );
   }
 
-  const tabs = [
-    { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'orders', icon: ShoppingBag, label: 'Orders' },
-    { id: 'menu', icon: UtensilsCrossed, label: 'Menu' },
-    { id: 'tables', icon: Grid3X3, label: 'Tables' },
-  ];
+  const tabs = staffRole === 'chef'
+    ? [
+      { id: 'kitchen', icon: ChefHat, label: 'Kitchen' },
+    ]
+    : [
+      { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { id: 'orders', icon: ShoppingBag, label: 'Orders' },
+      { id: 'kitchen', icon: ChefHat, label: 'Kitchen' },
+      { id: 'menu', icon: UtensilsCrossed, label: 'Menu' },
+      { id: 'tables', icon: Grid3X3, label: 'Tables' },
+    ];
 
   const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
     { id: 'corporate', label: 'Corporate' },
@@ -1071,7 +1271,7 @@ export default function AdminDashboard() {
                 <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
               <div className="px-3 py-1 text-black text-sm font-medium rounded-full" style={{ background: theme.primary }}>
-                Admin
+                {staffRole === 'chef' ? 'Chef' : 'Manager'}{staffUser ? ` • ${staffUser}` : ''}
               </div>
             </div>
           </div>
@@ -1188,6 +1388,67 @@ export default function AdminDashboard() {
                   </span>
                 </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <div>
+                  <p className="text-sm font-semibold text-amber-300">Unpaid Risk Monitor</p>
+                  <p className="text-xs text-amber-100/80">Track served/unpaid tables and log follow-up evidence in real-time.</p>
+                </div>
+                <button
+                  onClick={() => setActiveTab('orders')}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-amber-400/40 bg-amber-500/15 text-amber-100"
+                >
+                  Open Orders
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
+                  <p className="text-[11px] text-gray-400">Unpaid Open</p>
+                  <p className="text-lg font-semibold text-white">{unpaidOrders.length}</p>
+                </div>
+                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
+                  <p className="text-[11px] text-gray-400">Risky Now</p>
+                  <p className="text-lg font-semibold text-rose-300">{riskyUnpaidOrders.length}</p>
+                </div>
+                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
+                  <p className="text-[11px] text-gray-400">Served Unpaid</p>
+                  <p className="text-lg font-semibold text-amber-300">{unpaidOrders.filter(o => o.status === 'served').length}</p>
+                </div>
+                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
+                  <p className="text-[11px] text-gray-400">Needs Follow-up</p>
+                  <p className="text-lg font-semibold" style={{ color: theme.primary }}>{unpaidOrders.filter(o => o.status !== 'pending').length}</p>
+                </div>
+              </div>
+
+              {riskyUnpaidOrders.slice(0, 3).map(order => {
+                const ageMin = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+                return (
+                  <div key={order.id} className="mb-2 last:mb-0 rounded-lg border border-rose-400/30 bg-zinc-900/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-gray-100">{order.receipt_id} • Table {order.table_number} • {ageMin} min • {order.status}</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowPaymentModal(order)}
+                        className="px-2.5 py-1.5 rounded-md text-xs font-semibold text-black"
+                        style={{ background: theme.primary }}
+                      >
+                        Record Payment
+                      </button>
+                      <button
+                        onClick={() => {
+                          void logPaymentFollowUp(order, 'walkout_risk_flagged');
+                          showToast('Walkout risk flagged in audit log');
+                        }}
+                        className="px-2.5 py-1.5 rounded-md text-xs border border-rose-400/40 text-rose-200 bg-rose-500/10"
+                      >
+                        Flag Risk
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/60 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
@@ -1598,6 +1859,49 @@ export default function AdminDashboard() {
 
             <div className="admin-panel rounded-2xl p-4">
               <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold">Payment Tracking Board</h3>
+                <span className="text-xs text-gray-500">Live unpaid monitoring</span>
+              </div>
+              {unpaidOrders.length === 0 ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-center">
+                  <p className="text-sm font-semibold text-emerald-200">All clear. No unpaid open orders right now.</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                  {unpaidOrders.slice(0, 12).map(order => {
+                    const ageMin = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+                    return (
+                      <div key={`unpaid-${order.id}`} className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-gray-200">
+                          {order.receipt_id} • Table {order.table_number} • {order.status} • {ageMin} min open
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowPaymentModal(order)}
+                            className="px-2.5 py-1.5 rounded-md text-xs font-semibold text-black"
+                            style={{ background: theme.primary }}
+                          >
+                            Mark Paid
+                          </button>
+                          <button
+                            onClick={() => {
+                              void logPaymentFollowUp(order, 'payment_followup_sent');
+                              showToast('Payment follow-up logged');
+                            }}
+                            className="px-2.5 py-1.5 rounded-md text-xs border border-zinc-600 text-gray-200 bg-zinc-800"
+                          >
+                            Log Follow-up
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="admin-panel rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold">Payment Event Timeline</h3>
                 <span className="text-xs text-gray-500">Latest {filteredPaymentEvents.length} events</span>
               </div>
@@ -1710,7 +2014,7 @@ export default function AdminDashboard() {
                       <button onClick={() => printOrderBill(order)} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                         <Printer className="w-4 h-4" /> Print Bill
                       </button>
-                      {order.status === 'pending' && (
+                      {staffRole === 'manager' && order.status === 'pending' && (
                         <>
                           <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                             <Check className="w-4 h-4" /> Confirm
@@ -1720,9 +2024,9 @@ export default function AdminDashboard() {
                           </button>
                         </>
                       )}
-                      {order.status === 'confirmed' && (
-                        <button onClick={() => updateOrderStatus(order.id, 'preparing')} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
-                          <ChefHat className="w-4 h-4" /> Preparing
+                      {staffRole === 'manager' && order.status === 'confirmed' && (
+                        <button onClick={() => sendOrderToKitchen(order)} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
+                          <Printer className="w-4 h-4" /> Send to Kitchen
                         </button>
                       )}
                       {order.status === 'preparing' && (
@@ -1730,7 +2034,7 @@ export default function AdminDashboard() {
                           Served
                         </button>
                       )}
-                      {order.payment_status !== 'paid' && order.status !== 'pending' && (
+                      {staffRole === 'manager' && order.payment_status !== 'paid' && order.status !== 'pending' && (
                         <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 text-black rounded-lg text-sm font-medium transition-colors" style={{ background: theme.primary }}>
                           Record Cash Payment
                         </button>
@@ -1738,6 +2042,86 @@ export default function AdminDashboard() {
                     </div>
                   </motion.div>
                 ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Kitchen Tab */}
+        {activeTab === 'kitchen' && (
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold">Kitchen Queue</h1>
+                <p className="text-xs text-gray-400 mt-1">Chef-focused view with only live kitchen orders.</p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-gray-400">Active tickets</p>
+                <p className="text-2xl font-bold" style={{ color: theme.primary }}>{kitchenOrders.length}</p>
+              </div>
+            </div>
+
+            {kitchenOrders.length === 0 ? (
+              <div className="admin-panel rounded-2xl p-10 text-center">
+                <ChefHat className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+                <p className="text-gray-400">No kitchen orders right now</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {kitchenOrders.map(order => {
+                  const ageMin = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+                  return (
+                    <div key={`kitchen-${order.id}`} className="admin-panel rounded-2xl p-4 border border-zinc-700/80">
+                      <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
+                        <div>
+                          <p className="text-lg font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
+                          <p className="text-sm text-gray-300">Table {order.table_number} • {order.status.toUpperCase()}</p>
+                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago • ETA {estimatePrepMinutes(order)} min</p>
+                        </div>
+                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                          order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-300' :
+                          order.status === 'preparing' ? 'bg-purple-500/20 text-purple-300' :
+                          'bg-cyan-500/20 text-cyan-300'
+                        }`}>
+                          {order.status}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 mb-3">
+                        {(order.items || []).map((item, idx) => (
+                          <span key={`${order.id}-${idx}`} className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-sm">
+                            {item.quantity}x {item.name}
+                          </span>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        {order.status === 'confirmed' && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'preparing')}
+                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500 hover:bg-purple-600"
+                          >
+                            Start Prep
+                          </button>
+                        )}
+                        {order.status === 'preparing' && (
+                          <button
+                            onClick={() => updateOrderStatus(order.id, 'served')}
+                            className="px-4 py-2 rounded-lg text-sm font-semibold bg-cyan-500 hover:bg-cyan-600"
+                          >
+                            Mark Ready / Served
+                          </button>
+                        )}
+                        <button
+                          onClick={() => printKitchenTicket(order)}
+                          className="px-4 py-2 rounded-lg text-sm font-semibold bg-zinc-700 hover:bg-zinc-600 flex items-center gap-2"
+                        >
+                          <Printer className="w-4 h-4" /> Print Ticket
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </motion.div>
@@ -2095,6 +2479,65 @@ export default function AdminDashboard() {
                 <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
                   Confirm Cash Payment
                 </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Checkout Gate Override Modal */}
+      <AnimatePresence>
+        {checkoutGateTable && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-zinc-800 border border-zinc-700 rounded-2xl max-w-lg w-full">
+              <div className="p-6 border-b border-zinc-700 flex justify-between items-center">
+                <h2 className="text-xl font-bold">Checkout Gate</h2>
+                <button onClick={() => setCheckoutGateTable(null)} className="p-2 hover:bg-zinc-700 rounded-lg transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
+                  <p className="text-sm text-amber-200 font-semibold">Table {checkoutGateTable.table_number} has unpaid order(s)</p>
+                  <p className="text-xs text-amber-100/80 mt-1">Payment must be recorded before releasing table, unless manager override is logged.</p>
+                </div>
+
+                <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                  {checkoutGateBlockingOrders.map(order => (
+                    <div key={`gate-${order.id}`} className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-gray-200">
+                      <p>{order.receipt_id} • {order.status} • {order.payment_status}</p>
+                      <p className="text-gray-400">Total: ${order.total.toFixed(2)} • {new Date(order.created_at).toLocaleString()}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <label className="block text-sm text-gray-300 mb-2">Manager override reason (required)</label>
+                  <textarea
+                    value={checkoutGateReason}
+                    onChange={(e) => setCheckoutGateReason(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm focus:outline-none focus:border-zinc-500"
+                    placeholder="Example: customer paid at counter, manager verified with receipt #..."
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setCheckoutGateTable(null)}
+                    className="flex-1 py-2.5 rounded-lg border border-zinc-700 text-gray-300"
+                  >
+                    Keep Blocked
+                  </button>
+                  <button
+                    onClick={applyCheckoutGateOverride}
+                    disabled={staffRole !== 'manager'}
+                    className="flex-1 py-2.5 rounded-lg font-semibold text-black disabled:opacity-50"
+                    style={{ background: theme.primary }}
+                  >
+                    Manager Override
+                  </button>
+                </div>
               </div>
             </motion.div>
           </motion.div>

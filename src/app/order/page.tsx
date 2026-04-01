@@ -13,7 +13,7 @@ import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
   FileText, Check, MessageCircle, Download, 
-  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard, Mic, MicOff, PlayCircle
+  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard, Mic, MicOff
 } from 'lucide-react';
 import { calculateOrderTotal } from '@/lib/calculations';
 
@@ -77,33 +77,6 @@ interface VoiceRecognitionInstance {
 interface VoiceRecognitionFactory {
   new (): VoiceRecognitionInstance;
 }
-
-const EXPERIENCE_MEDIA = [
-  {
-    id: 'signature-steak',
-    title: 'Signature Steaks',
-    subtitle: 'Chef crafted premium cuts',
-    image: 'https://images.unsplash.com/photo-1558030006-450675393462?auto=format&fit=crop&w=900&q=80',
-    action: 'popular',
-  },
-  {
-    id: 'seafood-night',
-    title: 'Seafood Nights',
-    subtitle: 'Fresh ocean flavors',
-    image: 'https://images.unsplash.com/photo-1615141982883-c7ad0e69fd62?auto=format&fit=crop&w=900&q=80',
-    action: 'seafood',
-  },
-  {
-    id: 'spicy-specials',
-    title: 'Spicy Specials',
-    subtitle: 'Hot and bold favorites',
-    image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=900&q=80',
-    action: 'spicy',
-  },
-];
-
-const FEATURE_VIDEO_URL = 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
-const FEATURE_VIDEO_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1551218808-94e220e084d2?auto=format&fit=crop&w=1200&q=80';
 
 const VOICE_NUMBERS: Record<string, number> = {
   one: 1,
@@ -257,11 +230,8 @@ function OrderContent() {
   const [isBotTyping, setIsBotTyping] = useState(false);
   const [waitingForConfirmation, setWaitingForConfirmation] = useState(false);
   const [showConfirmationFlash, setShowConfirmationFlash] = useState(false);
-  const [showPartyBooster, setShowPartyBooster] = useState(false);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   const [isOnline, setIsOnline] = useState(true);
-  const [canInstallPWA, setCanInstallPWA] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
   const [theme, setTheme] = useState<AppTheme>(() => getCurrentTheme());
   const [favorites, setFavorites] = useState<number[]>(() => {
     if (typeof window !== 'undefined') {
@@ -301,12 +271,10 @@ function OrderContent() {
   const [voiceStatusMessage, setVoiceStatusMessage] = useState<string | null>(null);
   const [interimVoiceTranscript, setInterimVoiceTranscript] = useState('');
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState<string | null>(null);
-  const [featureVideoFailed, setFeatureVideoFailed] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmationFlashTimerRef = useRef<number | null>(null);
-  const partyBoosterTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
   const voiceStatusTimerRef = useRef<number | null>(null);
 
@@ -490,9 +458,6 @@ function OrderContent() {
       if (confirmationFlashTimerRef.current) {
         window.clearTimeout(confirmationFlashTimerRef.current);
       }
-      if (partyBoosterTimerRef.current) {
-        window.clearTimeout(partyBoosterTimerRef.current);
-      }
     };
   }, []);
 
@@ -530,43 +495,6 @@ function OrderContent() {
     setTimeout(() => setCallingWaiter(false), 10000); // Cooldown
   };
 
-  // Detect PWA install availability and standalone mode
-  useEffect(() => {
-    const standalone = 
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone === true;
-    setIsStandalone(standalone);
-
-    // Check if install prompt is already available
-    if ((window as any).__pwaInstallPrompt) {
-      setCanInstallPWA(true);
-    }
-
-    // Listen for install prompt becoming available
-    const handleInstallAvailable = () => setCanInstallPWA(true);
-    window.addEventListener('pwa-install-available', handleInstallAvailable);
-
-    // Listen for app installed (clear install state)
-    const handleInstalled = () => setCanInstallPWA(false);
-    window.addEventListener('appinstalled', handleInstalled);
-
-    // Listen for our custom pwa-installed event with redirect info
-    const handlePWAInstalled = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.targetUrl) {
-        // Store the open-app URL so we can show an "Open App" button
-        sessionStorage.setItem('netrikxr-open-url', detail.targetUrl);
-      }
-    };
-    window.addEventListener('pwa-installed', handlePWAInstalled);
-
-    return () => {
-      window.removeEventListener('pwa-install-available', handleInstallAvailable);
-      window.removeEventListener('appinstalled', handleInstalled);
-      window.removeEventListener('pwa-installed', handlePWAInstalled);
-    };
-  }, []);
-
   // Initial fetch + real-time menu sync
   useEffect(() => {
     const fetchMenu = async () => {
@@ -596,18 +524,8 @@ function OrderContent() {
       )
       .subscribe();
 
-    // Re-fetch when app returns from background (PWA resume)
-    const handleResume = () => {
-      console.log('[Order] PWA resumed, re-fetching menu...');
-      fetchMenu();
-    };
-    window.addEventListener('pwa-resume', handleResume);
-    window.addEventListener('pwa-online', handleResume);
-
     return () => {
       supabase.removeChannel(menuSub);
-      window.removeEventListener('pwa-resume', handleResume);
-      window.removeEventListener('pwa-online', handleResume);
     };
   }, [menuReloadTick]);
 
@@ -697,19 +615,12 @@ function OrderContent() {
             setWaitingForConfirmation(false);
             setCurrentOrderId(null);
             setShowConfirmationFlash(true);
-            setShowPartyBooster(true);
             if (confirmationFlashTimerRef.current) {
               window.clearTimeout(confirmationFlashTimerRef.current);
             }
             confirmationFlashTimerRef.current = window.setTimeout(() => {
               setShowConfirmationFlash(false);
             }, 1200);
-            if (partyBoosterTimerRef.current) {
-              window.clearTimeout(partyBoosterTimerRef.current);
-            }
-            partyBoosterTimerRef.current = window.setTimeout(() => {
-              setShowPartyBooster(false);
-            }, 2600);
             addBotMessage(
               `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
               [
@@ -737,37 +648,26 @@ function OrderContent() {
     };
   }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, lastSubmittedSubtotal, lastSubmittedItemsCount, lastOrderWasAddOn]);
 
-  // Welcome message - show install prompt if available, otherwise themed welcome
+  // Welcome message
   useEffect(() => {
     if (menuItems.length > 0 && chatMessages.length === 0) {
-      // Count previous orders from this table (for loyalty feature)
       const storedCount = parseInt(localStorage.getItem('netrikxr-order-count') || '0');
       setOrderCount(storedCount);
       const loyaltyMsg = storedCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${storedCount} time${storedCount > 1 ? 's' : ''} with us!` : '';
 
-      if (canInstallPWA && !isStandalone) {
-        addBotMessage(
-          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n📲 For the best experience, install our app! It's instant and takes no storage.`,
-          [
-            { label: '📲 Install App', value: 'install_app' },
-            { label: '⏭️ Skip, Order Now', value: 'skip_install' }
-          ]
-        );
-      } else {
-        addBotMessage(
-          `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
-          [
-            { label: '🍽️ See Menu', value: 'menu' },
-            { label: '🔥 Popular', value: 'popular' },
-            { label: '🌶️ Spicy', value: 'spicy' },
-            { label: '🦞 Seafood', value: 'seafood' },
-            { label: '❤️ Favorites', value: 'favorites' },
-            { label: '❓ Help', value: 'help' }
-          ]
-        );
-      }
+      addBotMessage(
+        `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
+        [
+          { label: '🍽️ See Menu', value: 'menu' },
+          { label: '🔥 Popular', value: 'popular' },
+          { label: '🌶️ Spicy', value: 'spicy' },
+          { label: '🦞 Seafood', value: 'seafood' },
+          { label: '❤️ Favorites', value: 'favorites' },
+          { label: '❓ Help', value: 'help' }
+        ]
+      );
     }
-  }, [menuItems, tableNumber, chatMessages.length, canInstallPWA, isStandalone]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [menuItems, tableNumber, chatMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto scroll
   useEffect(() => {
@@ -889,92 +789,8 @@ function OrderContent() {
     }
   };
 
-  // Handle PWA install from chatbot
-  const handlePWAInstall = async () => {
-    const doInstall = (window as any).__pwaDoInstall;
-    if (!doInstall) {
-      const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-      if (isIOS) {
-        addBotMessage(
-          `?? **Install on iPhone:**\n\n` +
-          `1?? Tap the **Share** button ?? (bottom center of Safari)\n` +
-          `2?? Scroll down ? tap **"Add to Home Screen"**\n` +
-          `3?? Tap **"Add"** in the top right\n\n` +
-          `Then open **"Coasis"** from your home screen � it'll work just like a real app! ??\n\n` +
-          `?? Your table number (${tableNumber}) is saved automatically.`,
-          [
-            { label: '? Done! Let me order', value: 'skip_install' },
-            { label: '?? Skip & See Menu', value: 'menu' }
-          ]
-        );
-      } else {
-        addBotMessage(
-          `Hmm, install isn't available right now. Let's get you ordering instead! ??`,
-          [
-            { label: '?? See Menu', value: 'menu' },
-            { label: '?? Recommend', value: 'recommend' }
-          ]
-        );
-      }
-      return;
-    }
-
-    addBotMessage(`?? Installing... Tap "Install" on the popup that appears!`);
-
-    const accepted = await doInstall();
-    if (accepted) {
-      setCanInstallPWA(false);
-      const table = tableNumber;
-      document.cookie = `netrikxr-table=${encodeURIComponent(table)};path=/;max-age=${60*60*24*30};SameSite=Lax`;
-
-      addBotMessage(
-        `?? App installed! Opening now...\n\nIf it doesn't open automatically, look for "Coasis" on your home screen and tap it!`,
-        [
-          { label: '?? Open App', value: 'open_installed_app' }
-        ]
-      );
-    } else {
-      addBotMessage(
-        `No worries! You can always install later. Let's get you ordering! ??`,
-        [
-          { label: '?? See Menu', value: 'menu' },
-          { label: '?? Party Package', value: 'party' },
-          { label: '?? Recommend', value: 'recommend' },
-          { label: '? Help', value: 'help' }
-        ]
-      );
-    }
-  };
-
   const handleOptionClick = (value: string) => {
     switch (value) {
-      case 'install_app':
-        addUserMessage('Install the app');
-        handlePWAInstall();
-        return;
-      case 'open_installed_app':
-        addUserMessage('Open the app');
-        {
-          const table = tableNumber;
-          const url = `${window.location.origin}/order?table=${table}`;
-          window.open(url, '_blank');
-          setTimeout(() => window.location.replace(url), 1000);
-        }
-        return;
-      case 'skip_install':
-        addUserMessage('Skip, let me order');
-        addBotMessage(
-          `No problem! Let's get you ordering! ???`,
-          [
-            { label: '??? See Menu', value: 'menu' },
-            { label: '?? Popular', value: 'popular' },
-            { label: '??? Spicy', value: 'spicy' },
-            { label: '?? Seafood', value: 'seafood' },
-            { label: '?? Favorites', value: 'favorites' },
-            { label: '? Help', value: 'help' }
-          ]
-        );
-        break;
       case 'popular':
         addUserMessage('Show popular items');
         addBotMessage(
@@ -1873,7 +1689,7 @@ function OrderContent() {
       <div className="chat-ambient-bubble chat-ambient-bubble-a" />
       <div className="chat-ambient-bubble chat-ambient-bubble-b" />
 
-      {/* Status bar spacer for standalone PWA mode (notch/dynamic island) */}
+      {/* Status bar spacer for mobile browser safe-area */}
       <div className="status-bar-spacer" />
 
       {/* ========================================== */}
@@ -1982,31 +1798,6 @@ function OrderContent() {
             </button>
           </div>
         </div>
-        <AnimatePresence>
-          {showPartyBooster && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.92, y: -6 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: -10 }}
-              className="pointer-events-none absolute top-full mt-2 left-1/2 -translate-x-1/2 z-[90] px-3 sm:px-0"
-            >
-              <div
-                className="party-booster rounded-2xl px-4 py-3 border max-w-[min(92vw,26rem)]"
-                style={{
-                  borderColor: `${confirmationTone.accent}66`,
-                  background: confirmationTone.cardBackground,
-                  boxShadow: `0 10px 28px ${confirmationTone.accent}29`,
-                }}
-              >
-                <p className="text-sm font-bold" style={{ color: confirmationTone.accent }}>Order Confirmed</p>
-                <p className="text-xs text-gray-200 mt-0.5">Kitchen is on it. Party booster activated.</p>
-                <div className="party-bursts" aria-hidden="true">
-                  <span>✨</span><span>🎉</span><span>💥</span><span>✨</span><span>🎊</span>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </header>
 
       {/* ========================================== */}
@@ -2015,125 +1806,9 @@ function OrderContent() {
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="max-w-lg mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4 pb-6">
           <section className="space-y-2.5 sm:space-y-3">
-            <div className="rounded-2xl overflow-hidden border border-zinc-700/70 bg-zinc-900/70">
-              <div className="relative h-32 sm:h-36">
-                {featureVideoFailed ? (
-                  <Image src={FEATURE_VIDEO_FALLBACK_IMAGE} alt="Restaurant ambiance" fill sizes="(max-width: 640px) 100vw, 640px" className="object-cover" />
-                ) : (
-                  <video
-                    className="w-full h-full object-cover"
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    preload="metadata"
-                    poster={FEATURE_VIDEO_FALLBACK_IMAGE}
-                    onError={() => setFeatureVideoFailed(true)}
-                  >
-                    <source src={FEATURE_VIDEO_URL} type="video/mp4" />
-                  </video>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-transparent" />
-                <div className="absolute bottom-2.5 left-2.5 right-2.5 sm:bottom-3 sm:left-3 sm:right-3 flex items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[11px] sm:text-[13px] text-white/80">Tonight at Coasis</p>
-                    <p className="text-[14px] sm:text-[16px] font-semibold">Fresh bites, smooth service, secure checkout</p>
-                  </div>
-                  <button
-                    onClick={() => handleOptionClick('menu')}
-                    className="px-3 py-2 rounded-xl text-[12px] font-semibold text-black shrink-0"
-                    style={{ background: theme.primary }}
-                  >
-                    <PlayCircle className="w-4 h-4 inline mr-1" /> Explore
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto scrollbar-hide">
-              <div className="flex gap-3 min-w-max pr-1">
-                {EXPERIENCE_MEDIA.map((card) => (
-                  <button
-                    key={card.id}
-                    onClick={() => handleOptionClick(card.action)}
-                    className="w-52 sm:w-56 rounded-2xl border border-zinc-700/70 bg-zinc-900/70 overflow-hidden text-left"
-                  >
-                    <div className="relative h-20 sm:h-24">
-                      <Image src={card.image} alt={card.title} fill sizes="224px" className="object-cover" />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
-                    </div>
-                    <div className="p-2.5 sm:p-3">
-                      <p className="text-[14px] font-semibold leading-tight">{card.title}</p>
-                      <p className="text-[12px] text-gray-400 mt-1">{card.subtitle}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-700/70 bg-zinc-900/65 p-2.5 sm:p-3">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[12px] font-semibold" style={{ color: `${theme.primary}e6` }}>Quick actions</p>
-                <span className="text-[11px] text-gray-400">1-tap shortcuts</span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleOptionClick('menu')}
-                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left"
-                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primary}14` }}
-                >
-                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primary }}>
-                    <FileText className="w-3.5 h-3.5" /> Menu
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Browse all dishes</p>
-                </button>
-
-                <button
-                  onClick={() => handleOptionClick('cart')}
-                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left relative"
-                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primary}14` }}
-                >
-                  {pendingCartItems > 0 && (
-                    <span className="absolute top-1.5 right-1.5 text-[10px] px-1.5 py-0.5 rounded-full font-semibold text-black" style={{ background: theme.primary }}>
-                      {pendingCartItems}
-                    </span>
-                  )}
-                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primary }}>
-                    <ShoppingCart className="w-3.5 h-3.5" /> Cart
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Review items</p>
-                </button>
-
-                <button
-                  onClick={() => handleOptionClick('call_waiter')}
-                  disabled={callingWaiter}
-                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left disabled:opacity-50"
-                  style={{ borderColor: `${theme.accent || theme.primary}40`, background: `${theme.accent || theme.primary}14` }}
-                >
-                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.accent || theme.primary }}>
-                    <PhoneCall className="w-3.5 h-3.5" /> {callingWaiter ? 'Calling...' : 'Call waiter'}
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Need help at table</p>
-                </button>
-
-                <button
-                  onClick={() => handleOptionClick('pay')}
-                  disabled={!receiptId && !waitingForConfirmation && cart.length === 0}
-                  className="quick-action-chip rounded-xl px-3 py-2.5 text-left disabled:opacity-50"
-                  style={{ borderColor: `${theme.primary}40`, background: `${theme.primaryDark}22` }}
-                >
-                  <p className="text-[13px] font-semibold flex items-center gap-1.5" style={{ color: theme.primaryLight }}>
-                    <CreditCard className="w-3.5 h-3.5" /> Bill and pay
-                  </p>
-                  <p className="text-[11px] text-gray-400 mt-0.5">Tips and checkout</p>
-                </button>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-2 px-1">
-                {waitingForConfirmation
-                  ? 'Order sent. Staff confirmation is in progress.'
-                  : (pendingCartItems > 0
-                    ? `${pendingCartItems} unsent item${pendingCartItems > 1 ? 's' : ''} ready to place.`
-                    : 'Use SIA chat or quick actions to move faster.')}
+            <div className="rounded-2xl border border-zinc-700/70 bg-zinc-900/65 p-3 sm:p-4">
+              <p className="text-[12px] sm:text-[13px] text-gray-300 leading-relaxed">
+                Use chat naturally and I will guide your full order flow from menu browsing to confirmation and payment.
               </p>
             </div>
           </section>
@@ -2797,17 +2472,6 @@ function OrderContent() {
           line-height: 1;
           filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.35));
         }
-        .party-booster {
-          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.42);
-        }
-        .quick-action-chip {
-          border-width: 1px;
-          border-style: solid;
-          transition: transform 0.16s ease, border-color 0.2s ease, background 0.2s ease;
-        }
-        .quick-action-chip:active {
-          transform: scale(0.98);
-        }
         .quick-chip-pop {
           position: relative;
           overflow: hidden;
@@ -2833,20 +2497,6 @@ function OrderContent() {
         .empty-cart-state {
           box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
         }
-        .party-bursts {
-          margin-top: 6px;
-          display: flex;
-          gap: 8px;
-          justify-content: center;
-        }
-        .party-bursts span {
-          display: inline-block;
-          animation: partyBurst 1.2s ease-in-out infinite;
-        }
-        .party-bursts span:nth-child(2) { animation-delay: 0.15s; }
-        .party-bursts span:nth-child(3) { animation-delay: 0.28s; }
-        .party-bursts span:nth-child(4) { animation-delay: 0.41s; }
-        .party-bursts span:nth-child(5) { animation-delay: 0.56s; }
         .miami-wave {
           animation: miamiWave 2.2s ease-in-out infinite;
           box-shadow: 0 0 0 1px rgba(34, 211, 238, 0.15), 0 10px 24px rgba(6, 182, 212, 0.12);
@@ -2904,10 +2554,6 @@ function OrderContent() {
           0%, 65% { left: -140%; }
           85% { left: 130%; }
           100% { left: 130%; }
-        }
-        @keyframes partyBurst {
-          0%, 100% { transform: translateY(0) scale(1); opacity: 0.85; }
-          50% { transform: translateY(-5px) scale(1.15); opacity: 1; }
         }
         @keyframes miamiWave {
           0%, 100% { transform: translateY(0); }
