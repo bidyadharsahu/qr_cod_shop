@@ -34,7 +34,6 @@ export function getSupabase(): SupabaseClient {
 }
 
 // Lazy proxy so imports at the module level don't crash during SSG.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_target, prop: string | symbol) {
     const client = getSupabase();

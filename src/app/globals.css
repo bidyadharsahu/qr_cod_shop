@@ -1120,6 +1120,166 @@ button {
   border-color: rgba(148, 163, 184, 0.55);
 }
 
+.vanguard-slate .admin-topbar {
+  background: rgba(19, 19, 22, 0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid color-mix(in srgb, var(--admin-panel-border) 55%, transparent);
+}
+
+.vanguard-slate .admin-canvas {
+  max-width: min(100%, 1600px);
+  margin-inline: auto;
+}
+
+.vanguard-slate .admin-nav-link {
+  color: #938f99;
+  border-bottom: 2px solid transparent;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.vanguard-slate .admin-nav-link:hover {
+  color: #ede0ff;
+  background: rgba(42, 42, 45, 0.55);
+}
+
+.vanguard-slate .admin-nav-link.is-active {
+  color: #d2bbff;
+  border-bottom-color: #7c3aed;
+}
+
+.vanguard-slate .admin-metric-card {
+  background: color-mix(in srgb, var(--admin-panel-bg) 88%, #1b1b1e 12%);
+  border: 1px solid color-mix(in srgb, var(--admin-panel-border) 55%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.vanguard-slate .rounded-2xl,
+.vanguard-slate .rounded-xl {
+  border-radius: 0.75rem;
+}
+
+.vanguard-slate .bg-zinc-900,
+.vanguard-slate .bg-zinc-900\/80,
+.vanguard-slate .bg-zinc-900\/90,
+.vanguard-slate .bg-zinc-800,
+.vanguard-slate .bg-zinc-800\/95,
+.vanguard-slate .bg-zinc-700 {
+  background-color: #1b1b1e;
+}
+
+.vanguard-slate .border-zinc-700,
+.vanguard-slate .border-zinc-700\/80,
+.vanguard-slate .border-zinc-600 {
+  border-color: rgba(74, 68, 85, 0.55);
+}
+
+.vanguard-slate .text-gray-200 {
+  color: #d9d3e0;
+}
+
+.vanguard-slate .text-gray-300 {
+  color: #c9c1d4;
+}
+
+.vanguard-slate .text-gray-400 {
+  color: #aa9fb8;
+}
+
+.vanguard-slate .text-gray-500,
+.vanguard-slate .text-gray-600 {
+  color: #8e829f;
+}
+
+.vanguard-slate .admin-panel,
+.vanguard-slate .bg-\[\#1b1b1e\],
+.vanguard-slate .bg-\[\#1f1f22\] {
+  background: color-mix(in srgb, var(--admin-panel-bg) 92%, #1b1b1e 8%);
+  border-color: color-mix(in srgb, var(--admin-panel-border) 58%, transparent);
+}
+
+.vanguard-slate .bg-\[\#353438\]\/30,
+.vanguard-slate .bg-\[\#353438\]\/20 {
+  background-color: rgba(53, 52, 56, 0.26);
+}
+
+.vanguard-slate .hover\:bg-zinc-600:hover,
+.vanguard-slate .hover\:bg-zinc-700:hover,
+.vanguard-slate .hover\:bg-zinc-800:hover,
+.vanguard-slate .hover\:bg-zinc-900:hover,
+.vanguard-slate .hover\:bg-\[\#2a2a2d\]:hover {
+  background-color: #2a2a2d;
+}
+
+.vanguard-slate .admin-table-shell,
+.vanguard-slate table.admin-table-shell,
+.vanguard-slate .admin-panel table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.vanguard-slate .admin-panel table thead th {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.64rem;
+  color: #958da1;
+}
+
+.vanguard-slate .admin-panel table tbody td {
+  vertical-align: middle;
+}
+
+.vanguard-slate input,
+.vanguard-slate select,
+.vanguard-slate textarea {
+  background-color: #0e0e11;
+  border-color: rgba(74, 68, 85, 0.45);
+}
+
+.vanguard-slate input:focus,
+.vanguard-slate select:focus,
+.vanguard-slate textarea:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.35);
+}
+
+.vanguard-slate button {
+  transition: transform 120ms ease, background-color 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.vanguard-slate button:active {
+  transform: scale(0.98);
+}
+
+.vanguard-slate .admin-table-shell {
+  border: 1px solid color-mix(in srgb, var(--admin-panel-border) 55%, transparent);
+  background: color-mix(in srgb, var(--admin-panel-bg) 90%, #1b1b1e 10%);
+}
+
+.vanguard-slate .admin-table-shell thead {
+  background: rgba(53, 52, 56, 0.32);
+}
+
+.vanguard-slate .admin-table-shell tbody tr:hover {
+  background: rgba(31, 31, 34, 0.45);
+}
+
+.vanguard-slate .admin-input {
+  background: #0e0e11;
+  border: 1px solid rgba(74, 68, 85, 0.45);
+  border-radius: 0.75rem;
+}
+
+.vanguard-slate .admin-input:focus {
+  border-color: #7c3aed;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.35);
+}
+
+@media (max-width: 1024px) {
+  .vanguard-slate .admin-canvas {
+    max-width: 100%;
+  }
+}
+
 /* Better grid spacing */
 .dashboard-grid {
   display: grid;

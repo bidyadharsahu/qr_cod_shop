@@ -1125,7 +1125,7 @@ export default function AdminDashboard() {
   ];
 
   return (
-    <div className={`admin-shell admin-tone-${uiTone} min-h-screen text-white relative overflow-x-clip`}>
+    <div className={`admin-shell vanguard-slate admin-tone-${uiTone} min-h-screen text-white relative overflow-x-clip`}>
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -1210,9 +1210,9 @@ export default function AdminDashboard() {
       </AnimatePresence>
 
       {/* Header with horizontal menu */}
-      <header className="bg-[#131316]/95 border-b border-[#2a2a33] sticky top-0 z-40">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16 sm:h-[74px] gap-3 sm:gap-5">
+      <header className="admin-topbar bg-[#131316]/95 border-b border-[#2a2a33] sticky top-0 z-40">
+        <div className="admin-canvas max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 sm:h-[76px] gap-3 sm:gap-5">
             {/* Site Name */}
             <div className="flex-shrink-0 flex items-center gap-3 min-w-0">
               <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-[#3a3a45] bg-[#1f1f22]">
@@ -1231,14 +1231,14 @@ export default function AdminDashboard() {
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-2 sm:gap-4 overflow-x-auto px-1">
+            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-2 sm:gap-5 overflow-x-auto px-1">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`px-2.5 sm:px-3 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
+                  className={`admin-nav-link px-2.5 sm:px-3 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 rounded-lg ${
                     activeTab === tab.id 
-                      ? 'text-white border-current' 
+                      ? 'is-active text-white border-current' 
                       : 'text-gray-400 border-transparent hover:text-white'
                   }`}
                   style={activeTab === tab.id ? { color: theme.primary } : {}}
@@ -1256,7 +1256,7 @@ export default function AdminDashboard() {
                 <button
                   key={tone.id}
                   onClick={() => setUiTone(tone.id)}
-                  className={`tone-chip px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
+                  className={`tone-chip admin-nav-link px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
                     uiTone === tone.id ? 'is-active text-white border-current' : 'text-gray-500 border-transparent hover:text-white'
                   }`}
                   style={uiTone === tone.id ? { color: theme.primary } : {}}
@@ -1275,7 +1275,7 @@ export default function AdminDashboard() {
                   value={headerSearch}
                   onChange={(e) => setHeaderSearch(e.target.value)}
                   placeholder="Global search..."
-                  className="w-56 xl:w-64 bg-[#0e0e11] border border-[#2a2a33] rounded-xl pl-9 pr-3 py-2 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none focus:border-[#7c3aed]"
+                  className="admin-input w-56 xl:w-64 bg-[#0e0e11] border border-[#2a2a33] rounded-xl pl-9 pr-3 py-2 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none focus:border-[#7c3aed]"
                 />
               </div>
               {waiterCalls.length > 0 && (
@@ -1306,7 +1306,7 @@ export default function AdminDashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-12 relative z-[1]">
+      <main className="admin-canvas max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-14 relative z-[1]">
                 {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8 text-[#e4e1e6]">
@@ -1340,7 +1340,7 @@ export default function AdminDashboard() {
             {/* Metrics Grid */}
             <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {/* Today's Orders */}
-              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
                 <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                   <ShoppingCart size={96} />
                 </div>
@@ -1352,7 +1352,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Revenue */}
-              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
                 <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                   <CircleDollarSign size={96} />
                 </div>
@@ -1365,7 +1365,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Pending */}
-              <div className="bg-[#1b1b1e] border-l-2 border-[#ffb95f]/30 p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+              <div className="admin-metric-card bg-[#1b1b1e] border-l-2 border-[#ffb95f]/30 p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
                 <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                   <ClipboardList size={96} />
                 </div>
@@ -1376,7 +1376,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Active Tables */}
-              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
                 <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                   <TableIcon size={96} />
                 </div>
@@ -1387,7 +1387,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* Est. Wait */}
-              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
                 <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
                   <Timer size={96} />
                 </div>
@@ -1413,7 +1413,7 @@ export default function AdminDashboard() {
                   </span>
                 </div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                  <table className="admin-table-shell w-full text-left">
                     <thead className="bg-[#353438]/30">
                       <tr>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Order ID</th>
