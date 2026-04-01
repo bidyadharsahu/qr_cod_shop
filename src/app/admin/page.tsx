@@ -370,16 +370,16 @@ export default function AdminDashboard() {
             <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
             <div>
               <h1 class="title">${companyProfile.name} - Daily Closing Report</h1>
-              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} â€¢ Printed: ${new Date().toLocaleString()} â€¢ ${companyProfile.logoHint}</p>
+              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} | Printed: ${new Date().toLocaleString()} | ${companyProfile.logoHint}</p>
             </div>
           </div>
           <div class="grid">
             <div class="card"><h4>Total Orders</h4><p class="big">${reportOrdersSnapshot.length}</p></div>
             <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${reportRevenueSnapshot.toFixed(2)}</p></div>
-            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} â€¢ $${reportCashAmount.toFixed(2)}</p></div>
-            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} â€¢ $${reportOnlineAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} | $${reportCashAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} | $${reportOnlineAmount.toFixed(2)}</p></div>
           </div>
-          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} â€¢ Cancelled: ${reportCancelledCount}</p></div>
+          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} | Cancelled: ${reportCancelledCount}</p></div>
           <table>
             <thead>
               <tr><th>Receipt</th><th>Table</th><th>Status</th><th>Payment</th><th>Total</th><th>Created</th></tr>
@@ -1162,12 +1162,12 @@ export default function AdminDashboard() {
                     <PhoneCall className="w-6 h-6 text-orange-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-white text-sm">ðŸ”” Waiter Needed!</p>
+                    <p className="font-bold text-white text-sm">Waiter Needed</p>
                     <p className="text-white/90 text-lg font-bold">Table {call.table_number}</p>
                     <p className="text-white/60 text-xs">{new Date(call.created_at).toLocaleTimeString()}</p>
                   </div>
                   <button onClick={() => dismissWaiterCall(call)} className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold transition-colors">
-                    âœ“ On it
+                    On it
                   </button>
                 </div>
               </motion.div>
@@ -1191,17 +1191,17 @@ export default function AdminDashboard() {
                   <Bell className="w-7 h-7 text-green-600" />
                 </div>
                 <div className="flex-1">
-                      <p className="font-bold text-white text-lg">ðŸ”” {isAddOnOrder(notifications[0]) ? 'Add-on Order!' : 'New Order!'}</p>
+                      <p className="font-bold text-white text-lg">{isAddOnOrder(notifications[0]) ? 'Add-on Order' : 'New Order'}</p>
                   <p className="text-sm text-white/80">Table {notifications[0].table_number}</p>
                   <p className="text-xs text-white/60 font-mono">{notifications[0].receipt_id}</p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => cancelOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-bold">
-                  âœ• Cancel
+                  Cancel
                 </button>
                 <button onClick={() => confirmOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-white hover:bg-gray-100 text-green-600 rounded-lg transition-colors text-sm font-bold">
-                  âœ“ Confirm
+                  Confirm
                 </button>
               </div>
             </div>
@@ -1256,8 +1256,8 @@ export default function AdminDashboard() {
                 <button
                   key={tone.id}
                   onClick={() => setUiTone(tone.id)}
-                  className={`px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
-                    uiTone === tone.id ? 'text-white border-current' : 'text-gray-500 border-transparent hover:text-white'
+                  className={`tone-chip px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
+                    uiTone === tone.id ? 'is-active text-white border-current' : 'text-gray-500 border-transparent hover:text-white'
                   }`}
                   style={uiTone === tone.id ? { color: theme.primary } : {}}
                 >
@@ -1636,7 +1636,7 @@ export default function AdminDashboard() {
                     return (
                       <div key={`unpaid-${order.id}`} className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-3 flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs text-gray-200">
-                          {order.receipt_id} â€¢ Table {order.table_number} â€¢ {order.status} â€¢ {ageMin} min open
+                          {order.receipt_id} | Table {order.table_number} | {order.status} | {ageMin} min open
                         </p>
                         <div className="flex items-center gap-2">
                           <button
@@ -1695,7 +1695,7 @@ export default function AdminDashboard() {
                           <div>
                             <p className="text-sm font-semibold text-white">{event.event_type}</p>
                             <p className="text-xs text-gray-500">
-                              {new Date(event.event_time || event.created_at).toLocaleString()} â€¢ {event.source || 'unknown source'}
+                              {new Date(event.event_time || event.created_at).toLocaleString()} | {event.source || 'unknown source'}
                             </p>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full border text-[11px] uppercase ${statusClass}`}>{event.status}</span>
@@ -1754,7 +1754,7 @@ export default function AdminDashboard() {
                           )}
                         </div>
                         <p className="text-xl font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                        <p className="text-gray-400">Table {order.table_number} â€¢ {new Date(order.created_at).toLocaleString()}</p>
+                        <p className="text-gray-400">Table {order.table_number} | {new Date(order.created_at).toLocaleString()}</p>
                         {order.customer_note && (
                           <p className="text-xs text-gray-500 mt-1">{order.customer_note}</p>
                         )}
@@ -1838,8 +1838,8 @@ export default function AdminDashboard() {
                       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                         <div>
                           <p className="text-lg font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                          <p className="text-sm text-gray-300">Table {order.table_number} â€¢ {order.status.toUpperCase()}</p>
-                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago â€¢ ETA {estimatePrepMinutes(order)} min</p>
+                          <p className="text-sm text-gray-300">Table {order.table_number} | {order.status.toUpperCase()}</p>
+                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago | ETA {estimatePrepMinutes(order)} min</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-300' :
@@ -1967,7 +1967,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => toggleAvailability(item)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
-                        {item.available ? 'âœ“ Available' : 'âœ— Unavailable'}
+                        {item.available ? 'Available' : 'Unavailable'}
                       </button>
                       <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category, imageUrl: item.image_url || '' }); setShowMenuModal(true); }} className="px-2 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-md">
                         <Edit className="w-3.5 h-3.5" />
@@ -2085,7 +2085,7 @@ export default function AdminDashboard() {
                 )}
                 <div className="mt-6 flex justify-center">
                   <button onClick={() => window.print()} className="px-6 py-3 text-black rounded-lg font-medium transition-colors" style={{ background: theme.primary }}>
-                    ðŸ–¨ï¸ Print All QR Codes
+                    Print All QR Codes
                   </button>
                 </div>
               </div>
@@ -2298,7 +2298,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="rounded-xl p-4" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
-                  <p className="text-center text-sm" style={{ color: theme.primary }}>ðŸ’µ Cash payment to manager</p>
+                  <p className="text-center text-sm" style={{ color: theme.primary }}>Cash payment to manager</p>
                 </div>
                 <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
                   Confirm Cash Payment
@@ -2329,8 +2329,8 @@ export default function AdminDashboard() {
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {checkoutGateBlockingOrders.map(order => (
                     <div key={`gate-${order.id}`} className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-gray-200">
-                      <p>{order.receipt_id} â€¢ {order.status} â€¢ {order.payment_status}</p>
-                      <p className="text-gray-400">Total: ${order.total.toFixed(2)} â€¢ {new Date(order.created_at).toLocaleString()}</p>
+                      <p>{order.receipt_id} | {order.status} | {order.payment_status}</p>
+                      <p className="text-gray-400">Total: ${order.total.toFixed(2)} | {new Date(order.created_at).toLocaleString()}</p>
                     </div>
                   ))}
                 </div>

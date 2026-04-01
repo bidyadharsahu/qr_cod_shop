@@ -832,11 +832,16 @@ button {
   --admin-label-tracking: 0.08em;
   --admin-label-size: 0.72rem;
   --admin-panel-glow: 0 10px 28px rgba(0, 0, 0, 0.2);
+  --admin-shell-max-width: 96rem;
+  --admin-shell-line-height: 1.45;
   background:
     radial-gradient(circle at 8% 8%, var(--admin-bg-a), transparent 32%),
     radial-gradient(circle at 88% 12%, var(--admin-bg-b), transparent 28%),
     linear-gradient(180deg, #131316 0%, #0f1013 48%, #0e0f12 100%);
   overflow-y: auto;
+  font-family: var(--admin-body-font);
+  letter-spacing: var(--admin-body-tracking);
+  line-height: var(--admin-shell-line-height);
 }
 
 .admin-shell h1,
@@ -846,54 +851,32 @@ button {
   font-family: var(--admin-heading-font);
   font-weight: var(--admin-heading-weight);
   letter-spacing: var(--admin-heading-tracking);
+  line-height: 1.15;
 }
 
-.admin-shell p,
-.admin-shell span,
 .admin-shell button,
 .admin-shell input,
 .admin-shell select,
 .admin-shell option,
+.admin-shell textarea {
+  font-family: inherit;
+  letter-spacing: inherit;
+}
+
+.admin-shell p,
+.admin-shell span,
 .admin-shell label {
-  font-family: var(--admin-body-font);
   font-size: var(--admin-body-size);
-  letter-spacing: var(--admin-body-tracking);
 }
 
-.admin-shell .text-base.font-semibold,
-.admin-shell .text-base.font-bold,
-.admin-shell .text-xl.font-semibold,
-.admin-shell .text-xl.font-bold,
-.admin-shell .text-2xl.font-semibold,
-.admin-shell .text-2xl.font-bold {
-  font-size: var(--admin-heading-size);
-}
-
-.admin-shell .text-xl.font-bold,
-.admin-shell .text-2xl.font-bold,
-.admin-shell .text-3xl.font-bold {
+.admin-shell [class*="font-mono"] {
   font-family: var(--admin-kpi-font);
-  font-weight: var(--admin-kpi-weight);
-  letter-spacing: var(--admin-kpi-tracking);
   font-variant-numeric: tabular-nums;
 }
 
-.admin-shell .text-xl.font-bold {
-  font-size: var(--admin-kpi-md-size);
-}
-
-.admin-shell .text-2xl.font-bold {
-  font-size: var(--admin-kpi-lg-size);
-}
-
-.admin-shell .text-3xl.font-bold {
-  font-size: var(--admin-kpi-xl-size);
-}
-
-.admin-shell .text-xs.uppercase {
+.admin-shell .uppercase {
   text-transform: var(--admin-label-transform);
   letter-spacing: var(--admin-label-tracking);
-  font-size: var(--admin-label-size);
 }
 
 .admin-shell .text-gray-400,
@@ -904,7 +887,7 @@ button {
 .admin-panel {
   background: var(--admin-panel-bg);
   border: 1px solid var(--admin-panel-border);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02), var(--admin-panel-glow);
 }
 
 .admin-nav::-webkit-scrollbar {
