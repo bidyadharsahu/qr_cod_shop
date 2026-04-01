@@ -1091,14 +1091,14 @@ export default function AdminDashboard() {
 
   const tabs = staffRole === 'chef'
     ? [
-      { id: 'kitchen', icon: ChefHat, label: 'Kitchen' },
+      { id: 'kitchen', label: 'Kitchen' },
     ]
     : [
-      { id: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { id: 'orders', icon: ShoppingBag, label: 'Orders' },
-      { id: 'kitchen', icon: ChefHat, label: 'Kitchen' },
-      { id: 'menu', icon: UtensilsCrossed, label: 'Menu' },
-      { id: 'tables', icon: Grid3X3, label: 'Tables' },
+      { id: 'dashboard', label: 'Dashboard' },
+      { id: 'orders', label: 'Orders' },
+      { id: 'kitchen', label: 'Kitchen' },
+      { id: 'menu', label: 'Menu' },
+      { id: 'tables', label: 'Tables' },
     ];
 
   const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
@@ -1109,9 +1109,6 @@ export default function AdminDashboard() {
 
   return (
     <div className={`admin-shell admin-tone-${uiTone} min-h-screen text-white relative overflow-x-clip`}>
-      <div className="admin-orb admin-orb-a" />
-      <div className="admin-orb admin-orb-b" />
-      <div className="admin-orb admin-orb-c" />
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -1144,7 +1141,7 @@ export default function AdminDashboard() {
                 className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-4 shadow-2xl border-2 border-white/20"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center animate-bounce">
+                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center">
                     <PhoneCall className="w-6 h-6 text-orange-600" />
                   </div>
                   <div className="flex-1">
@@ -1173,7 +1170,7 @@ export default function AdminDashboard() {
           >
             <div className="flex flex-col gap-4">
               <div className="flex items-center gap-3">
-                <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center animate-pulse">
+                <div className="w-14 h-14 bg-white rounded-xl flex items-center justify-center">
                   <Bell className="w-7 h-7 text-green-600" />
                 </div>
                 <div className="flex-1">
@@ -1217,26 +1214,40 @@ export default function AdminDashboard() {
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-1 sm:gap-1.5 overflow-x-auto px-1.5 py-1 rounded-xl border border-zinc-800/90 bg-zinc-900/70">
+            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-1 sm:gap-2 overflow-x-auto border-b border-zinc-800/90 px-1 pb-0.5">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                  className={`px-2.5 sm:px-3 py-2 text-sm font-semibold transition-colors whitespace-nowrap border-b-2 ${
                     activeTab === tab.id 
-                      ? 'text-white' 
-                      : 'text-gray-400 hover:text-white hover:bg-zinc-800'
+                      ? 'text-white border-current' 
+                      : 'text-gray-400 border-transparent hover:text-white'
                   }`}
-                  style={activeTab === tab.id ? { background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}4d` } : {}}
+                  style={activeTab === tab.id ? { color: theme.primary } : {}}
                 >
-                  <tab.icon className="w-4 h-4 sm:w-5 sm:h-5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span>{tab.label}</span>
                   {tab.id === 'orders' && pendingOrders > 0 && (
                     <span className="ml-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-red-500 text-white">{pendingOrders}</span>
                   )}
                 </button>
               ))}
             </nav>
+
+            <div className="hidden xl:flex items-center gap-3 border-b border-zinc-800/90 px-1 pb-0.5">
+              {toneOptions.map((tone) => (
+                <button
+                  key={tone.id}
+                  onClick={() => setUiTone(tone.id)}
+                  className={`px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
+                    uiTone === tone.id ? 'text-white border-current' : 'text-gray-500 border-transparent hover:text-white'
+                  }`}
+                  style={uiTone === tone.id ? { color: theme.primary } : {}}
+                >
+                  {tone.label}
+                </button>
+              ))}
+            </div>
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
@@ -1287,12 +1298,13 @@ export default function AdminDashboard() {
               </div>
               <div className="xl:hidden mt-4 flex flex-wrap items-center gap-2">
                 <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Tone</p>
-                <div className="flex items-center gap-1 rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1">
+                <div className="flex items-center gap-1 border-b border-zinc-700/80">
                   {toneOptions.map((tone) => (
                     <button
                       key={tone.id}
                       onClick={() => setUiTone(tone.id)}
-                      className={`tone-chip px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-colors ${uiTone === tone.id ? 'is-active' : ''}`}
+                      className={`px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors ${uiTone === tone.id ? 'text-white border-current' : 'text-gray-400 border-transparent hover:text-white'}`}
+                      style={uiTone === tone.id ? { color: theme.primary } : {}}
                     >
                       {tone.label}
                     </button>
@@ -2132,7 +2144,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {menuItems.map(item => (
-                  <motion.div key={item.id} layout className={`bg-zinc-800/95 border rounded-2xl p-3.5 shadow-sm ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
+                  <motion.div key={item.id} className={`bg-zinc-800/95 border rounded-2xl p-3.5 shadow-sm ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
                     <div className="relative h-32 mb-3 rounded-lg overflow-hidden border border-zinc-700">
                       <Image
                         src={item.image_url || getDefaultMenuImage(item.name, item.category)}
@@ -2188,7 +2200,7 @@ export default function AdminDashboard() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 {tables.map(table => (
-                  <motion.div key={table.id} layout className={`bg-zinc-800/95 border rounded-2xl p-3 text-center shadow-sm ${
+                  <motion.div key={table.id} className={`bg-zinc-800/95 border rounded-2xl p-3 text-center shadow-sm ${
                     table.status === 'available' ? 'border-teal-500/30' :
                     table.status === 'occupied' ? 'border-red-500/30' :
                     'border-amber-500/30'

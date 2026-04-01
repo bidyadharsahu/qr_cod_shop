@@ -859,10 +859,8 @@ button {
 
 .admin-panel {
   background: var(--admin-panel-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--admin-panel-border);
-  box-shadow: var(--admin-panel-glow);
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.14);
 }
 
 .admin-nav::-webkit-scrollbar {
