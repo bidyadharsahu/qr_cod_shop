@@ -1346,7 +1346,7 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Today's Orders</p>
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">{orders.filter(o => toIsoDay(new Date(o.created_at)) === toIsoDay(new Date())).length}</h3>
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">{todayOrders.length}</h3>
                   <span className="text-xs font-medium text-[#4edea3]">+Live</span>
                 </div>
               </div>
@@ -1359,7 +1359,7 @@ export default function AdminDashboard() {
                 <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Revenue</p>
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-3xl font-black text-[#e4e1e6]">
-                    ${formatCurrency(orders.filter(o => o.status !== 'cancelled' && toIsoDay(new Date(o.created_at)) === toIsoDay(new Date())).reduce((sum, o) => sum + (o.total || 0), 0))}
+                    {formatCurrency(todayRevenue)}
                   </h3>
                 </div>
               </div>
@@ -1382,7 +1382,7 @@ export default function AdminDashboard() {
                 </div>
                 <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Active Tables</p>
                 <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">{tables.filter(t => t.status === 'occupied').length}/{tables.length}</h3>
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">{activeTables}/{tables.length}</h3>
                 </div>
               </div>
 
@@ -1503,17 +1503,14 @@ export default function AdminDashboard() {
                   </div>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={(() => {
-                        const todayOrders = orders.filter(o => toIsoDay(new Date(o.created_at)) === toIsoDay(new Date()));
-                        const hours = [12, 13, 14, 15, 16, 17, 18, 19].map(h => ({ hour: `${h > 12 ? h - 12 : h} PM`, orders: 0, revenue: 0 }));
-                        todayOrders.forEach(o => {
-                          const h = new Date(o.created_at).getHours();
-                          const bin = hours.find(x => x.hour === `${h > 12 ? h - 12 : h} PM`);
-                          if (bin) {
-                            bin.orders += 1;
-                            bin.revenue += (o.total || 0);
-                          }
+                        return [12, 13, 14, 15, 16, 17, 18, 19].map((h) => {
+                          const point = hourlyTrend[h];
+                          return {
+                            hour: `${h > 12 ? h - 12 : h} PM`,
+                            orders: point?.orders ?? 0,
+                            revenue: point?.revenue ?? 0,
+                          };
                         });
-                        return hours;
                     })()} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#4A4455" opacity={0.1} />
                       <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: '#958da1', fontSize: 10, fontWeight: 700 }} dy={10} />
