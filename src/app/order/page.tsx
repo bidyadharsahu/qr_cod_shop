@@ -1806,11 +1806,6 @@ function OrderContent() {
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <div className="max-w-lg mx-auto px-3 sm:px-4 py-3 sm:py-4 space-y-3 sm:space-y-4 pb-6">
           <section className="space-y-2.5 sm:space-y-3">
-            <div className="rounded-2xl border border-zinc-700/70 bg-zinc-900/65 p-3 sm:p-4">
-              <p className="text-[12px] sm:text-[13px] text-gray-300 leading-relaxed">
-                Use chat naturally and I will guide your full order flow from menu browsing to confirmation and payment.
-              </p>
-            </div>
           </section>
 
           <AnimatePresence mode="popLayout">
