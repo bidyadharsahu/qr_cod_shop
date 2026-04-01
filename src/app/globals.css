@@ -763,15 +763,15 @@ button {
 }
 
 .admin-shell {
-  --admin-bg-a: rgba(20, 184, 166, 0.08);
-  --admin-bg-b: rgba(59, 130, 246, 0.08);
-  --admin-panel-bg: rgba(24, 24, 27, 0.72);
-  --admin-panel-border: rgba(63, 63, 70, 0.7);
+  --admin-bg-a: rgba(124, 58, 237, 0.08);
+  --admin-bg-b: rgba(78, 222, 163, 0.06);
+  --admin-panel-bg: #1b1b1e;
+  --admin-panel-border: rgba(74, 68, 85, 0.48);
   --admin-orb-a: rgba(20, 184, 166, 0.3);
   --admin-orb-b: rgba(59, 130, 246, 0.26);
   --admin-orb-c: rgba(234, 179, 8, 0.2);
-  --admin-heading-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
-  --admin-body-font: "Segoe UI", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-heading-font: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --admin-body-font: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
   --admin-heading-weight: 650;
   --admin-heading-tracking: -0.01em;
   --admin-body-tracking: 0;
@@ -789,9 +789,9 @@ button {
   --admin-label-size: 0.72rem;
   --admin-panel-glow: 0 10px 28px rgba(0, 0, 0, 0.2);
   background:
-    radial-gradient(circle at 10% 10%, var(--admin-bg-a), transparent 34%),
-    radial-gradient(circle at 88% 14%, var(--admin-bg-b), transparent 30%),
-    linear-gradient(180deg, #0a0a0c 0%, #09090b 44%, #08080a 100%);
+    radial-gradient(circle at 8% 8%, var(--admin-bg-a), transparent 32%),
+    radial-gradient(circle at 88% 12%, var(--admin-bg-b), transparent 28%),
+    linear-gradient(180deg, #131316 0%, #0f1013 48%, #0e0f12 100%);
   overflow-y: auto;
 }
 
@@ -860,7 +860,7 @@ button {
 .admin-panel {
   background: var(--admin-panel-bg);
   border: 1px solid var(--admin-panel-border);
-  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.14);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 .admin-nav::-webkit-scrollbar {

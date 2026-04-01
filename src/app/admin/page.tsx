@@ -14,7 +14,7 @@ import {
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette
+  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap
 } from 'lucide-react';
 
 interface PaymentGatewayStatus {
@@ -79,6 +79,7 @@ export default function AdminDashboard() {
   
   // Order filtering
   const [orderSearch, setOrderSearch] = useState('');
+  const [headerSearch, setHeaderSearch] = useState('');
   const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [orderTableFilter, setOrderTableFilter] = useState<string>('all');
   
@@ -1028,6 +1029,21 @@ export default function AdminDashboard() {
     }).slice(0, 60);
   }, [paymentEvents, orderSearch, orderTableFilter, orders]);
 
+  const latestOrderByTable = useMemo(() => {
+    const tableMap = new Map<number, Order>();
+    const sorted = [...orders]
+      .filter(o => !o.receipt_id?.startsWith('CALL-'))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    for (const order of sorted) {
+      if (!tableMap.has(order.table_number)) {
+        tableMap.set(order.table_number, order);
+      }
+    }
+
+    return tableMap;
+  }, [orders]);
+
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
     setWaiterCalls(prev => prev.filter(c => c.id !== call.id));
@@ -1193,17 +1209,17 @@ export default function AdminDashboard() {
       </AnimatePresence>
 
       {/* Header with horizontal menu */}
-      <header className="bg-zinc-950/80 backdrop-blur-xl border-b border-zinc-800/90 sticky top-0 z-40 shadow-[0_8px_30px_rgba(0,0,0,0.28)]">
+      <header className="bg-[#131316]/95 border-b border-[#2a2a33] sticky top-0 z-40">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 sm:h-[74px] gap-3 sm:gap-5">
             {/* Site Name */}
             <div className="flex-shrink-0 flex items-center gap-3 min-w-0">
-              <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900 shadow-inner shadow-black/50">
+              <div className="relative w-10 h-10 rounded-xl overflow-hidden border border-[#3a3a45] bg-[#1f1f22]">
                 <Image src={companyProfile.logo} alt="Company logo" fill sizes="36px" className="object-cover" />
               </div>
               <div className="min-w-0">
-                <p className="font-semibold text-base tracking-tight truncate" style={{ color: theme.primary }}>{companyProfile.name}</p>
-                <p className="text-[11px] text-gray-500 truncate">{companyProfile.subtitle} • {companyProfile.logoHint}</p>
+                <p className="font-black text-xl tracking-tight truncate text-[#e4e1e6]">{companyProfile.name}</p>
+                <p className="text-[10px] text-[#958da1] uppercase tracking-[0.14em] truncate">{companyProfile.subtitle}</p>
               </div>
             </div>
 
@@ -1214,7 +1230,7 @@ export default function AdminDashboard() {
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-1 sm:gap-2 overflow-x-auto border-b border-zinc-800/90 px-1 pb-0.5">
+            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-2 sm:gap-4 overflow-x-auto px-1">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
@@ -1234,7 +1250,7 @@ export default function AdminDashboard() {
               ))}
             </nav>
 
-            <div className="hidden xl:flex items-center gap-3 border-b border-zinc-800/90 px-1 pb-0.5">
+            <div className="hidden xl:flex items-center gap-3 border-l border-[#2a2a33] pl-3">
               {toneOptions.map((tone) => (
                 <button
                   key={tone.id}
@@ -1251,22 +1267,37 @@ export default function AdminDashboard() {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+              <div className="relative hidden lg:block">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#958da1]" />
+                <input
+                  type="text"
+                  value={headerSearch}
+                  onChange={(e) => setHeaderSearch(e.target.value)}
+                  placeholder="Global search..."
+                  className="w-56 xl:w-64 bg-[#0e0e11] border border-[#2a2a33] rounded-xl pl-9 pr-3 py-2 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none focus:border-[#7c3aed]"
+                />
+              </div>
               {waiterCalls.length > 0 && (
                 <div className="relative">
                   <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
                   <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-[9px] font-bold flex items-center justify-center">{waiterCalls.length}</span>
                 </div>
               )}
-              <button onClick={() => setShowQRModal(true)} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800/90 border border-transparent hover:border-zinc-700/80">
+              <button onClick={() => setShowQRModal(true)} className="w-10 h-10 rounded-xl flex items-center justify-center text-[#958da1] hover:text-white hover:bg-[#1f1f22] transition-colors">
                 <QrCode className="w-5 h-5" />
-                <span className="hidden lg:inline text-sm">QR Codes</span>
               </button>
-              <button onClick={handleLogout} className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-zinc-800/90 border border-transparent hover:border-zinc-700/80">
+              <button onClick={handleLogout} className="w-10 h-10 rounded-xl flex items-center justify-center text-[#958da1] hover:text-white hover:bg-[#1f1f22] transition-colors" title="Log Out">
                 <LogOut className="w-5 h-5" />
-                <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
-              <div className="px-3 py-1 text-black text-sm font-medium rounded-full" style={{ background: theme.primary }} title={staffUser || undefined}>
-                {staffRole === 'chef' ? 'Chef' : 'Manager'}
+              <div className="hidden sm:block h-6 w-px bg-[#2a2a33]" />
+              <div className="hidden sm:flex items-center gap-2" title={staffUser || undefined}>
+                <div className="text-right leading-tight">
+                  <p className="text-xs font-bold text-[#e4e1e6] truncate max-w-[110px]">{staffUser || companyProfile.name}</p>
+                  <p className="text-[10px] uppercase tracking-[0.08em]" style={{ color: theme.primary }}>{staffRole === 'chef' ? 'Chef' : 'Manager'}</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#3a3a45] bg-[#1f1f22] relative">
+                  <Image src={companyProfile.logo} alt="Staff" fill sizes="36px" className="object-cover" />
+                </div>
               </div>
             </div>
           </div>
@@ -1279,21 +1310,31 @@ export default function AdminDashboard() {
         {activeTab === 'dashboard' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-7">
             <div className="admin-panel rounded-2xl p-5 sm:p-6">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-gray-500">Operations Hub</p>
-                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1">Executive Dashboard</h1>
+                  <p className="text-xs uppercase tracking-[0.24em] text-[#958da1]">Operations Hub</p>
+                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1 text-[#e4e1e6]">Executive Dashboard</h1>
                   <p className="text-sm text-gray-400 mt-1">Live orders, payments, and table operations in one clean workflow.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:gap-3">
-                  <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2">
-                    <p className="text-[11px] text-gray-500 uppercase">Open Orders</p>
-                    <p className="text-lg font-semibold text-white">{pendingOrders}</p>
-                  </div>
-                  <div className="rounded-xl border border-zinc-700/80 bg-zinc-900/80 px-3 py-2">
-                    <p className="text-[11px] text-gray-500 uppercase">Paid Today</p>
-                    <p className="text-lg font-semibold text-emerald-300">{todayPaidOrders.length}</p>
-                  </div>
+                <div className="flex items-center gap-3">
+                  <button className="px-4 py-2.5 bg-[#1f1f22] border border-[#2f2d36] rounded-xl text-sm font-semibold text-[#e4e1e6] flex items-center gap-2">
+                    <Filter className="w-4 h-4" />
+                    Today
+                  </button>
+                  <button
+                    onClick={() => {
+                      fetchOrders();
+                      fetchMenu();
+                      fetchTables();
+                      fetchPaymentEvents();
+                      showToast('Force sync completed');
+                    }}
+                    className="px-4 py-2.5 rounded-xl text-sm font-bold text-white flex items-center gap-2"
+                    style={{ background: `linear-gradient(135deg, ${theme.primaryDark || '#5b21b6'}, ${theme.primary})` }}
+                  >
+                    <Zap className="w-4 h-4" />
+                    Force Sync
+                  </button>
                 </div>
               </div>
               <div className="xl:hidden mt-4 flex flex-wrap items-center gap-2">
@@ -1326,39 +1367,39 @@ export default function AdminDashboard() {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 hover:border-zinc-600 transition-colors shadow-sm min-h-[118px]">
+              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] hover:border-[#3b3845] transition-colors min-h-[118px]">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <ShoppingBag className="w-4 h-4 text-blue-400" />
                 </div>
-                <p className="text-gray-400 text-xs">Today&apos;s Orders</p>
-                <p className="text-xl font-bold">{todayOrders.length}</p>
+                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Today&apos;s Orders</p>
+                <p className="text-xl font-bold text-[#e4e1e6]">{todayOrders.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
+              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <DollarSign className="w-4 h-4 text-green-400" />
                 </div>
-                <p className="text-gray-400 text-xs">Revenue</p>
+                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Revenue</p>
                 <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
               </div>
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
+              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#4a3a2d] min-h-[118px]">
                 <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
                   <Clock className="w-4 h-4 text-red-400" />
                 </div>
-                <p className="text-gray-400 text-xs">Pending</p>
-                <p className="text-xl font-bold">{pendingOrders}</p>
+                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Pending</p>
+                <p className="text-xl font-bold text-[#ffb95f]">{pendingOrders}</p>
               </div>
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
+              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <Users className="w-4 h-4 text-purple-400" />
                 </div>
-                <p className="text-gray-400 text-xs">Active Tables</p>
-                <p className="text-xl font-bold">{activeTables}/{tables.length}</p>
+                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Active Tables</p>
+                <p className="text-xl font-bold text-[#e4e1e6]">{activeTables}/{tables.length}</p>
               </div>
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700 shadow-sm min-h-[118px]">
+              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
                 <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
                   <Clock className="w-4 h-4" style={{ color: theme.primary }} />
                 </div>
-                <p className="text-gray-400 text-xs">Est. Wait</p>
+                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Est. Wait</p>
                 <p className="text-xl font-bold" style={{ color: theme.primary }}>{estimatedWaitMinutes}m</p>
               </div>
             </div>
@@ -1706,33 +1747,33 @@ export default function AdminDashboard() {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <button onClick={() => setShowQRModal(true)} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
+              <button onClick={() => setShowQRModal(true)} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
                 <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
                   <QrCode className="w-4 h-4 text-purple-400" />
                 </div>
                 <p className="font-medium text-sm">Print QR Codes</p>
-                <p className="text-xs text-gray-500">For all tables</p>
+                <p className="text-xs text-[#958da1]">For all tables</p>
               </button>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
+              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
                 <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
                   <Plus className="w-4 h-4 text-green-400" />
                 </div>
                 <p className="font-medium text-sm">Add Menu Item</p>
-                <p className="text-xs text-gray-500">New product</p>
+                <p className="text-xs text-[#958da1]">New product</p>
               </button>
-              <button onClick={() => setShowAddTableModal(true)} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
+              <button onClick={() => setShowAddTableModal(true)} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
                 <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
                   <Grid3X3 className="w-4 h-4 text-blue-400" />
                 </div>
                 <p className="font-medium text-sm">Add Table</p>
-                <p className="text-xs text-gray-500">New seating</p>
+                <p className="text-xs text-[#958da1]">New seating</p>
               </button>
-              <button onClick={() => setActiveTab('orders')} className="bg-zinc-800/90 hover:bg-zinc-800 border border-zinc-700 rounded-2xl p-4 text-left transition-colors shadow-sm">
+              <button onClick={() => setActiveTab('orders')} className="rounded-2xl p-4 text-left transition-colors text-white" style={{ background: `linear-gradient(135deg, ${theme.primaryDark || '#5b21b6'}, ${theme.primary})` }}>
                 <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
-                  <ShoppingBag className="w-4 h-4" style={{ color: theme.primary }} />
+                  <ShoppingBag className="w-4 h-4 text-white" />
                 </div>
                 <p className="font-medium text-sm">View Orders</p>
-                <p className="text-xs text-gray-500">Manage orders</p>
+                <p className="text-xs text-white/75">Manage orders</p>
               </button>
             </div>
 
@@ -2126,11 +2167,46 @@ export default function AdminDashboard() {
         {/* Menu Tab */}
         {activeTab === 'menu' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
-              <h1 className="text-xl font-bold">Menu</h1>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
-                <Plus className="w-4 h-4" /> Add Item
-              </button>
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+              <div className="xl:col-span-2 admin-panel rounded-2xl overflow-hidden border border-[#2f2d36]">
+                <div className="relative min-h-[210px]">
+                  <Image
+                    src={menuItems[0]?.image_url || getDefaultMenuImage('Seasonal Menu', 'Chef Specials')}
+                    alt="Menu hero"
+                    fill
+                    sizes="(max-width: 1280px) 100vw, 66vw"
+                    className="object-cover opacity-30"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#0f1013]/95 via-[#0f1013]/75 to-transparent" />
+                  <div className="relative p-6 sm:p-7">
+                    <p className="text-xs uppercase tracking-[0.22em] text-emerald-300">Live Status</p>
+                    <h1 className="text-4xl font-black tracking-tight text-[#e4e1e6] mt-2">Menu Management</h1>
+                    <p className="text-sm text-[#b2acbd] mt-1">Maintain items, pricing, and availability with realtime chatbot sync.</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
+                        {menuItems.filter(item => item.available).length} Active Items
+                      </span>
+                      <span className="px-3 py-1 rounded-full bg-zinc-900/80 border border-zinc-700 text-[#d0c9db] text-xs font-semibold">
+                        {[...new Set(menuItems.map(item => item.category))].length} Categories
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="admin-panel rounded-2xl p-5 border border-[#2f2d36] flex flex-col justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-bold" style={{ color: theme.primary }}>Smart Recommendations</h2>
+                  <p className="text-sm text-[#b2acbd] mt-1">Use fast actions to keep menu flow optimized.</p>
+                </div>
+                <button
+                  onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }}
+                  className="w-full py-3 px-4 rounded-xl text-white font-semibold flex items-center justify-center gap-2"
+                  style={{ background: `linear-gradient(135deg, ${theme.primaryDark || '#5b21b6'}, ${theme.primary})` }}
+                >
+                  <Plus className="w-4 h-4" /> Add Menu Item
+                </button>
+              </div>
             </div>
             
             {menuItems.length === 0 ? (
@@ -2142,10 +2218,10 @@ export default function AdminDashboard() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {menuItems.map(item => (
-                  <motion.div key={item.id} className={`bg-zinc-800/95 border rounded-2xl p-3.5 shadow-sm ${item.available ? 'border-zinc-700' : 'border-red-700/30 opacity-60'}`}>
-                    <div className="relative h-32 mb-3 rounded-lg overflow-hidden border border-zinc-700">
+                  <motion.div key={item.id} className={`bg-[#1b1b1e] border rounded-2xl p-3.5 shadow-sm ${item.available ? 'border-[#2f2d36]' : 'border-red-700/30 opacity-70'}`}>
+                    <div className="relative h-44 mb-3 rounded-xl overflow-hidden border border-[#2f2d36]">
                       <Image
                         src={item.image_url || getDefaultMenuImage(item.name, item.category)}
                         alt={item.name}
@@ -2153,13 +2229,15 @@ export default function AdminDashboard() {
                         sizes="(max-width: 768px) 100vw, 33vw"
                         className="object-cover"
                       />
+                      <div className="absolute top-2 right-2 px-3 py-1 rounded-lg bg-[#0e0e11]/85 border border-[#3b3845] text-sm font-bold" style={{ color: theme.primary }}>
+                        ${item.price.toFixed(2)}
+                      </div>
                     </div>
                     <div className="flex justify-between items-start mb-2">
                       <div>
-                        <span className="px-2 py-0.5 rounded text-xs" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}33`, color: theme.primary }}>{item.category}</span>
-                        <h3 className="text-base font-semibold mt-1">{item.name}</h3>
+                        <span className="px-2 py-0.5 rounded text-xs" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}33`, color: theme.primary }}>{item.category.toUpperCase()}</span>
+                        <h3 className="text-xl font-semibold mt-2 text-[#e4e1e6]">{item.name}</h3>
                       </div>
-                      <p className="text-xl font-bold text-green-400">${item.price.toFixed(2)}</p>
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => toggleAvailability(item)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
@@ -2182,11 +2260,25 @@ export default function AdminDashboard() {
         {/* Tables Tab */}
         {activeTab === 'tables' && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
-            <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
-              <h1 className="text-xl font-bold">Tables</h1>
-              <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2 text-black rounded-lg font-medium text-sm flex items-center gap-2 transition-colors" style={{ background: theme.primary }}>
-                <Plus className="w-4 h-4" /> Add Table
-              </button>
+            <div className="admin-panel rounded-2xl p-6 sm:p-7 border border-[#2f2d36] flex flex-col lg:flex-row lg:items-end lg:justify-between gap-5">
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-[#958da1]">Operational View</p>
+                <h1 className="text-5xl font-black tracking-tight text-[#e4e1e6] mt-2">Dining Floor</h1>
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
+                    {tables.filter(t => t.status === 'available').length} Tables Available
+                  </span>
+                  <span className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
+                    {tables.filter(t => t.status === 'occupied').length} Tables Occupied
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <button className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-[#23232a] border border-[#3a3743] text-[#e4e1e6]">Layout Mode</button>
+                <button onClick={() => setShowAddTableModal(true)} className="px-4 py-2.5 rounded-xl text-sm font-semibold text-black flex items-center gap-2" style={{ background: theme.primary }}>
+                  <Plus className="w-4 h-4" /> Add Table
+                </button>
+              </div>
             </div>
             
             {tables.length === 0 ? (
@@ -2198,28 +2290,38 @@ export default function AdminDashboard() {
                 </button>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {tables.map(table => (
-                  <motion.div key={table.id} className={`bg-zinc-800/95 border rounded-2xl p-3 text-center shadow-sm ${
-                    table.status === 'available' ? 'border-teal-500/30' :
-                    table.status === 'occupied' ? 'border-red-500/30' :
-                    'border-amber-500/30'
+                  <motion.div key={table.id} className={`bg-[#1b1b1e] border rounded-2xl p-5 shadow-sm ${
+                    table.status === 'available' ? 'border-emerald-500/30' :
+                    table.status === 'occupied' ? 'border-amber-500/40' :
+                    'border-rose-500/30'
                   }`}>
-                    <div className={`w-12 h-12 mx-auto rounded-lg flex items-center justify-center text-xl font-bold mb-2 ${
-                      table.status === 'available' ? 'bg-teal-500/10 text-teal-400' :
-                      table.status === 'occupied' ? 'bg-red-500/10 text-red-400' :
-                      'bg-amber-500/10 text-amber-400'
-                    }`}>
-                      {table.table_number}
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <p className={`text-xs uppercase tracking-[0.18em] font-semibold ${
+                          table.status === 'available' ? 'text-emerald-300' : table.status === 'occupied' ? 'text-amber-300' : 'text-rose-300'
+                        }`}>
+                          {table.status}
+                        </p>
+                        <h3 className="text-5xl font-black text-[#e4e1e6] mt-2">Table #{table.table_number}</h3>
+                      </div>
                     </div>
-                    <p className="text-xs text-gray-400 capitalize mb-2">{table.status}</p>
+
+                    <div className="rounded-xl bg-[#141419] border border-[#2f2d36] p-3 mb-3">
+                      <p className="text-xs text-[#958da1] mb-1">Current Balance</p>
+                      <p className="text-3xl font-black" style={{ color: theme.primary }}>
+                        ${latestOrderByTable.get(table.table_number)?.total?.toFixed(2) || '0.00'}
+                      </p>
+                    </div>
+
                     {table.current_order_id && <p className="text-xs text-gray-500 mb-2">{table.current_order_id}</p>}
-                    <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-2 py-1.5 bg-zinc-900 border border-zinc-700 rounded-md text-xs mb-2">
+                    <select value={table.status} onChange={(e) => updateTableStatus(table.id, e.target.value)} className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-sm mb-2">
                       <option value="available">Available</option>
                       <option value="booked">Booked</option>
                       <option value="occupied">Occupied</option>
                     </select>
-                    <button onClick={() => deleteTable(table.id)} className="w-full px-2 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md text-xs">
+                    <button onClick={() => deleteTable(table.id)} className="w-full px-2 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-lg text-sm">
                       Remove
                     </button>
                   </motion.div>
