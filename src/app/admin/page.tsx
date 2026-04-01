@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -11,11 +11,12 @@ import { getCurrentTheme, type AppTheme } from '@/lib/themes';
 import type { Order, MenuItem, RestaurantTable, PaymentEventAudit } from '@/lib/types';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
 import { 
-  LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, 
+  LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, ShoppingCart, CircleDollarSign, ClipboardList, Timer, Eye, Table as TableIcon, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
   PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap
 } from 'lucide-react';
+import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 
 interface PaymentGatewayStatus {
   stripeConfigured: boolean;
@@ -369,16 +370,16 @@ export default function AdminDashboard() {
             <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
             <div>
               <h1 class="title">${companyProfile.name} - Daily Closing Report</h1>
-              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} • Printed: ${new Date().toLocaleString()} • ${companyProfile.logoHint}</p>
+              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} â€¢ Printed: ${new Date().toLocaleString()} â€¢ ${companyProfile.logoHint}</p>
             </div>
           </div>
           <div class="grid">
             <div class="card"><h4>Total Orders</h4><p class="big">${reportOrdersSnapshot.length}</p></div>
             <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${reportRevenueSnapshot.toFixed(2)}</p></div>
-            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} • $${reportCashAmount.toFixed(2)}</p></div>
-            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} • $${reportOnlineAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} â€¢ $${reportCashAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} â€¢ $${reportOnlineAmount.toFixed(2)}</p></div>
           </div>
-          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} • Cancelled: ${reportCancelledCount}</p></div>
+          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} â€¢ Cancelled: ${reportCancelledCount}</p></div>
           <table>
             <thead>
               <tr><th>Receipt</th><th>Table</th><th>Status</th><th>Payment</th><th>Total</th><th>Created</th></tr>
@@ -1161,12 +1162,12 @@ export default function AdminDashboard() {
                     <PhoneCall className="w-6 h-6 text-orange-600" />
                   </div>
                   <div className="flex-1">
-                    <p className="font-bold text-white text-sm">🔔 Waiter Needed!</p>
+                    <p className="font-bold text-white text-sm">ðŸ”” Waiter Needed!</p>
                     <p className="text-white/90 text-lg font-bold">Table {call.table_number}</p>
                     <p className="text-white/60 text-xs">{new Date(call.created_at).toLocaleTimeString()}</p>
                   </div>
                   <button onClick={() => dismissWaiterCall(call)} className="px-3 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold transition-colors">
-                    ✓ On it
+                    âœ“ On it
                   </button>
                 </div>
               </motion.div>
@@ -1190,17 +1191,17 @@ export default function AdminDashboard() {
                   <Bell className="w-7 h-7 text-green-600" />
                 </div>
                 <div className="flex-1">
-                      <p className="font-bold text-white text-lg">🔔 {isAddOnOrder(notifications[0]) ? 'Add-on Order!' : 'New Order!'}</p>
+                      <p className="font-bold text-white text-lg">ðŸ”” {isAddOnOrder(notifications[0]) ? 'Add-on Order!' : 'New Order!'}</p>
                   <p className="text-sm text-white/80">Table {notifications[0].table_number}</p>
                   <p className="text-xs text-white/60 font-mono">{notifications[0].receipt_id}</p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => cancelOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors text-sm font-bold">
-                  ✕ Cancel
+                  âœ• Cancel
                 </button>
                 <button onClick={() => confirmOrder(notifications[0])} className="flex-1 px-4 py-2.5 bg-white hover:bg-gray-100 text-green-600 rounded-lg transition-colors text-sm font-bold">
-                  ✓ Confirm
+                  âœ“ Confirm
                 </button>
               </div>
             </div>
@@ -1306,529 +1307,257 @@ export default function AdminDashboard() {
 
       {/* Main Content */}
       <main className="max-w-screen-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-12 relative z-[1]">
-        {/* Dashboard Tab */}
+                {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-7">
-            <div className="admin-panel rounded-2xl p-5 sm:p-6">
-              <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-[#958da1]">Operations Hub</p>
-                  <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight mt-1 text-[#e4e1e6]">Executive Dashboard</h1>
-                  <p className="text-sm text-gray-400 mt-1">Live orders, payments, and table operations in one clean workflow.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button className="px-4 py-2.5 bg-[#1f1f22] border border-[#2f2d36] rounded-xl text-sm font-semibold text-[#e4e1e6] flex items-center gap-2">
-                    <Filter className="w-4 h-4" />
-                    Today
-                  </button>
-                  <button
-                    onClick={() => {
-                      fetchOrders();
-                      fetchMenu();
-                      fetchTables();
-                      fetchPaymentEvents();
-                      showToast('Force sync completed');
-                    }}
-                    className="px-4 py-2.5 rounded-xl text-sm font-bold text-white flex items-center gap-2"
-                    style={{ background: `linear-gradient(135deg, ${theme.primaryDark || '#5b21b6'}, ${theme.primary})` }}
-                  >
-                    <Zap className="w-4 h-4" />
-                    Force Sync
-                  </button>
-                </div>
-              </div>
-              <div className="xl:hidden mt-4 flex flex-wrap items-center gap-2">
-                <p className="text-[11px] uppercase tracking-[0.18em] text-gray-500">Tone</p>
-                <div className="flex items-center gap-1 border-b border-zinc-700/80">
-                  {toneOptions.map((tone) => (
-                    <button
-                      key={tone.id}
-                      onClick={() => setUiTone(tone.id)}
-                      className={`px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide border-b-2 transition-colors ${uiTone === tone.id ? 'text-white border-current' : 'text-gray-400 border-transparent hover:text-white'}`}
-                      style={uiTone === tone.id ? { color: theme.primary } : {}}
-                    >
-                      {tone.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Mobile Clock & Theme - Only shows on small screens */}
-            <div className="md:hidden rounded-2xl p-4 text-center" style={{ background: `linear-gradient(to right, ${theme.primary}1a, ${theme.primaryDark || theme.primary}1a)`, border: `1px solid ${theme.primary}4d` }}>
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <Sparkles className="w-4 h-4" style={{ color: theme.primary }} />
-                <span className="text-xs font-medium" style={{ color: theme.primary }}>{theme.name} Theme</span>
-              </div>
-              <p className="text-sm font-medium text-white">{currentDate}</p>
-              <p className="text-xl font-bold" style={{ color: theme.primary }}>{currentTime}</p>
-              <p className="text-xs text-gray-400">(Tampa, USA)</p>
-            </div>
-
-            {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5 gap-4">
-              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] hover:border-[#3b3845] transition-colors min-h-[118px]">
-                <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
-                  <ShoppingBag className="w-4 h-4 text-blue-400" />
-                </div>
-                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Today&apos;s Orders</p>
-                <p className="text-xl font-bold text-[#e4e1e6]">{todayOrders.length}</p>
-              </div>
-              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
-                <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
-                  <DollarSign className="w-4 h-4 text-green-400" />
-                </div>
-                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Revenue</p>
-                <p className="text-xl font-bold text-green-400">${todayRevenue.toFixed(2)}</p>
-              </div>
-              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#4a3a2d] min-h-[118px]">
-                <div className="w-8 h-8 bg-red-500/20 rounded-md flex items-center justify-center mb-2">
-                  <Clock className="w-4 h-4 text-red-400" />
-                </div>
-                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Pending</p>
-                <p className="text-xl font-bold text-[#ffb95f]">{pendingOrders}</p>
-              </div>
-              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
-                <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
-                  <Users className="w-4 h-4 text-purple-400" />
-                </div>
-                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Active Tables</p>
-                <p className="text-xl font-bold text-[#e4e1e6]">{activeTables}/{tables.length}</p>
-              </div>
-              <div className="bg-[#1b1b1e] rounded-2xl p-4 border border-[#2f2d36] min-h-[118px]">
-                <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
-                  <Clock className="w-4 h-4" style={{ color: theme.primary }} />
-                </div>
-                <p className="text-[#958da1] text-xs uppercase tracking-[0.14em]">Est. Wait</p>
-                <p className="text-xl font-bold" style={{ color: theme.primary }}>{estimatedWaitMinutes}m</p>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border p-4 shadow-[0_10px_30px_rgba(0,0,0,0.2)]" style={{ borderColor: `${theme.primary}4d`, background: `${theme.primary}14` }}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold" style={{ color: theme.primary }}>Payment Gateway Readiness</p>
-                  <p className="text-xs text-gray-300 mt-0.5">
-                    {paymentGatewayLoading
-                      ? 'Checking gateway setup status...'
-                      : (paymentGatewayStatus.anyProviderConfigured
-                        ? `At least one gateway is enabled (${paymentGatewayStatus.mode} mode).`
-                        : 'No online gateway keys detected. Cash flow stays fully active.')}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <span className={`px-2 py-1 rounded-md border ${paymentGatewayStatus.stripeConfigured ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'}`}>
-                    Stripe: {paymentGatewayStatus.stripeConfigured ? 'Ready' : 'Setup Pending'}
-                  </span>
-                  <span className={`px-2 py-1 rounded-md border ${paymentGatewayStatus.paypalConfigured ? 'text-emerald-300 border-emerald-400/40 bg-emerald-500/10' : 'text-amber-300 border-amber-400/40 bg-amber-500/10'}`}>
-                    PayPal: {paymentGatewayStatus.paypalConfigured ? 'Ready' : 'Setup Pending'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-                <div>
-                  <p className="text-sm font-semibold text-amber-300">Unpaid Risk Monitor</p>
-                  <p className="text-xs text-amber-100/80">Track served/unpaid tables and log follow-up evidence in real-time.</p>
-                </div>
-                <button
-                  onClick={() => setActiveTab('orders')}
-                  className="px-3 py-1.5 text-xs rounded-lg border border-amber-400/40 bg-amber-500/15 text-amber-100"
-                >
-                  Open Orders
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
-                  <p className="text-[11px] text-gray-400">Unpaid Open</p>
-                  <p className="text-lg font-semibold text-white">{unpaidOrders.length}</p>
-                </div>
-                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
-                  <p className="text-[11px] text-gray-400">Risky Now</p>
-                  <p className="text-lg font-semibold text-rose-300">{riskyUnpaidOrders.length}</p>
-                </div>
-                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
-                  <p className="text-[11px] text-gray-400">Served Unpaid</p>
-                  <p className="text-lg font-semibold text-amber-300">{unpaidOrders.filter(o => o.status === 'served').length}</p>
-                </div>
-                <div className="rounded-lg bg-zinc-900/70 border border-zinc-700 px-3 py-2">
-                  <p className="text-[11px] text-gray-400">Needs Follow-up</p>
-                  <p className="text-lg font-semibold" style={{ color: theme.primary }}>{unpaidOrders.filter(o => o.status !== 'pending').length}</p>
-                </div>
-              </div>
-
-              {riskyUnpaidOrders.slice(0, 3).map(order => {
-                const ageMin = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
-                return (
-                  <div key={order.id} className="mb-2 last:mb-0 rounded-lg border border-rose-400/30 bg-zinc-900/70 px-3 py-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-gray-100">{order.receipt_id} • Table {order.table_number} • {ageMin} min • {order.status}</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setShowPaymentModal(order)}
-                        className="px-2.5 py-1.5 rounded-md text-xs font-semibold text-black"
-                        style={{ background: theme.primary }}
-                      >
-                        Record Payment
-                      </button>
-                      <button
-                        onClick={() => {
-                          void logPaymentFollowUp(order, 'walkout_risk_flagged');
-                          showToast('Walkout risk flagged in audit log');
-                        }}
-                        className="px-2.5 py-1.5 rounded-md text-xs border border-rose-400/40 text-rose-200 bg-rose-500/10"
-                      >
-                        Flag Risk
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/60 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="space-y-8 text-[#e4e1e6]">
+            {/* Dashboard Header */}
+            <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Report Date</p>
-                <p className="text-sm text-gray-300">{formatIsoDayLabel(selectedReportDate)}</p>
+                <h2 className="text-4xl font-extrabold tracking-tighter text-[#e4e1e6]">Executive Dashboard</h2>
+                <p className="text-[#958da1] mt-2 font-light">Live orders, payments, and table operations in one clean workflow.</p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => {
-                    const d = new Date();
-                    d.setDate(d.getDate() - 1);
-                    setSelectedReportDate(toIsoDay(d));
-                  }}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200"
-                >
-                  Yesterday
-                </button>
-                <button
-                  onClick={() => setSelectedReportDate(toIsoDay(new Date()))}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200"
-                >
+              <div className="flex gap-3">
+                <button className="px-6 py-2.5 bg-[#1f1f22] rounded-xl text-[#e4e1e6] text-sm font-semibold border border-[#4a4455]/10 hover:bg-[#2a2a2d] transition-all flex items-center gap-2">
+                  <Filter size={16} />
                   Today
                 </button>
-                <input
-                  type="date"
-                  value={selectedReportDate}
-                  onChange={(e) => setSelectedReportDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-700/80 bg-zinc-900/60 p-3 sm:p-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-gray-500">Date Range Export</p>
-                <p className="text-sm text-gray-300">{formatIsoDayLabel(rangeStartIso)} → {formatIsoDayLabel(rangeEndIso)}</p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  type="date"
-                  value={reportFromDate}
-                  onChange={(e) => setReportFromDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
-                />
-                <span className="text-gray-500 text-sm">to</span>
-                <input
-                  type="date"
-                  value={reportToDate}
-                  onChange={(e) => setReportToDate(e.target.value)}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-sm text-gray-200"
-                />
-                <button
-                  onClick={() => exportDateRangeAccountingCsv(rangeStartIso, rangeEndIso, rangeOrders, rangePaymentEvents)}
-                  className="px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs text-gray-200 font-semibold"
+                <button 
+                  onClick={() => {
+                    fetchOrders();
+                    fetchMenu();
+                    fetchTables();
+                    fetchPaymentEvents();
+                    showToast('Force sync completed');
+                  }}
+                  className="px-6 py-2.5 bg-[#7c3aed] text-[#ede0ff] rounded-xl text-sm font-bold shadow-lg shadow-[#7c3aed]/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2"
                 >
-                  Export Range CSV
+                  <Zap size={16} fill="currentColor" />
+                  Force Sync
                 </button>
               </div>
-            </div>
+            </section>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <button
-                onClick={() => setShowBrandingModal(true)}
-                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Palette className="w-4 h-4" style={{ color: theme.primary }} />
-                  <span className="text-sm font-semibold">Company Branding</span>
+            {/* Metrics Grid */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {/* Today's Orders */}
+              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <ShoppingCart size={96} />
                 </div>
-                <p className="text-xs text-gray-500">Edit logo URL and business name</p>
-              </button>
-              <button
-                onClick={() => printDailyClosingReport(
-                  selectedReportDate,
-                  selectedDayOrders,
-                  selectedDayPaidOrders,
-                  selectedDayRevenue,
-                  selectedDayCashCount,
-                  selectedDayOnlineCount,
-                  selectedDayCashAmount,
-                  selectedDayOnlineAmount,
-                  selectedDayCancelledOrders
-                )}
-                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Printer className="w-4 h-4 text-emerald-300" />
-                  <span className="text-sm font-semibold">Print Closing (A4)</span>
+                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Today's Orders</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">{orders.filter(o => toIsoDay(new Date(o.created_at)) === toIsoDay(new Date())).length}</h3>
+                  <span className="text-xs font-medium text-[#4edea3]">+Live</span>
                 </div>
-                <p className="text-xs text-gray-500">Selected day cash, online, and order summary</p>
-              </button>
-              <button
-                onClick={() => exportTodayAccountingCsv(selectedReportDate, selectedDayOrders, selectedDayPaymentEvents)}
-                className="rounded-2xl border border-zinc-700 bg-zinc-800/90 hover:bg-zinc-800 px-4 py-3 text-left transition-colors shadow-sm"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Download className="w-4 h-4 text-sky-300" />
-                  <span className="text-sm font-semibold">Export Accountant CSV</span>
-                </div>
-                <p className="text-xs text-gray-500">Selected day orders + payment timeline</p>
-              </button>
-            </div>
-
-            {/* Analytics KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Avg Ticket</p>
-                  <TrendingUp className="w-4 h-4 text-emerald-400" />
-                </div>
-                <p className="text-2xl font-bold text-emerald-300">{formatCurrency(avgOrderValue)}</p>
-                <p className="text-xs text-gray-500 mt-1">Based on paid orders today</p>
               </div>
 
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Payment Capture</p>
-                  <DollarSign className="w-4 h-4 text-sky-400" />
+              {/* Revenue */}
+              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <CircleDollarSign size={96} />
                 </div>
-                <p className="text-2xl font-bold text-sky-300">{paymentCaptureRate.toFixed(0)}%</p>
-                <p className="text-xs text-gray-500 mt-1">{todayPaidOrders.length}/{todayOrders.length || 0} orders paid</p>
+                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Revenue</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">
+                    ${formatCurrency(orders.filter(o => o.status !== 'cancelled' && toIsoDay(new Date(o.created_at)) === toIsoDay(new Date())).reduce((sum, o) => sum + (o.total || 0), 0))}
+                  </h3>
+                </div>
               </div>
 
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Online vs Cash</p>
-                  <CreditCard className="w-4 h-4" style={{ color: theme.primary }} />
+              {/* Pending */}
+              <div className="bg-[#1b1b1e] border-l-2 border-[#ffb95f]/30 p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <ClipboardList size={96} />
                 </div>
-                <p className="text-xl font-bold" style={{ color: theme.primary }}>{onlinePaymentsToday} online</p>
-                <p className="text-xs text-gray-500 mt-1">{cashPaymentsToday} cash today</p>
+                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Pending</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-[#ffb95f]">{pendingOrders}</h3>
+                </div>
               </div>
 
-              <div className="bg-zinc-800 rounded-2xl p-4 border border-zinc-700">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs uppercase tracking-wide text-gray-400">Cancellations</p>
-                  <AlertTriangle className="w-4 h-4 text-rose-400" />
+              {/* Active Tables */}
+              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <TableIcon size={96} />
                 </div>
-                <p className="text-2xl font-bold text-rose-300">{todayCancelledOrders}</p>
-                <p className="text-xs text-gray-500 mt-1">Keep this as low as possible</p>
+                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Active Tables</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">{tables.filter(t => t.status === 'occupied').length}/{tables.length}</h3>
+                </div>
               </div>
-            </div>
 
-            {/* Top selling dishes */}
-            <div className="admin-panel rounded-2xl p-4 sm:p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold">Top Selling Dishes (Today)</h3>
-                <span className="text-xs text-gray-500">Live from current day orders</span>
+              {/* Est. Wait */}
+              <div className="bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                  <Timer size={96} />
+                </div>
+                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Est. Wait</p>
+                <div className="flex items-baseline gap-2">
+                  <h3 className="text-3xl font-black text-[#e4e1e6]">{estimatedWaitMinutes}m</h3>
+                </div>
               </div>
-              {topSellingItemsToday.length === 0 ? (
-                <div className="rounded-xl border border-zinc-700 bg-zinc-900/70 p-6 text-center">
-                  <div className="w-12 h-12 mx-auto rounded-full flex items-center justify-center mb-3" style={{ background: `${theme.primary}22` }}>
-                    <WandSparkles className="w-6 h-6" style={{ color: theme.primary }} />
+            </section>
+
+            {/* Bento Grid */}
+            <div className="grid grid-cols-12 gap-5">
+              {/* Unpaid Risk Monitor */}
+              <section className="col-span-12 lg:col-span-8 bg-[#1b1b1e] rounded-xl overflow-hidden flex flex-col border border-[#4a4455]/10">
+                <div className="px-8 py-6 flex justify-between items-center border-b border-[#4a4455]/5">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#e4e1e6]">Unpaid Risk Monitor</h3>
+                    <p className="text-xs text-[#958da1]">High priority monitoring for served, uncollected bills.</p>
                   </div>
-                  <p className="text-sm font-semibold text-gray-200">No dish sales yet today</p>
-                  <p className="text-xs text-gray-500 mt-1">Once orders arrive, your top-selling dishes will appear here automatically.</p>
+                  <span className="px-3 py-1 bg-[#ffb4ab]/10 text-[#ffb4ab] text-[10px] font-bold uppercase tracking-tighter rounded-full flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-[#ffb4ab] rounded-full animate-pulse"></span>
+                    {orders.filter(o => o.status === 'served' && o.payment_status !== 'paid').length} Alerts
+                  </span>
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  {topSellingItemsToday.map((item, index) => (
-                    <div key={item.name} className="flex items-center justify-between bg-zinc-900/70 border border-zinc-700 rounded-xl px-3 py-2.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">#{index + 1} {item.name}</p>
-                        <p className="text-xs text-gray-500">Qty sold: {item.qty}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-[#353438]/30">
+                      <tr>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Order ID</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Table #</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Time Elapsed</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Status</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1] text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#4a4455]/5">
+                      {orders.filter(o => o.status === 'served' && o.payment_status !== 'paid').length > 0 ? (
+                        orders.filter(o => o.status === 'served' && o.payment_status !== 'paid').map(order => (
+                          <tr key={order.id} className="hover:bg-[#1f1f22]/50 transition-colors">
+                            <td className="px-8 py-5 font-mono text-xs text-[#d2bbff] font-bold">#ORD-{String(order.id).slice(0, 4).toUpperCase()}</td>
+                            <td className="px-8 py-5 text-sm font-medium">Table {order.table_number}</td>
+                            <td className="px-8 py-5 text-sm text-[#e4e1e6]">
+                              {Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000)}m
+                              {Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000) > 40 && <span className="text-[#ffb4ab] text-xs ml-2 font-bold">Overdue</span>}
+                            </td>
+                            <td className="px-8 py-5">
+                              <span className="px-3 py-1 bg-[#ffb95f]/10 text-[#ffb95f] text-[10px] font-bold uppercase tracking-widest rounded-md">
+                                {order.status}
+                              </span>
+                            </td>
+                            <td className="px-8 py-5 text-right space-x-4 flex justify-end">
+                              <button onClick={() => { setPaymentModalData(order); setShowPaymentModal(order); }} className="text-[10px] font-bold uppercase tracking-widest text-[#4edea3] hover:underline">Record Payment</button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="px-8 py-10 text-center text-sm text-[#958da1]">No risky unpaid orders detected. You are clear.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* Table Status Grid */}
+              <section className="col-span-12 lg:col-span-4 bg-[#1b1b1e] rounded-xl p-8 border border-[#4a4455]/10">
+                <h3 className="text-lg font-bold text-[#e4e1e6] mb-6 flex justify-between items-center">
+                  Table Status Grid
+                  <button onClick={() => setShowAddTableModal(true)} className="text-xs font-normal text-[#958da1] hover:text-[#d2bbff] flex items-center gap-1 transition-colors">
+                    <Plus size={14} /> Add Table
+                  </button>
+                </h3>
+                <div className="grid grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
+                  {tables.map((table) => {
+                     const isAvailable = table.status === 'available';
+                     return (
+                      <div 
+                        key={table.id}
+                        className={`aspect-square rounded-xl bg-[#353438]/20 border flex flex-col items-center justify-center gap-1 transition-all cursor-pointer ${isAvailable ? "border-[#4edea3]/20 hover:bg-[#4edea3]/10" : "border-[#ffb4ab]/20 hover:bg-[#ffb4ab]/10"}`}
+                      >
+                        <span className="text-2xl font-black text-[#e4e1e6]">{table.table_number}</span>
+                        <span className={`text-[9px] uppercase tracking-widest font-bold ${isAvailable ? "text-[#4edea3]" : "text-[#ffb4ab]"}`}>
+                          {table.status}
+                        </span>
                       </div>
-                      <p className="text-sm font-semibold" style={{ color: theme.primary }}>{formatCurrency(item.amount)}</p>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Chart Section */}
+              <section className="col-span-12 lg:col-span-7 bg-[#1b1b1e] rounded-xl p-8 h-[320px] flex flex-col border border-[#4a4455]/10">
+                <div className="flex justify-between items-center mb-8">
+                  <div>
+                    <h3 className="text-lg font-bold text-[#e4e1e6]">Orders & Revenue Per Hour</h3>
+                    <p className="text-xs text-[#958da1]">Real-time performance distribution across shift.</p>
+                  </div>
+                  <div className="flex gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 bg-[#7c3aed] rounded-full"></span>
+                      <span className="text-[10px] uppercase font-bold text-[#958da1]">Orders</span>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Mini hourly trend bars */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              <div className="admin-panel rounded-2xl p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold">Orders Per Hour</h3>
-                  <span className="text-xs text-gray-500">Today</span>
-                </div>
-                {todayOrders.length === 0 ? (
-                  <div className="h-28 rounded-lg border border-zinc-700 bg-zinc-900/70 flex flex-col items-center justify-center text-center px-4">
-                    <Clock className="w-6 h-6 text-gray-500 mb-2" />
-                    <p className="text-sm text-gray-300">No hourly order data yet</p>
-                    <p className="text-xs text-gray-500 mt-1">Bars will animate in as your first orders come in.</p>
-                  </div>
-                ) : (
-                  <div className="h-28 flex items-end gap-1">
-                    {hourlyTrend.map(point => (
-                      <div key={`orders-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
-                        <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
-                          <div
-                            className="absolute inset-x-0 bottom-0 rounded-sm"
-                            style={{
-                              height: `${point.orderHeight}%`,
-                              background: `linear-gradient(to top, ${theme.primary}, ${theme.primaryDark})`,
-                            }}
-                            title={`${point.orders} order(s) at ${point.hour.toString().padStart(2, '0')}:00`}
-                          />
-                        </div>
-                        <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="admin-panel rounded-2xl p-4 sm:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold">Revenue Per Hour</h3>
-                  <span className="text-xs text-gray-500">Paid orders only</span>
-                </div>
-                {todayPaidOrders.length === 0 ? (
-                  <div className="h-28 rounded-lg border border-zinc-700 bg-zinc-900/70 flex flex-col items-center justify-center text-center px-4">
-                    <DollarSign className="w-6 h-6 text-gray-500 mb-2" />
-                    <p className="text-sm text-gray-300">No paid revenue yet</p>
-                    <p className="text-xs text-gray-500 mt-1">Revenue bars appear once first payment is recorded.</p>
-                  </div>
-                ) : (
-                  <div className="h-28 flex items-end gap-1">
-                    {hourlyTrend.map(point => (
-                      <div key={`revenue-${point.hour}`} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0">
-                        <div className="w-full h-20 bg-zinc-900 rounded-sm relative overflow-hidden">
-                          <div
-                            className="absolute inset-x-0 bottom-0 rounded-sm bg-emerald-400"
-                            style={{ height: `${point.revenueHeight}%` }}
-                            title={`${formatCurrency(point.revenue)} at ${point.hour.toString().padStart(2, '0')}:00`}
-                          />
-                        </div>
-                        <span className="text-[9px] text-gray-500">{point.hour % 3 === 0 ? point.hour.toString().padStart(2, '0') : ''}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Waiter Calls Banner */}
-            {waiterCalls.length > 0 && (
-              <div className="bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/30 rounded-2xl p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
-                  <h3 className="font-bold text-orange-400">Active Waiter Calls ({waiterCalls.length})</h3>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-                  {waiterCalls.map(call => (
-                    <div key={call.id} className="flex items-center justify-between bg-zinc-900/60 border border-orange-500/20 rounded-lg px-3 py-2">
-                      <div>
-                        <p className="font-bold text-white">Table {call.table_number}</p>
-                        <p className="text-xs text-gray-400">{new Date(call.created_at).toLocaleTimeString()}</p>
-                      </div>
-                      <button onClick={() => dismissWaiterCall(call)} className="px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 rounded text-xs font-medium transition-colors">
-                        ✓
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 bg-[#4edea3] rounded-full"></span>
+                      <span className="text-[10px] uppercase font-bold text-[#958da1]">Revenue</span>
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quick Actions */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <button onClick={() => setShowQRModal(true)} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
-                <div className="w-8 h-8 bg-purple-500/20 rounded-md flex items-center justify-center mb-2">
-                  <QrCode className="w-4 h-4 text-purple-400" />
-                </div>
-                <p className="font-medium text-sm">Print QR Codes</p>
-                <p className="text-xs text-[#958da1]">For all tables</p>
-              </button>
-              <button onClick={() => { setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' }); setShowMenuModal(true); }} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
-                <div className="w-8 h-8 bg-green-500/20 rounded-md flex items-center justify-center mb-2">
-                  <Plus className="w-4 h-4 text-green-400" />
-                </div>
-                <p className="font-medium text-sm">Add Menu Item</p>
-                <p className="text-xs text-[#958da1]">New product</p>
-              </button>
-              <button onClick={() => setShowAddTableModal(true)} className="bg-[#1b1b1e] hover:bg-[#232328] border border-[#2f2d36] rounded-2xl p-4 text-left transition-colors">
-                <div className="w-8 h-8 bg-blue-500/20 rounded-md flex items-center justify-center mb-2">
-                  <Grid3X3 className="w-4 h-4 text-blue-400" />
-                </div>
-                <p className="font-medium text-sm">Add Table</p>
-                <p className="text-xs text-[#958da1]">New seating</p>
-              </button>
-              <button onClick={() => setActiveTab('orders')} className="rounded-2xl p-4 text-left transition-colors text-white" style={{ background: `linear-gradient(135deg, ${theme.primaryDark || '#5b21b6'}, ${theme.primary})` }}>
-                <div className="w-8 h-8 rounded-md flex items-center justify-center mb-2" style={{ background: `${theme.primary}33` }}>
-                  <ShoppingBag className="w-4 h-4 text-white" />
-                </div>
-                <p className="font-medium text-sm">View Orders</p>
-                <p className="text-xs text-white/75">Manage orders</p>
-              </button>
-            </div>
-
-            {/* Recent Orders & Tables */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {/* Recent Orders */}
-              <div className="admin-panel rounded-2xl p-4">
-                <h2 className="text-base font-semibold mb-3">Recent Orders</h2>
-                {orders.length === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No orders yet</p>
-                ) : (
-                  <div className="space-y-3">
-                    {orders.slice(0, 5).map(order => (
-                      <div key={order.id} className="flex items-center justify-between p-3 bg-zinc-900 rounded-lg">
-                        <div>
-                          <p className="font-medium" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                          <p className="text-xs text-gray-500">Table {order.table_number}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold">${order.total.toFixed(2)}</p>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            order.status === 'paid' ? 'bg-green-500/20 text-green-400' :
-                            order.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
-                            'bg-blue-500/20 text-blue-400'
-                          }`}>{order.status}</span>
-                        </div>
-                      </div>
-                    ))}
                   </div>
-                )}
-              </div>
-
-              {/* Tables Overview */}
-              <div className="admin-panel rounded-2xl p-4">
-                <h2 className="text-base font-semibold mb-3">Tables</h2>
-                {tables.length === 0 ? (
-                  <p className="text-gray-500 text-center py-6">No tables configured</p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2">
-                    {tables.map(table => (
-                      <div key={table.id} className={`aspect-square rounded-md flex flex-col items-center justify-center text-center p-2 ${
-                        table.status === 'available' ? 'bg-teal-500/10 border border-teal-500/30 text-teal-400' :
-                        table.status === 'occupied' ? 'bg-red-500/10 border border-red-500/30 text-red-400' :
-                        'bg-amber-500/10 border border-amber-500/30 text-amber-400'
-                      }`}
-                      style={table.status !== 'available' && table.status !== 'occupied' ? { background: `${theme.primary}1a`, borderColor: `${theme.primary}4d`, color: theme.primary } : {}}>
-                        <span className="text-xl font-bold">{table.table_number}</span>
-                        <span className="text-xs capitalize">{table.status}</span>
-                      </div>
-                    ))}
+                </div>
+                <div className="flex-1 min-h-0 w-full relative">
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <p className="text-[#958da1] text-sm font-medium z-10 opacity-50">Chart active with live data</p>
                   </div>
-                )}
-              </div>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={(() => {
+                        const todayOrders = orders.filter(o => toIsoDay(new Date(o.created_at)) === toIsoDay(new Date()));
+                        const hours = [12, 13, 14, 15, 16, 17, 18, 19].map(h => ({ hour: `${h > 12 ? h - 12 : h} PM`, orders: 0, revenue: 0 }));
+                        todayOrders.forEach(o => {
+                          const h = new Date(o.created_at).getHours();
+                          const bin = hours.find(x => x.hour === `${h > 12 ? h - 12 : h} PM`);
+                          if (bin) {
+                            bin.orders += 1;
+                            bin.revenue += (o.total || 0);
+                          }
+                        });
+                        return hours;
+                    })()} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#4A4455" opacity={0.1} />
+                      <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: '#958da1', fontSize: 10, fontWeight: 700 }} dy={10} />
+                      <YAxis hide />
+                      <Tooltip cursor={{ fill: 'rgba(210, 187, 255, 0.05)' }} contentStyle={{ backgroundColor: '#1F1F22', border: 'none', borderRadius: '8px', fontSize: '12px' }} />
+                      <Bar dataKey="orders" fill="#7c3aed" radius={[2, 2, 0, 0]} barSize={32}>
+                        {Array.from({length: 8}).map((_, index) => <Cell key={`cell-orders-${index}`} fillOpacity={0.6} className="hover:fill-opacity-100 transition-all cursor-pointer" />)}
+                      </Bar>
+                      <Bar dataKey="revenue" fill="#4edea3" radius={[2, 2, 0, 0]} barSize={32}>
+                        {Array.from({length: 8}).map((_, index) => <Cell key={`cell-revenue-${index}`} fillOpacity={0.6} className="hover:fill-opacity-100 transition-all cursor-pointer" />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </section>
+
+              {/* Quick Actions Grid */}
+              <section className="col-span-12 lg:col-span-5 bg-[#1b1b1e] border border-[#4a4455]/10 rounded-xl p-8 flex flex-col justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-[#e4e1e6] mb-2">Quick Actions</h3>
+                  <p className="text-xs text-[#958da1] mb-6">Management shortcuts and rapid tools.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <button onClick={() => setShowQRModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                    <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#d2bbff] bg-[#d2bbff]/10"><QrCode size={20} /></div>
+                    <span className="text-sm font-bold text-[#e4e1e6]">Print QR Codes</span>
+                  </button>
+                  <button onClick={() => setShowMenuModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                    <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#4edea3] bg-[#4edea3]/10"><Plus size={20} /></div>
+                    <span className="text-sm font-bold text-[#e4e1e6]">Add Menu Item</span>
+                  </button>
+                  <button onClick={() => setShowAddTableModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                    <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#ffb95f] bg-[#ffb95f]/10"><TableIcon size={20} /></div>
+                    <span className="text-sm font-bold text-[#e4e1e6]">Add Table</span>
+                  </button>
+                  <button onClick={() => setActiveTab('orders')} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#7c3aed] hover:brightness-110 shadow-lg shadow-[#7c3aed]/20 group">
+                    <div className="p-2 rounded-lg group-hover:scale-110 transition-transform bg-[#ede0ff]/10 text-[#ede0ff]"><Eye size={20} /></div>
+                    <span className="text-sm font-bold text-[#ede0ff]">View Orders</span>
+                  </button>
+                </div>
+              </section>
+
             </div>
-          </motion.div>
+          </div>
         )}
 
         {/* Orders Tab */}
@@ -1910,7 +1639,7 @@ export default function AdminDashboard() {
                     return (
                       <div key={`unpaid-${order.id}`} className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-3 flex flex-wrap items-center justify-between gap-2">
                         <p className="text-xs text-gray-200">
-                          {order.receipt_id} • Table {order.table_number} • {order.status} • {ageMin} min open
+                          {order.receipt_id} â€¢ Table {order.table_number} â€¢ {order.status} â€¢ {ageMin} min open
                         </p>
                         <div className="flex items-center gap-2">
                           <button
@@ -1969,7 +1698,7 @@ export default function AdminDashboard() {
                           <div>
                             <p className="text-sm font-semibold text-white">{event.event_type}</p>
                             <p className="text-xs text-gray-500">
-                              {new Date(event.event_time || event.created_at).toLocaleString()} • {event.source || 'unknown source'}
+                              {new Date(event.event_time || event.created_at).toLocaleString()} â€¢ {event.source || 'unknown source'}
                             </p>
                           </div>
                           <span className={`px-2 py-0.5 rounded-full border text-[11px] uppercase ${statusClass}`}>{event.status}</span>
@@ -2028,7 +1757,7 @@ export default function AdminDashboard() {
                           )}
                         </div>
                         <p className="text-xl font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                        <p className="text-gray-400">Table {order.table_number} • {new Date(order.created_at).toLocaleString()}</p>
+                        <p className="text-gray-400">Table {order.table_number} â€¢ {new Date(order.created_at).toLocaleString()}</p>
                         {order.customer_note && (
                           <p className="text-xs text-gray-500 mt-1">{order.customer_note}</p>
                         )}
@@ -2112,8 +1841,8 @@ export default function AdminDashboard() {
                       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                         <div>
                           <p className="text-lg font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                          <p className="text-sm text-gray-300">Table {order.table_number} • {order.status.toUpperCase()}</p>
-                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago • ETA {estimatePrepMinutes(order)} min</p>
+                          <p className="text-sm text-gray-300">Table {order.table_number} â€¢ {order.status.toUpperCase()}</p>
+                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago â€¢ ETA {estimatePrepMinutes(order)} min</p>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-300' :
@@ -2241,7 +1970,7 @@ export default function AdminDashboard() {
                     </div>
                     <div className="flex gap-2 mt-3">
                       <button onClick={() => toggleAvailability(item)} className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${item.available ? 'bg-green-500/10 text-green-400 hover:bg-green-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}>
-                        {item.available ? '✓ Available' : '✗ Unavailable'}
+                        {item.available ? 'âœ“ Available' : 'âœ— Unavailable'}
                       </button>
                       <button onClick={() => { setEditMenuItem(item); setMenuForm({ name: item.name, price: item.price.toString(), category: item.category, imageUrl: item.image_url || '' }); setShowMenuModal(true); }} className="px-2 py-1.5 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-md">
                         <Edit className="w-3.5 h-3.5" />
@@ -2359,7 +2088,7 @@ export default function AdminDashboard() {
                 )}
                 <div className="mt-6 flex justify-center">
                   <button onClick={() => window.print()} className="px-6 py-3 text-black rounded-lg font-medium transition-colors" style={{ background: theme.primary }}>
-                    🖨️ Print All QR Codes
+                    ðŸ–¨ï¸ Print All QR Codes
                   </button>
                 </div>
               </div>
@@ -2572,7 +2301,7 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 <div className="rounded-xl p-4" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
-                  <p className="text-center text-sm" style={{ color: theme.primary }}>💵 Cash payment to manager</p>
+                  <p className="text-center text-sm" style={{ color: theme.primary }}>ðŸ’µ Cash payment to manager</p>
                 </div>
                 <button onClick={handlePayment} className="w-full py-3 bg-green-500 hover:bg-green-600 rounded-lg font-semibold transition-colors">
                   Confirm Cash Payment
@@ -2603,8 +2332,8 @@ export default function AdminDashboard() {
                 <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
                   {checkoutGateBlockingOrders.map(order => (
                     <div key={`gate-${order.id}`} className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs text-gray-200">
-                      <p>{order.receipt_id} • {order.status} • {order.payment_status}</p>
-                      <p className="text-gray-400">Total: ${order.total.toFixed(2)} • {new Date(order.created_at).toLocaleString()}</p>
+                      <p>{order.receipt_id} â€¢ {order.status} â€¢ {order.payment_status}</p>
+                      <p className="text-gray-400">Total: ${order.total.toFixed(2)} â€¢ {new Date(order.created_at).toLocaleString()}</p>
                     </div>
                   ))}
                 </div>

@@ -1,5 +1,49 @@
 @import "tailwindcss";
 
+@theme {
+  --color-background: #131316;
+  --color-on-background: #e4e1e6;
+  --color-surface: #131316;
+  --color-on-surface: #e4e1e6;
+  --color-surface-container: #1f1f22;
+  --color-surface-container-low: #1b1b1e;
+  --color-surface-container-high: #2a2a2d;
+  --color-surface-container-highest: #353438;
+  --color-surface-container-lowest: #0e0e11;
+  --color-primary: #d2bbff;
+  --color-on-primary: #3f008e;
+  --color-primary-container: #7c3aed;
+  --color-on-primary-container: #ede0ff;
+  --color-secondary: #4edea3;
+  --color-on-secondary: #003824;
+  --color-tertiary: #ffb95f;
+  --color-error: #ffb4ab;
+  --color-outline: #958da1;
+  --color-outline-variant: #4a4455;
+
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-background text-on-background font-sans antialiased;
+  }
+}
+
+.glass-panel {
+  background: rgba(31, 31, 34, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(74, 68, 85, 0.15);
+}
+
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 1.25rem;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
 :root {
   --background: #0a0a0a;
   --foreground: #faf8f5;
