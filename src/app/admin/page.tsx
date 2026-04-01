@@ -1178,7 +1178,7 @@ export default function AdminDashboard() {
     const addOnCount = filteredOrders.filter(isAddOnOrder).length;
     const newCount = filteredOrders.filter(isNewOrder).length;
     return { addOnCount, newCount };
-  }, [filteredOrders, getOrderKitchenRisk]);
+  }, [filteredOrders]);
 
   const kitchenRiskSummary = useMemo(() => {
     let allergyAlertOrders = 0;
@@ -1193,7 +1193,7 @@ export default function AdminDashboard() {
     }
 
     return { allergyAlertOrders, spiceNoteOrders, chefNoteOrders };
-  }, [filteredOrders]);
+  }, [filteredOrders, getOrderKitchenRisk]);
 
   const kitchenQueueRiskSummary = useMemo(() => {
     let allergyAlertOrders = 0;
@@ -1538,60 +1538,70 @@ export default function AdminDashboard() {
             {/* Metrics Grid */}
             <section className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
               {/* Today's Orders */}
-              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
-                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <ShoppingCart size={96} />
+              <div className="admin-metric-card bg-[#1b1b1e] p-5 rounded-xl relative min-h-[118px] group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute right-3 bottom-3 opacity-[0.14] group-hover:opacity-[0.22] transition-opacity pointer-events-none">
+                  <ShoppingCart size={74} />
                 </div>
-                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Today's Orders</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">{todayOrders.length}</h3>
-                  <span className="text-xs font-medium text-[#4edea3]">+Live</span>
+                <div className="relative z-10">
+                  <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Today's Orders</p>
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-3xl font-black text-[#e4e1e6]">{todayOrders.length}</h3>
+                    <span className="text-xs font-medium text-[#4edea3]">+Live</span>
+                  </div>
                 </div>
               </div>
 
               {/* Revenue */}
-              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
-                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <CircleDollarSign size={96} />
+              <div className="admin-metric-card bg-[#1b1b1e] p-5 rounded-xl relative min-h-[118px] group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute right-3 bottom-3 opacity-[0.14] group-hover:opacity-[0.22] transition-opacity pointer-events-none">
+                  <CircleDollarSign size={74} />
                 </div>
-                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Revenue</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">
-                    {formatCurrency(todayRevenue)}
-                  </h3>
+                <div className="relative z-10">
+                  <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Revenue</p>
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-3xl font-black text-[#e4e1e6]">
+                      {formatCurrency(todayRevenue)}
+                    </h3>
+                  </div>
                 </div>
               </div>
 
               {/* Pending */}
-              <div className="admin-metric-card bg-[#1b1b1e] border-l-2 border-[#ffb95f]/30 p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
-                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <ClipboardList size={96} />
+              <div className="admin-metric-card bg-[#1b1b1e] border-l-2 border-[#ffb95f]/30 p-5 rounded-xl relative min-h-[118px] group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute right-3 bottom-3 opacity-[0.14] group-hover:opacity-[0.22] transition-opacity pointer-events-none">
+                  <ClipboardList size={74} />
                 </div>
-                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Pending</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#ffb95f]">{pendingOrders}</h3>
+                <div className="relative z-10">
+                  <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Pending</p>
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-3xl font-black text-[#ffb95f]">{pendingOrders}</h3>
+                  </div>
                 </div>
               </div>
 
               {/* Active Tables */}
-              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
-                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <TableIcon size={96} />
+              <div className="admin-metric-card bg-[#1b1b1e] p-5 rounded-xl relative min-h-[118px] group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute right-3 bottom-3 opacity-[0.14] group-hover:opacity-[0.22] transition-opacity pointer-events-none">
+                  <TableIcon size={74} />
                 </div>
-                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Active Tables</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">{activeTables}/{tables.length}</h3>
+                <div className="relative z-10">
+                  <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Active Tables</p>
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-3xl font-black text-[#e4e1e6]">{activeTables}/{tables.length}</h3>
+                  </div>
                 </div>
               </div>
 
               {/* Est. Wait */}
-              <div className="admin-metric-card bg-[#1b1b1e] p-6 rounded-xl relative overflow-hidden group transition-all hover:bg-[#1f1f22]">
-                <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity">
-                  <Timer size={96} />
+              <div className="admin-metric-card bg-[#1b1b1e] p-5 rounded-xl relative min-h-[118px] group transition-all hover:bg-[#1f1f22]">
+                <div className="absolute right-3 bottom-3 opacity-[0.14] group-hover:opacity-[0.22] transition-opacity pointer-events-none">
+                  <Timer size={74} />
                 </div>
-                <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Est. Wait</p>
-                <div className="flex items-baseline gap-2">
-                  <h3 className="text-3xl font-black text-[#e4e1e6]">{estimatedWaitMinutes}m</h3>
+                <div className="relative z-10">
+                  <p className="text-[#958da1] text-[10px] font-bold uppercase tracking-widest mb-1">Est. Wait</p>
+                  <div className="flex items-baseline gap-2">
+                    <h3 className="text-3xl font-black text-[#e4e1e6]">{estimatedWaitMinutes}m</h3>
+                  </div>
                 </div>
               </div>
             </section>
@@ -1701,7 +1711,7 @@ export default function AdminDashboard() {
                     <thead className="bg-[#353438]/30">
                       <tr>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Order ID</th>
-                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Table #</th>
+                        <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Table</th>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Time Elapsed</th>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1]">Status</th>
                         <th className="px-8 py-4 text-[10px] font-bold uppercase tracking-widest text-[#958da1] text-right">Actions</th>
@@ -1812,25 +1822,25 @@ export default function AdminDashboard() {
               </section>
 
               {/* Quick Actions Grid */}
-              <section className="col-span-12 lg:col-span-5 bg-[#1b1b1e] border border-[#4a4455]/10 rounded-xl p-8 flex flex-col justify-between">
+              <section className="col-span-12 lg:col-span-5 bg-[#1b1b1e] border border-[#4a4455]/10 rounded-xl p-5 sm:p-6 flex flex-col gap-4">
                 <div>
-                  <h3 className="text-lg font-bold text-[#e4e1e6] mb-2">Quick Actions</h3>
-                  <p className="text-xs text-[#958da1] mb-6">Management shortcuts and rapid tools.</p>
+                  <h3 className="text-lg font-bold text-[#e4e1e6] mb-1">Quick Actions</h3>
+                  <p className="text-xs text-[#958da1]">Management shortcuts and rapid tools.</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <button onClick={() => setShowQRModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                <div className="grid grid-cols-2 gap-3 auto-rows-fr">
+                  <button onClick={() => setShowQRModal(true)} className="p-4 rounded-xl flex flex-col items-start justify-between min-h-[108px] gap-3 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
                     <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#d2bbff] bg-[#d2bbff]/10"><QrCode size={20} /></div>
                     <span className="text-sm font-bold text-[#e4e1e6]">Print QR Codes</span>
                   </button>
-                  <button onClick={() => setShowMenuModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                  <button onClick={() => setShowMenuModal(true)} className="p-4 rounded-xl flex flex-col items-start justify-between min-h-[108px] gap-3 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
                     <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#4edea3] bg-[#4edea3]/10"><Plus size={20} /></div>
                     <span className="text-sm font-bold text-[#e4e1e6]">Add Menu Item</span>
                   </button>
-                  <button onClick={() => setShowAddTableModal(true)} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
+                  <button onClick={() => setShowAddTableModal(true)} className="p-4 rounded-xl flex flex-col items-start justify-between min-h-[108px] gap-3 transition-all border border-[#4a4455]/10 bg-[#1f1f22] hover:bg-[#2a2a2d] group">
                     <div className="p-2 rounded-lg group-hover:scale-110 transition-transform text-[#ffb95f] bg-[#ffb95f]/10"><TableIcon size={20} /></div>
                     <span className="text-sm font-bold text-[#e4e1e6]">Add Table</span>
                   </button>
-                  <button onClick={() => setActiveTab('orders')} className="p-6 rounded-xl flex flex-col items-start gap-4 transition-all border border-[#4a4455]/10 bg-[#7c3aed] hover:brightness-110 shadow-lg shadow-[#7c3aed]/20 group">
+                  <button onClick={() => setActiveTab('orders')} className="p-4 rounded-xl flex flex-col items-start justify-between min-h-[108px] gap-3 transition-all border border-[#4a4455]/10 bg-[#7c3aed] hover:brightness-110 shadow-lg shadow-[#7c3aed]/20 group">
                     <div className="p-2 rounded-lg group-hover:scale-110 transition-transform bg-[#ede0ff]/10 text-[#ede0ff]"><Eye size={20} /></div>
                     <span className="text-sm font-bold text-[#ede0ff]">View Orders</span>
                   </button>
@@ -2373,7 +2383,7 @@ export default function AdminDashboard() {
                         }`}>
                           {table.status}
                         </p>
-                        <h3 className="text-5xl font-black text-[#e4e1e6] mt-2">Table #{table.table_number}</h3>
+                        <h3 className="text-3xl sm:text-4xl font-black text-[#e4e1e6] mt-2 leading-none">Table {table.table_number}</h3>
                       </div>
                     </div>
 
