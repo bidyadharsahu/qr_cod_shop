@@ -1211,18 +1211,18 @@ export default function AdminDashboard() {
             </div>
 
             {/* Tampa Timezone Clock */}
-            <div className="hidden md:flex flex-col items-center text-center">
+            <div className="hidden 2xl:flex flex-col items-center text-center">
               <p className="text-sm font-medium text-white">{currentDate}</p>
               <p className="text-lg font-bold" style={{ color: theme.primary }}>{currentTime} <span className="text-xs text-gray-400 font-normal">(Tampa, USA)</span></p>
             </div>
 
             {/* Horizontal Tabs */}
-            <nav className="admin-nav flex items-center gap-1.5 sm:gap-2 overflow-x-auto px-1.5 py-1 rounded-xl border border-zinc-800/90 bg-zinc-900/70">
+            <nav className="admin-nav flex-1 min-w-0 flex items-center gap-1 sm:gap-1.5 overflow-x-auto px-1.5 py-1 rounded-xl border border-zinc-800/90 bg-zinc-900/70">
               {tabs.map(tab => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                  className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                     activeTab === tab.id 
                       ? 'text-white' 
                       : 'text-gray-400 hover:text-white hover:bg-zinc-800'
@@ -1240,22 +1240,6 @@ export default function AdminDashboard() {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              {/* Theme badge */}
-              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: `${theme.primary}1a`, color: theme.primary, border: `1px solid ${theme.primary}33` }}>
-                <Sparkles className="w-3 h-3" />
-                {theme.occasion === 'default' ? 'Classic' : theme.name}
-              </div>
-              <div className="hidden xl:flex items-center gap-1 rounded-xl border border-zinc-700/80 bg-zinc-900/80 p-1">
-                {toneOptions.map((tone) => (
-                  <button
-                    key={tone.id}
-                    onClick={() => setUiTone(tone.id)}
-                    className={`tone-chip px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-colors ${uiTone === tone.id ? 'is-active' : ''}`}
-                  >
-                    {tone.label}
-                  </button>
-                ))}
-              </div>
               {waiterCalls.length > 0 && (
                 <div className="relative">
                   <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
@@ -1270,8 +1254,8 @@ export default function AdminDashboard() {
                 <LogOut className="w-5 h-5" />
                 <span className="hidden lg:inline text-sm">Log Out</span>
               </button>
-              <div className="px-3 py-1 text-black text-sm font-medium rounded-full" style={{ background: theme.primary }}>
-                {staffRole === 'chef' ? 'Chef' : 'Manager'}{staffUser ? ` • ${staffUser}` : ''}
+              <div className="px-3 py-1 text-black text-sm font-medium rounded-full" style={{ background: theme.primary }} title={staffUser || undefined}>
+                {staffRole === 'chef' ? 'Chef' : 'Manager'}
               </div>
             </div>
           </div>
