@@ -1033,7 +1033,7 @@ export default function AdminDashboard() {
   // Stats
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
   const todayRevenue = orders.filter(o => o.payment_status === 'paid' && new Date(o.created_at).toDateString() === new Date().toDateString()).reduce((sum, o) => sum + o.total, 0);
-  const pendingOrders = orders.filter(o => o.status === 'pending').length;
+  const pendingOrders = orders.filter(o => !o.receipt_id?.startsWith('CALL-') && o.status === 'pending').length;
   const activeTables = tables.filter(t => t.status !== 'available').length;
   const todayCancelledOrders = todayOrders.filter(o => o.status === 'cancelled').length;
   const todayPaidOrders = todayOrders.filter(o => o.payment_status === 'paid');
