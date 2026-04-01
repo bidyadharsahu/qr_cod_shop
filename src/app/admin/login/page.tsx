@@ -8,7 +8,7 @@ import { LogIn, ArrowLeft } from 'lucide-react';
 type StaffRole = 'manager' | 'chef';
 
 const STAFF_CREDENTIALS: Record<StaffRole, { username: string; password: string }> = {
-  manager: { username: 'hello', password: '123456' },
+  manager: { username: 'hello', password: '789456' },
   chef: { username: 'chef', password: 'chef123' },
 };
 
