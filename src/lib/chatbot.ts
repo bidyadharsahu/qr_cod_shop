@@ -22,6 +22,10 @@ export interface ChatbotResponse {
     category?: string;
     tipAmount?: number;
     itemNames?: string[];
+    allergies?: string[];
+    ingredientExclusions?: string[];
+    spiceLevel?: 'mild' | 'medium' | 'hot';
+    specialInstructions?: string[];
   };
 }
 
@@ -59,6 +63,7 @@ type IntentType =
   | 'DRINK_REQUEST'
   | 'VEGETARIAN_REQUEST'
   | 'SYSTEM_QUESTION'
+  | 'ALLERGY_OR_INSTRUCTION'
   | 'VAGUE_MESSAGE'
   | 'CASUAL_CHAT'
   | 'UNKNOWN';
@@ -71,6 +76,9 @@ export interface ConversationContext {
   lastAction?: string;
   lastDishAsked?: string;
   preferences: string[];
+  allergies?: string[];
+  ingredientExclusions?: string[];
+  spiceLevel?: 'mild' | 'medium' | 'hot';
 }
 
 // ============================================
@@ -385,6 +393,7 @@ const INTENT_PATTERNS: Record<IntentType, string[]> = {
   DRINK_REQUEST: ['beer', 'wine', 'cocktail', 'cocktails', 'drink', 'drinks', 'something to drink', 'beverages', 'drink menu', 'a drink', 'bourbon', 'whiskey', 'whisky', 'vodka', 'tequila', 'margarita', 'mojito', 'rum', 'gin', 'sangria', 'mimosa', 'champagne', 'prosecco', 'soda', 'juice', 'lemonade', 'iced tea'],
   VEGETARIAN_REQUEST: ['paneer', 'vegetarian', 'no meat', 'plant based', 'vegan', 'meatless', 'veggie', 'vegetarian options', 'veg options', 'meatfree', 'meat free', 'without meat'],
   SYSTEM_QUESTION: ['how do you work', 'what are you', 'who are you', 'who made you', 'are you real', 'are you ai', 'are you a bot', 'are you human', 'your name', 'what is sia', 'who is sia', 'what company', 'who built you', 'who created you'],
+  ALLERGY_OR_INSTRUCTION: ['allergy', 'allergies', 'allergic', 'intolerance', 'no onion', 'no garlic', 'no tomato', 'no potato', 'spice level', 'mild spice', 'extra spicy', 'on the side'],
   VAGUE_MESSAGE: ['im hungry', 'hungry', 'i dont know', 'whatever', 'surprise me', 'dealers choice', 'not sure', 'idk', 'feed me', 'hmm', 'hmmm', 'umm', 'ummm', 'dunno', 'no idea', 'you pick', 'you choose', 'just something'],
   CASUAL_CHAT: ['how are you', 'whats up', 'wassup', 'sup', 'hows it going', 'good morning', 'good evening', 'good afternoon', 'good night', 'hey there', 'yo', 'heya'],
   UNKNOWN: [],
@@ -415,6 +424,38 @@ const PREFERENCE_PATTERNS = [
   { pattern: /fried/i, value: 'fried' },
   { pattern: /blackened/i, value: 'blackened' },
   { pattern: /crispy|extra crispy/i, value: 'crispy' },
+];
+
+const ALLERGY_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bpeanut(s)?\b/i, value: 'peanuts' },
+  { pattern: /\btree\s*nuts?\b|\bwalnut(s)?\b|\bpecan(s)?\b|\balmond(s)?\b|\bcashew(s)?\b|\bpistachio(s)?\b/i, value: 'tree nuts' },
+  { pattern: /\bmilk\b|\bdairy\b|\bcheese\b|\bbutter\b|\bcream\b/i, value: 'milk/dairy' },
+  { pattern: /\begg(s)?\b/i, value: 'egg' },
+  { pattern: /\bfish\b/i, value: 'fish' },
+  { pattern: /\bshellfish\b|\bshrimp\b|\bcrab\b|\blobster\b|\boyster(s)?\b/i, value: 'shellfish' },
+  { pattern: /\bwheat\b|\bgluten\b/i, value: 'wheat/gluten' },
+  { pattern: /\bsoy\b|\bsoybean(s)?\b/i, value: 'soy' },
+  { pattern: /\bsesame\b/i, value: 'sesame' },
+];
+
+const EXCLUSION_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bno\s+potato(es)?\b|\bwithout\s+potato(es)?\b/i, value: 'no potato' },
+  { pattern: /\bno\s+tomato(es)?\b|\bwithout\s+tomato(es)?\b/i, value: 'no tomato' },
+  { pattern: /\bno\s+onion(s)?\b|\bwithout\s+onion(s)?\b/i, value: 'no onion' },
+  { pattern: /\bno\s+garlic\b|\bwithout\s+garlic\b/i, value: 'no garlic' },
+  { pattern: /\bno\s+cheese\b|\bwithout\s+cheese\b/i, value: 'no cheese' },
+  { pattern: /\bno\s+sauce\b|\bwithout\s+sauce\b/i, value: 'no sauce' },
+  { pattern: /\bon\s+the\s+side\b/i, value: 'sauce on the side' },
+];
+
+const SPECIAL_INSTRUCTION_PATTERNS: Array<{ pattern: RegExp; value: string }> = [
+  { pattern: /\bwell\s*done\b/i, value: 'well done' },
+  { pattern: /\bmedium\s*rare\b/i, value: 'medium rare' },
+  { pattern: /\bmedium\b/i, value: 'medium' },
+  { pattern: /\brare\b/i, value: 'rare' },
+  { pattern: /\bextra\s+crispy\b/i, value: 'extra crispy' },
+  { pattern: /\bless\s+salt\b|\blow\s+salt\b/i, value: 'less salt' },
+  { pattern: /\bno\s+salt\b/i, value: 'no salt' },
 ];
 
 // ============================================
@@ -594,6 +635,35 @@ function extractPreference(text: string): string | undefined {
   for (const { pattern, value } of PREFERENCE_PATTERNS) {
     if (pattern.test(text)) return value;
   }
+  return undefined;
+}
+
+function extractAllergies(text: string): string[] {
+  const hits = ALLERGY_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ value }) => value);
+  return [...new Set(hits)];
+}
+
+function extractIngredientExclusions(text: string): string[] {
+  const hits = EXCLUSION_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ value }) => value);
+  return [...new Set(hits)];
+}
+
+function extractSpecialInstructions(text: string): string[] {
+  const hits = SPECIAL_INSTRUCTION_PATTERNS
+    .filter(({ pattern }) => pattern.test(text))
+    .map(({ value }) => value);
+  return [...new Set(hits)];
+}
+
+function extractSpiceLevel(text: string): 'mild' | 'medium' | 'hot' | undefined {
+  const normalized = normalize(text);
+  if (/\bextra\s+spicy\b|\bvery\s+spicy\b|\bhot\b/.test(normalized)) return 'hot';
+  if (/\bmild\b|\bless\s+spicy\b|\bnot\s+spicy\b/.test(normalized)) return 'mild';
+  if (/\bmedium\b/.test(normalized) && /\b(?:spice|spicy)\b/.test(normalized)) return 'medium';
   return undefined;
 }
 
@@ -865,6 +935,12 @@ function detectCategory(text: string): string | null {
 function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): IntentType {
   const normalized = normalize(text);
 
+  if (
+    /\ballerg(y|ies|ic)\b|\bintoleran(t|ce)\b|\bno\s+(potato|tomato|onion|garlic|cheese|sauce)\b|\bwithout\s+(potato|tomato|onion|garlic|cheese|sauce)\b|\bmild\s+spice\b|\bspice\s+level\b|\bextra\s+spicy\b|\bon\s+the\s+side\b/.test(normalized)
+  ) {
+    return 'ALLERGY_OR_INSTRUCTION';
+  }
+
   // Priority 1: Explicit action intents (order of specificity)
   // Check remove first
   for (const keyword of INTENT_PATTERNS.REMOVE_ITEM) {
@@ -1060,8 +1136,33 @@ export function processChatMessage(
   entities.quantity = extractQuantity(message);
   entities.preference = extractPreference(message);
   entities.category = detectCategory(message) || undefined;
+  entities.allergies = extractAllergies(message);
+  entities.ingredientExclusions = extractIngredientExclusions(message);
+  entities.spiceLevel = extractSpiceLevel(message);
+  entities.specialInstructions = extractSpecialInstructions(message);
 
   switch (intent) {
+    case 'ALLERGY_OR_INSTRUCTION': {
+      const allergies = entities.allergies || [];
+      const exclusions = entities.ingredientExclusions || [];
+      const special = entities.specialInstructions || [];
+      const spice = entities.spiceLevel;
+
+      const lines: string[] = [];
+      if (allergies.length > 0) lines.push(`• Allergies: ${allergies.join(', ')}`);
+      if (exclusions.length > 0) lines.push(`• Exclusions: ${exclusions.join(', ')}`);
+      if (spice) lines.push(`• Spice level: ${spice}`);
+      if (special.length > 0) lines.push(`• Prep notes: ${special.join(', ')}`);
+
+      return {
+        message: lines.length > 0
+          ? `Thanks for sharing. I will include these kitchen safety notes with your order:\n\n${lines.join('\n')}\n\nAnything else to add before checkout?`
+          : `Absolutely. Please share your allergy or food instruction details and I will attach them to the order for kitchen + waiter confirmation.`,
+        intent,
+        entities,
+      };
+    }
+
     // ---- GREETING ----
     case 'GREETING': {
       return {
@@ -1222,16 +1323,16 @@ export function processChatMessage(
       if (availableItems.length === 1) {
         const { item, quantity, preference } = availableItems[0];
         if (preference) {
-          responseMsg = `Got it! 👍 ${quantity}x ${item.name} (${preference}) added.\n\n${upsell}`;
+          responseMsg = `Got it! 👍 ${quantity}x ${item.name} (${preference}) added.\n\n${upsell}\n\nBefore checkout: do you have any allergies, ingredient exclusions, or a spice level (mild/medium/hot)?`;
         } else {
           responseMsg = getRandomResponse('ITEM_ADDED')
             .replace('{quantity}', quantity.toString())
             .replace('{item}', item.name)
-            .replace('{upsell}', upsell);
+            .replace('{upsell}', `${upsell}\n\nBefore checkout: any allergies or ingredient instructions for the kitchen?`);
         }
       } else {
         const alternatives = availableItems.slice(1, 4).map(m => m.item.name).join(', ');
-        responseMsg = `I matched this as your best pick: ${firstItem.quantity}x ${firstItem.item.name}. ✅\n\n${alternatives ? `Similar dishes: ${alternatives}\n\n` : ''}${upsell}`;
+        responseMsg = `I matched this as your best pick: ${firstItem.quantity}x ${firstItem.item.name}. ✅\n\n${alternatives ? `Similar dishes: ${alternatives}\n\n` : ''}${upsell}\n\nBefore checkout: any allergies, exclusions, or spice preference to include?`;
       }
 
       return {

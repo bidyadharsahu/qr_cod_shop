@@ -51,6 +51,13 @@ interface QueuedCheckout {
   queuedAt: number;
 }
 
+interface GuestOrderInstructions {
+  allergies: string[];
+  ingredientExclusions: string[];
+  spiceLevel?: 'mild' | 'medium' | 'hot';
+  specialInstructions: string[];
+}
+
 interface PaymentGatewayStatus {
   stripeConfigured: boolean;
   paypalConfigured: boolean;
@@ -271,6 +278,11 @@ function OrderContent() {
   const [voiceStatusMessage, setVoiceStatusMessage] = useState<string | null>(null);
   const [interimVoiceTranscript, setInterimVoiceTranscript] = useState('');
   const [pendingVoiceTranscript, setPendingVoiceTranscript] = useState<string | null>(null);
+  const [guestInstructions, setGuestInstructions] = useState<GuestOrderInstructions>({
+    allergies: [],
+    ingredientExclusions: [],
+    specialInstructions: [],
+  });
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -343,6 +355,18 @@ function OrderContent() {
   }, []);
 
   const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
+
+  const mergeUnique = (a: string[], b: string[]) => Array.from(new Set([...a, ...b].map(v => v.trim()).filter(Boolean)));
+
+  const applyEntitiesToGuestInstructions = (entities?: ChatbotResponse['entities']) => {
+    if (!entities) return;
+    setGuestInstructions(prev => ({
+      allergies: mergeUnique(prev.allergies, entities.allergies || []),
+      ingredientExclusions: mergeUnique(prev.ingredientExclusions, entities.ingredientExclusions || []),
+      specialInstructions: mergeUnique(prev.specialInstructions, entities.specialInstructions || []),
+      spiceLevel: entities.spiceLevel || prev.spiceLevel,
+    }));
+  };
 
   const getPendingItemsFromCart = (): PendingCheckoutItem[] => {
     return cart
@@ -656,12 +680,13 @@ function OrderContent() {
       const loyaltyMsg = storedCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${storedCount} time${storedCount > 1 ? 's' : ''} with us!` : '';
 
       addBotMessage(
-        `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
+        `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\nBefore we place your order, I can note allergies, ingredient exclusions, and spice level for the kitchen.\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
         [
           { label: '🍽️ See Menu', value: 'menu' },
           { label: '🔥 Popular', value: 'popular' },
           { label: '🌶️ Spicy', value: 'spicy' },
           { label: '🦞 Seafood', value: 'seafood' },
+          { label: '🛡️ Add Allergy Notes', value: 'instructions' },
           { label: '❤️ Favorites', value: 'favorites' },
           { label: '❓ Help', value: 'help' }
         ]
@@ -791,6 +816,32 @@ function OrderContent() {
 
   const handleOptionClick = (value: string) => {
     switch (value) {
+      case 'instructions':
+        addUserMessage('Add allergy and instruction notes');
+        addBotMessage(
+          `Perfect. Please share any of the following:\n\n• Allergies (US major allergens): peanuts, tree nuts, milk/dairy, egg, fish, shellfish, wheat/gluten, soy, sesame\n• Ingredient exclusions: no potato, no tomato, no onion, no garlic\n• Spice level: mild, medium, or hot\n• Prep notes: sauce on side, well-done, extra crispy\n\nExample: "Shellfish allergy, no tomato, mild spice."`,
+          [
+            { label: '🌶️ Mild Spice', value: 'mild_spice' },
+            { label: '🌶️ Medium Spice', value: 'medium_spice' },
+            { label: '🌶️ Hot Spice', value: 'hot_spice' }
+          ]
+        );
+        break;
+      case 'mild_spice':
+        addUserMessage('Set spice level to mild');
+        setGuestInstructions(prev => ({ ...prev, spiceLevel: 'mild' }));
+        addBotMessage('Got it. I saved your spice level as mild.');
+        break;
+      case 'medium_spice':
+        addUserMessage('Set spice level to medium');
+        setGuestInstructions(prev => ({ ...prev, spiceLevel: 'medium' }));
+        addBotMessage('Got it. I saved your spice level as medium.');
+        break;
+      case 'hot_spice':
+        addUserMessage('Set spice level to hot');
+        setGuestInstructions(prev => ({ ...prev, spiceLevel: 'hot' }));
+        addBotMessage('Got it. I saved your spice level as hot.');
+        break;
       case 'popular':
         addUserMessage('Show popular items');
         addBotMessage(
@@ -969,6 +1020,7 @@ function OrderContent() {
         conversationContext
       );
       const response = await humanizeBotResponse(input, baseResponse);
+      applyEntitiesToGuestInstructions(response.entities);
 
       setConversationContext(prev => {
         const updated = { ...prev };
@@ -984,6 +1036,15 @@ function OrderContent() {
         }
         if (response.intent === 'RECOMMEND_SEAFOOD' && !updated.preferences.includes('seafood')) {
           updated.preferences = [...updated.preferences, 'seafood'];
+        }
+        if (response.entities.allergies && response.entities.allergies.length > 0) {
+          updated.allergies = Array.from(new Set([...(updated.allergies || []), ...response.entities.allergies]));
+        }
+        if (response.entities.ingredientExclusions && response.entities.ingredientExclusions.length > 0) {
+          updated.ingredientExclusions = Array.from(new Set([...(updated.ingredientExclusions || []), ...response.entities.ingredientExclusions]));
+        }
+        if (response.entities.spiceLevel) {
+          updated.spiceLevel = response.entities.spiceLevel;
         }
         return updated;
       });
@@ -1266,9 +1327,21 @@ function OrderContent() {
       status: 'pending',
       payment_status: 'unpaid',
       receipt_id: receipt,
-      customer_note: isAddOnOrder
-        ? `ADD_ON_ORDER | table ${tableNumber} | contains only newly added items`
-        : 'NEW_ORDER | initial order from chatbot'
+      customer_note: (() => {
+        const instructionParts: string[] = [];
+        if (guestInstructions.allergies.length > 0) instructionParts.push(`ALLERGIES: ${guestInstructions.allergies.join(', ')}`);
+        if (guestInstructions.ingredientExclusions.length > 0) instructionParts.push(`EXCLUDE: ${guestInstructions.ingredientExclusions.join(', ')}`);
+        if (guestInstructions.spiceLevel) instructionParts.push(`SPICE: ${guestInstructions.spiceLevel}`);
+        if (guestInstructions.specialInstructions.length > 0) instructionParts.push(`NOTES: ${guestInstructions.specialInstructions.join(', ')}`);
+
+        const base = isAddOnOrder
+          ? `ADD_ON_ORDER | table ${tableNumber} | contains only newly added items`
+          : 'NEW_ORDER | initial order from chatbot';
+
+        return instructionParts.length > 0
+          ? `${base} | ${instructionParts.join(' | ')}`
+          : base;
+      })()
     };
 
     try {
@@ -1319,7 +1392,7 @@ function OrderContent() {
       if (source === 'queued') setRetryingQueuedCheckout(false);
       else setLoading(false);
     }
-  }, [orderCount, saveQueuedCheckout, tableNumber]);
+  }, [guestInstructions, orderCount, saveQueuedCheckout, tableNumber]);
 
   const retryQueuedCheckout = useCallback(async () => {
     if (!queuedCheckout || !navigator.onLine || retryingQueuedCheckout || waitingForConfirmation) return;
