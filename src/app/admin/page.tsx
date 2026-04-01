@@ -14,7 +14,7 @@ import {
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, ShoppingCart, CircleDollarSign, ClipboardList, Timer, Eye, Table as TableIcon, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Filter, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap
+  PhoneCall, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 
@@ -1157,7 +1157,7 @@ export default function AdminDashboard() {
     return orders
       .filter(o => !o.receipt_id?.startsWith('CALL-'))
       .filter(o => ['confirmed', 'preparing', 'served'].includes(o.status))
-      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }, [orders]);
 
   const unpaidOrders = useMemo(() => {
@@ -1422,12 +1422,6 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* Tampa Timezone Clock */}
-            <div className="hidden 2xl:flex flex-col items-center text-center">
-              <p className="text-sm font-medium text-white">{currentDate}</p>
-              <p className="text-lg font-bold" style={{ color: theme.primary }}>{currentTime} <span className="text-xs text-gray-400 font-normal">(Tampa, USA)</span></p>
-            </div>
-
             {/* Horizontal Tabs */}
             <nav className="admin-nav flex-1 min-w-0 flex items-center gap-2 sm:gap-5 overflow-x-auto px-1">
               {tabs.map(tab => (
@@ -1466,14 +1460,14 @@ export default function AdminDashboard() {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <div className="relative hidden lg:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#958da1]" />
+              <div className="hidden lg:flex items-center w-56 xl:w-64 h-10 rounded-xl border border-[#3b3450] bg-[#0e0e11] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[#7c3aed] focus-within:ring-1 focus-within:ring-[#7c3aed]/35 transition-all">
+                <Search className="w-4 h-4 text-[#958da1] mr-2.5" />
                 <input
                   type="text"
                   value={headerSearch}
                   onChange={(e) => setHeaderSearch(e.target.value)}
                   placeholder="Global search..."
-                  className="admin-input w-56 xl:w-64 bg-[#0e0e11] border border-[#2a2a33] rounded-xl pl-9 pr-3 py-2 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none focus:border-[#7c3aed]"
+                  className="w-full bg-transparent border-0 p-0 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none"
                 />
               </div>
               {waiterCalls.length > 0 && (
@@ -1489,13 +1483,11 @@ export default function AdminDashboard() {
                 <LogOut className="w-5 h-5" />
               </button>
               <div className="hidden sm:block h-6 w-px bg-[#2a2a33]" />
-              <div className="hidden sm:flex items-center gap-2" title={staffUser || undefined}>
+              <div className="flex items-center gap-2 rounded-xl border border-[#2a2a33] bg-[#111118] px-3 py-1.5">
                 <div className="text-right leading-tight">
-                  <p className="text-xs font-bold text-[#e4e1e6] truncate max-w-[110px]">{staffUser || companyProfile.name}</p>
-                  <p className="text-[10px] uppercase tracking-[0.08em]" style={{ color: theme.primary }}>{staffRole === 'chef' ? 'Chef' : 'Manager'}</p>
-                </div>
-                <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#3a3a45] bg-[#1f1f22] relative">
-                  <Image src={companyProfile.logo} alt="Staff" fill sizes="36px" className="object-cover" />
+                  <p className="text-[11px] text-[#9f97b2]">Tampa, FL</p>
+                  <p className="text-xs font-semibold text-[#e4e1e6]">{currentDate}</p>
+                  <p className="text-xs font-bold" style={{ color: theme.primary }}>{currentTime}</p>
                 </div>
               </div>
             </div>
@@ -1508,17 +1500,8 @@ export default function AdminDashboard() {
                 {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8 text-[#e4e1e6]">
-            {/* Dashboard Header */}
-            <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
-              <div>
-                <h2 className="text-4xl font-extrabold tracking-tighter text-[#e4e1e6]">Executive Dashboard</h2>
-                <p className="text-[#958da1] mt-2 font-light">Live orders, payments, and table operations in one clean workflow.</p>
-              </div>
+            <section className="flex justify-end items-center">
               <div className="flex gap-3">
-                <button className="px-6 py-2.5 bg-[#1f1f22] rounded-xl text-[#e4e1e6] text-sm font-semibold border border-[#4a4455]/10 hover:bg-[#2a2a2d] transition-all flex items-center gap-2">
-                  <Filter size={16} />
-                  Today
-                </button>
                 <button 
                   onClick={() => {
                     fetchOrders();
