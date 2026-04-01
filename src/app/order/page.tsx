@@ -24,6 +24,11 @@ interface CartItem extends MenuItem {
   quantity: number;
 }
 
+interface ItemKitchenInstruction {
+  spiceLevel?: 'mild' | 'medium' | 'hot';
+  notes: string;
+}
+
 interface ChatMessage {
   id: string;
   role: 'bot' | 'user';
@@ -42,6 +47,11 @@ interface PendingCheckoutItem {
   name: string;
   quantity: number;
   price: number;
+  category?: string;
+  image_url?: string | null;
+  special_instructions?: string;
+  spice_level?: 'mild' | 'medium' | 'hot';
+  allergy_alerts?: string[];
 }
 
 interface QueuedCheckout {
@@ -283,6 +293,8 @@ function OrderContent() {
     ingredientExclusions: [],
     specialInstructions: [],
   });
+  const [itemInstructions, setItemInstructions] = useState<Record<number, ItemKitchenInstruction>>({});
+  const [instructionReviewConfirmed, setInstructionReviewConfirmed] = useState(false);
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -366,6 +378,20 @@ function OrderContent() {
       specialInstructions: mergeUnique(prev.specialInstructions, entities.specialInstructions || []),
       spiceLevel: entities.spiceLevel || prev.spiceLevel,
     }));
+    if (entities.allergies?.length || entities.ingredientExclusions?.length || entities.specialInstructions?.length || entities.spiceLevel) {
+      setInstructionReviewConfirmed(false);
+    }
+  };
+
+  const setItemInstruction = (itemId: number, patch: Partial<ItemKitchenInstruction>) => {
+    setItemInstructions(prev => ({
+      ...prev,
+      [itemId]: {
+        ...prev[itemId],
+        ...patch,
+      },
+    }));
+    setInstructionReviewConfirmed(false);
   };
 
   const getPendingItemsFromCart = (): PendingCheckoutItem[] => {
@@ -373,11 +399,23 @@ function OrderContent() {
       .map(item => {
         const alreadySubmitted = submittedQuantities[item.id] || 0;
         const unsentQty = Math.max(0, item.quantity - alreadySubmitted);
+        const perItemInstruction = itemInstructions[item.id];
+        const instructionParts: string[] = [];
+
+        if (perItemInstruction?.notes?.trim()) instructionParts.push(perItemInstruction.notes.trim());
+        if (guestInstructions.ingredientExclusions.length > 0) instructionParts.push(`Exclude: ${guestInstructions.ingredientExclusions.join(', ')}`);
+        if (guestInstructions.specialInstructions.length > 0) instructionParts.push(`Guest note: ${guestInstructions.specialInstructions.join(', ')}`);
+
         return {
           id: item.id,
           name: item.name,
           quantity: unsentQty,
           price: item.price,
+          category: item.category,
+          image_url: item.image_url,
+          special_instructions: instructionParts.length > 0 ? instructionParts.join(' | ') : undefined,
+          spice_level: perItemInstruction?.spiceLevel || guestInstructions.spiceLevel,
+          allergy_alerts: guestInstructions.allergies.length > 0 ? guestInstructions.allergies : undefined,
         };
       })
       .filter(item => item.quantity > 0);
@@ -943,6 +981,7 @@ function OrderContent() {
       case 'add_last_item':
         if (lastAskedItem) {
           const itemToAdd = lastAskedItem;
+          setInstructionReviewConfirmed(false);
           setCart(prev => {
             const existing = prev.find(i => i.id === itemToAdd.id);
             if (existing) {
@@ -1087,6 +1126,7 @@ function OrderContent() {
       }
 
       if (response.action === 'add_item' && response.matchedItems && response.matchedItems.length > 0) {
+        setInstructionReviewConfirmed(false);
         for (const matched of response.matchedItems) {
           const item = matched.item;
           const qty = matched.quantity || 1;
@@ -1113,6 +1153,7 @@ function OrderContent() {
 
       if (response.action === 'remove_item' && response.matchedItems && response.matchedItems.length > 0) {
         const itemToRemove = response.matchedItems[0].item;
+        setInstructionReviewConfirmed(false);
         setCart(prev => prev.filter(i => i.id !== itemToRemove.id));
         addBotMessage(
           response.message,
@@ -1269,6 +1310,7 @@ function OrderContent() {
       const matched = dishQuery ? getBestMenuVoiceMatch(menuItems, dishQuery) : null;
 
       if (matched) {
+        setInstructionReviewConfirmed(false);
         setCart(prev => {
           const existing = prev.find(i => i.id === matched.id);
           if (existing) {
@@ -1431,6 +1473,14 @@ function OrderContent() {
 
     const isAddOnOrder = Object.keys(submittedQuantities).length > 0;
 
+    if (!instructionReviewConfirmed) {
+      addBotMessage(
+        'Before placing your order, please review kitchen instructions (allergy, spice, exclusions) in cart and tap "Confirm Kitchen Instructions".',
+        [{ label: '🛒 Review Instructions', value: 'cart' }]
+      );
+      return;
+    }
+
     if (!navigator.onLine) {
       const queued: QueuedCheckout = {
         tableNumber,
@@ -1473,6 +1523,7 @@ function OrderContent() {
   };
 
   const addToCart = (item: MenuItem) => {
+    setInstructionReviewConfirmed(false);
     setCart(prev => {
       const existing = prev.find(i => i.id === item.id);
       if (existing) {
@@ -1488,6 +1539,7 @@ function OrderContent() {
   };
 
   const updateQuantity = (id: number, delta: number) => {
+    setInstructionReviewConfirmed(false);
     setCart(prev => {
       return prev.map(item => {
         if (item.id === id) {
@@ -1501,6 +1553,12 @@ function OrderContent() {
 
   const removeFromCart = (id: number) => {
     setCart(prev => prev.filter(i => i.id !== id));
+    setItemInstructions(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setInstructionReviewConfirmed(false);
   };
 
   const handleTipSelect = (tip: number) => {
@@ -1681,12 +1739,49 @@ function OrderContent() {
     doc.setFont('helvetica', 'normal');
     y += 8;
     cart.forEach(item => {
+      const currentInstruction = itemInstructions[item.id];
       doc.text(item.name.substring(0, 25), 20, y);
       doc.text(item.quantity.toString(), 105, y);
       doc.text(`$${item.price.toFixed(2)}`, 130, y);
       doc.text(`$${(item.price * item.quantity).toFixed(2)}`, pageWidth - 20, y, { align: 'right' });
       y += 7;
+      const notes: string[] = [];
+      if (currentInstruction?.spiceLevel) notes.push(`spice: ${currentInstruction.spiceLevel}`);
+      if (currentInstruction?.notes?.trim()) notes.push(currentInstruction.notes.trim());
+      if (notes.length > 0) {
+        doc.setFontSize(9);
+        doc.setTextColor(90);
+        doc.text(`  note: ${notes.join(' | ').slice(0, 80)}`, 20, y);
+        y += 6;
+        doc.setFontSize(10);
+        doc.setTextColor(0);
+      }
     });
+
+    if (guestInstructions.allergies.length > 0 || guestInstructions.ingredientExclusions.length > 0 || guestInstructions.specialInstructions.length > 0) {
+      y += 4;
+      doc.line(20, y, pageWidth - 20, y);
+      y += 7;
+      doc.setFont('helvetica', 'bold');
+      doc.text('Kitchen Instructions', 20, y);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(70);
+      if (guestInstructions.allergies.length > 0) {
+        y += 5;
+        doc.text(`Allergies: ${guestInstructions.allergies.join(', ')}`.slice(0, 100), 20, y);
+      }
+      if (guestInstructions.ingredientExclusions.length > 0) {
+        y += 5;
+        doc.text(`Exclusions: ${guestInstructions.ingredientExclusions.join(', ')}`.slice(0, 100), 20, y);
+      }
+      if (guestInstructions.specialInstructions.length > 0) {
+        y += 5;
+        doc.text(`Notes: ${guestInstructions.specialInstructions.join(', ')}`.slice(0, 100), 20, y);
+      }
+      doc.setFontSize(10);
+      doc.setTextColor(60);
+    }
     
     y += 5;
     doc.line(20, y, pageWidth - 20, y);
@@ -2113,6 +2208,54 @@ function OrderContent() {
                               </div>
                             </div>
                           ))}
+
+                          <div className="rounded-xl p-3 border border-amber-500/35 bg-amber-500/10">
+                            <p className="text-[12px] font-semibold text-amber-200 mb-2">Kitchen Instruction Review (required)</p>
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                              {cart.map(item => {
+                                const current = itemInstructions[item.id] || { notes: '', spiceLevel: undefined };
+                                return (
+                                  <div key={`inst-${item.id}`} className="rounded-lg bg-zinc-950/70 border border-zinc-800 p-2.5">
+                                    <p className="text-[12px] font-semibold text-gray-100 mb-1">{item.name}</p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <select
+                                        value={current.spiceLevel || ''}
+                                        onChange={(e) => setItemInstruction(item.id, { spiceLevel: (e.target.value || undefined) as 'mild' | 'medium' | 'hot' | undefined })}
+                                        className="w-full px-2 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-[12px] focus:outline-none"
+                                      >
+                                        <option value="">Spice: as chef standard</option>
+                                        <option value="mild">Mild</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="hot">Hot</option>
+                                      </select>
+                                      <input
+                                        type="text"
+                                        value={current.notes}
+                                        onChange={(e) => setItemInstruction(item.id, { notes: e.target.value })}
+                                        className="w-full px-2 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-[12px] focus:outline-none"
+                                        placeholder="Per-dish note (no tomato, no garlic, etc.)"
+                                      />
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div className="mt-2 p-2 rounded-lg bg-zinc-950/70 border border-zinc-800">
+                              <p className="text-[11px] text-gray-300">Allergy profile: {guestInstructions.allergies.length > 0 ? guestInstructions.allergies.join(', ') : 'none provided'}</p>
+                              <p className="text-[11px] text-gray-400">Exclusions: {guestInstructions.ingredientExclusions.length > 0 ? guestInstructions.ingredientExclusions.join(', ') : 'none'}</p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setInstructionReviewConfirmed(true);
+                                addBotMessage('Kitchen instructions confirmed. Chef will receive these notes on the kitchen slip and your bill.');
+                              }}
+                              className="mt-2 w-full py-2.5 rounded-lg font-semibold text-[12px]"
+                              style={instructionReviewConfirmed ? { background: '#14532d', color: '#bbf7d0', border: '1px solid #166534' } : { background: '#f59e0b', color: '#111827' }}
+                            >
+                              {instructionReviewConfirmed ? 'Kitchen Instructions Confirmed' : 'Confirm Kitchen Instructions'}
+                            </button>
+                          </div>
+
                           <div className="p-3 rounded-xl" style={{ background: `${theme.primary}1a`, border: `1px solid ${theme.primary}4d` }}>
                             <div className="flex justify-between text-lg font-bold">
                               <span>Total</span>
@@ -2123,8 +2266,8 @@ function OrderContent() {
                             <button onClick={() => handleOptionClick('menu')} className="flex-1 py-3 rounded-xl font-medium text-[14px] active:scale-[0.98]" style={{ border: `1px solid ${theme.primary}4d`, color: theme.primary }}>
                               <Plus className="w-4 h-4 inline mr-1" /> Add More
                             </button>
-                            <button onClick={handleCheckout} disabled={loading} className="flex-1 py-3 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]" style={{ background: theme.primary }}>
-                              {loading ? 'Placing...' : 'Place Order'}
+                            <button onClick={handleCheckout} disabled={loading || !instructionReviewConfirmed} className="flex-1 py-3 text-black rounded-xl font-bold text-[14px] disabled:opacity-50 active:scale-[0.98]" style={{ background: theme.primary }}>
+                              {loading ? 'Placing...' : (instructionReviewConfirmed ? 'Place Order' : 'Confirm Instructions First')}
                             </button>
                           </div>
                         </>
@@ -2200,12 +2343,38 @@ function OrderContent() {
                           </div>
                         </div>
                         <div className="border-t border-zinc-800 pt-3 space-y-1.5">
-                          {cart.map(item => (
-                            <div key={item.id} className="flex justify-between text-[13px]">
-                              <span>{item.quantity}x {item.name}</span>
-                              <span>${(item.price * item.quantity).toFixed(2)}</span>
+                          {cart.map(item => {
+                            const itemNote = itemInstructions[item.id];
+                            return (
+                              <div key={item.id} className="space-y-1">
+                                <div className="flex justify-between text-[13px]">
+                                  <span>{item.quantity}x {item.name}</span>
+                                  <span>${(item.price * item.quantity).toFixed(2)}</span>
+                                </div>
+                                {(itemNote?.spiceLevel || itemNote?.notes?.trim()) && (
+                                  <p className="text-[11px] text-amber-200/90 pl-1">
+                                    {itemNote?.spiceLevel ? `Spice: ${itemNote.spiceLevel}` : ''}
+                                    {itemNote?.spiceLevel && itemNote?.notes?.trim() ? ' | ' : ''}
+                                    {itemNote?.notes?.trim() || ''}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {(guestInstructions.allergies.length > 0 || guestInstructions.ingredientExclusions.length > 0 || guestInstructions.specialInstructions.length > 0) && (
+                            <div className="mt-2 rounded-lg border border-rose-500/30 bg-rose-500/10 p-2.5 space-y-1">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-200">Kitchen Instructions</p>
+                              {guestInstructions.allergies.length > 0 && (
+                                <p className="text-[11px] text-rose-100">Allergies: {guestInstructions.allergies.join(', ')}</p>
+                              )}
+                              {guestInstructions.ingredientExclusions.length > 0 && (
+                                <p className="text-[11px] text-rose-100">Exclusions: {guestInstructions.ingredientExclusions.join(', ')}</p>
+                              )}
+                              {guestInstructions.specialInstructions.length > 0 && (
+                                <p className="text-[11px] text-rose-100">Notes: {guestInstructions.specialInstructions.join(', ')}</p>
+                              )}
                             </div>
-                          ))}
+                          )}
                         </div>
                         <div className="border-t border-zinc-800 pt-3 mt-3 space-y-1.5">
                           <div className="flex justify-between text-gray-400 text-[13px]">

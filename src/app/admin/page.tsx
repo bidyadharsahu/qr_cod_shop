@@ -132,6 +132,13 @@ export default function AdminDashboard() {
 
   const isAddOnOrder = (order: Order) => (order.customer_note || '').includes('ADD_ON_ORDER');
   const isNewOrder = (order: Order) => (order.customer_note || '').includes('NEW_ORDER');
+  const getItemKitchenSummary = (item: Order['items'][number]) => {
+    const notes: string[] = [];
+    if (item.spice_level) notes.push(`Spice: ${item.spice_level}`);
+    if (item.allergy_alerts && item.allergy_alerts.length > 0) notes.push(`Allergy: ${item.allergy_alerts.join(', ')}`);
+    if (item.special_instructions) notes.push(item.special_instructions);
+    return notes.join(' | ');
+  };
 
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
@@ -147,8 +154,28 @@ export default function AdminDashboard() {
       return;
     }
 
+    const customerNote = order.customer_note || '';
+    const globalInstructionLines = [
+      customerNote.match(/ALLERGIES:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/EXCLUDE:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/SPICE:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/NOTES:\s*([^|]+)/i)?.[1]?.trim(),
+    ].filter(Boolean) as string[];
+
     const itemsHtml = (order.items || [])
-      .map(item => `<tr><td>${item.quantity}x ${item.name}</td><td style="text-align:right;">$${(item.price * item.quantity).toFixed(2)}</td></tr>`)
+      .map(item => {
+        const perItemNotes: string[] = [];
+        if (item.spice_level) perItemNotes.push(`Spice: ${item.spice_level}`);
+        if (item.allergy_alerts && item.allergy_alerts.length > 0) perItemNotes.push(`Allergy: ${item.allergy_alerts.join(', ')}`);
+        if (item.special_instructions) perItemNotes.push(item.special_instructions);
+        return `
+          <tr>
+            <td>${item.quantity}x ${item.name}</td>
+            <td style="text-align:right;">$${(item.price * item.quantity).toFixed(2)}</td>
+          </tr>
+          ${perItemNotes.length > 0 ? `<tr><td colspan="2" class="item-note">${perItemNotes.join(' | ')}</td></tr>` : ''}
+        `;
+      })
       .join('');
 
     popup.document.write(`
@@ -162,6 +189,10 @@ export default function AdminDashboard() {
             .meta { font-size: 12px; color: #555; margin-bottom: 12px; }
             table { width: 100%; border-collapse: collapse; font-size: 13px; }
             td { padding: 6px 0; border-bottom: 1px solid #ececec; }
+            .item-note { font-size: 11px; color: #8b4513; padding: 2px 0 6px; }
+            .kitchen-notes { margin-top: 10px; border: 1px solid #f4d1d1; background: #fff5f5; border-radius: 8px; padding: 8px; }
+            .kitchen-notes h4 { margin: 0 0 6px; font-size: 12px; color: #a11; }
+            .kitchen-notes p { margin: 3px 0; font-size: 12px; color: #5a1a1a; }
             .totals { margin-top: 10px; font-size: 13px; }
             .totals div { display:flex; justify-content:space-between; padding: 3px 0; }
             .grand { font-weight: 700; font-size: 16px; border-top: 1px solid #ddd; margin-top: 6px; padding-top: 6px; }
@@ -181,6 +212,12 @@ export default function AdminDashboard() {
           <table>
             ${itemsHtml}
           </table>
+          ${globalInstructionLines.length > 0 ? `
+            <div class="kitchen-notes">
+              <h4>Kitchen Instructions</h4>
+              ${globalInstructionLines.map(line => `<p>${line}</p>`).join('')}
+            </div>
+          ` : ''}
           <div class="totals">
             <div><span>Subtotal</span><span>$${order.subtotal.toFixed(2)}</span></div>
             <div><span>Tax</span><span>$${(order.tax_amount || 0).toFixed(2)}</span></div>
@@ -210,8 +247,29 @@ export default function AdminDashboard() {
       return;
     }
 
+    const customerNote = order.customer_note || '';
+    const globalInstructionLines = [
+      customerNote.match(/ALLERGIES:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/EXCLUDE:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/SPICE:\s*([^|]+)/i)?.[1]?.trim(),
+      customerNote.match(/NOTES:\s*([^|]+)/i)?.[1]?.trim(),
+    ].filter(Boolean) as string[];
+
     const itemsHtml = (order.items || [])
-      .map(item => `<tr><td>${item.quantity}x</td><td>${item.name}</td></tr>`)
+      .map(item => {
+        const perItemNotes: string[] = [];
+        if (item.spice_level) perItemNotes.push(`Spice: ${item.spice_level}`);
+        if (item.allergy_alerts && item.allergy_alerts.length > 0) perItemNotes.push(`Allergy: ${item.allergy_alerts.join(', ')}`);
+        if (item.special_instructions) perItemNotes.push(item.special_instructions);
+
+        return `
+          <tr>
+            <td>${item.quantity}x</td>
+            <td>${item.name}</td>
+          </tr>
+          ${perItemNotes.length > 0 ? `<tr><td></td><td class="item-note">${perItemNotes.join(' | ')}</td></tr>` : ''}
+        `;
+      })
       .join('');
 
     popup.document.write(`
@@ -225,6 +283,10 @@ export default function AdminDashboard() {
             p { margin: 3px 0; font-size: 12px; }
             table { width: 100%; border-collapse: collapse; margin-top: 8px; }
             td { padding: 6px 0; border-bottom: 1px dashed #bbb; font-size: 13px; }
+            .item-note { font-size: 11px; color: #7a1f1f; padding: 2px 0 6px; }
+            .kitchen-notes { margin-top: 10px; border: 1px solid #d7a7a7; background: #fff4f4; border-radius: 8px; padding: 8px; }
+            .kitchen-notes h4 { margin: 0 0 6px; font-size: 12px; color: #8a1111; }
+            .kitchen-notes p { margin: 3px 0; font-size: 12px; color: #651313; }
             .eta { margin-top: 10px; font-weight: bold; font-size: 14px; }
           </style>
         </head>
@@ -238,6 +300,12 @@ export default function AdminDashboard() {
           <table>
             ${itemsHtml}
           </table>
+          ${globalInstructionLines.length > 0 ? `
+            <div class="kitchen-notes">
+              <h4>Guest-Level Kitchen Instructions</h4>
+              ${globalInstructionLines.map(line => `<p>${line}</p>`).join('')}
+            </div>
+          ` : ''}
           <p class="eta">Estimated prep: ${estimatePrepMinutes(order)} min</p>
         </body>
       </html>
@@ -1924,11 +1992,15 @@ export default function AdminDashboard() {
                     </div>
                     
                     <div className="flex flex-wrap gap-2 mb-4">
-                      {order.items?.map((item, idx) => (
-                        <span key={idx} className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
-                          {item.quantity}x {item.name}
-                        </span>
-                      ))}
+                      {order.items?.map((item, idx) => {
+                        const itemSummary = getItemKitchenSummary(item);
+                        return (
+                          <div key={idx} className="px-3 py-1.5 bg-zinc-900 border border-zinc-700 rounded-lg text-sm">
+                            <p>{item.quantity}x {item.name}</p>
+                            {itemSummary && <p className="text-[11px] text-amber-300 mt-1">{itemSummary}</p>}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
@@ -2009,11 +2081,15 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="flex flex-wrap gap-2 mb-3">
-                        {(order.items || []).map((item, idx) => (
-                          <span key={`${order.id}-${idx}`} className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-sm">
-                            {item.quantity}x {item.name}
-                          </span>
-                        ))}
+                        {(order.items || []).map((item, idx) => {
+                          const itemSummary = getItemKitchenSummary(item);
+                          return (
+                            <div key={`${order.id}-${idx}`} className="px-3 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-sm">
+                              <p>{item.quantity}x {item.name}</p>
+                              {itemSummary && <p className="text-[11px] text-amber-300 mt-1">{itemSummary}</p>}
+                            </div>
+                          );
+                        })}
                       </div>
 
                       <div className="flex flex-wrap gap-2">

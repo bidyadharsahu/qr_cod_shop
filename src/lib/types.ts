@@ -27,6 +27,9 @@ export interface OrderItem {
   quantity: number;
   category: string;
   image_url?: string | null;
+  special_instructions?: string;
+  spice_level?: 'mild' | 'medium' | 'hot';
+  allergy_alerts?: string[];
 }
 
 export interface Order {
