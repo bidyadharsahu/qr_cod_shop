@@ -339,13 +339,7 @@ export default function AdminDashboard() {
   ) => {
     if (typeof window === 'undefined') return;
 
-    const popup = window.open('', '_blank', 'width=900,height=1200');
-    if (!popup) {
-      showToast('Pop-up blocked. Please allow pop-ups to print report.', 'error');
-      return;
-    }
-
-    popup.document.write(`
+    const reportHtml = `
       <html>
         <head>
           <title>Daily Closing Report - ${reportDateIso}</title>
@@ -390,11 +384,89 @@ export default function AdminDashboard() {
           </table>
         </body>
       </html>
-    `);
+    `;
+
+    const popup = window.open('', '_blank', 'width=900,height=1200');
+    if (!popup) {
+      showToast('Pop-up blocked. Please allow pop-ups to print report.', 'error');
+      return;
+    }
+
+    popup.document.write(reportHtml);
 
     popup.document.close();
     popup.focus();
     popup.print();
+  };
+
+  const downloadDailyClosingReportA4 = (
+    reportDateIso: string,
+    reportOrdersSnapshot: Order[],
+    reportPaidOrdersSnapshot: Order[],
+    reportRevenueSnapshot: number,
+    reportCashCount: number,
+    reportOnlineCount: number,
+    reportCashAmount: number,
+    reportOnlineAmount: number,
+    reportCancelledCount: number
+  ) => {
+    if (typeof window === 'undefined') return;
+
+    const reportHtml = `
+      <html>
+        <head>
+          <title>Daily Closing Report - ${reportDateIso}</title>
+          <style>
+            @page { size: A4; margin: 18mm; }
+            body { font-family: Arial, sans-serif; color: #111; }
+            .head { display:flex; align-items:center; gap:12px; border-bottom: 2px solid #ddd; padding-bottom: 10px; margin-bottom: 14px; }
+            .logo { width: 54px; height: 54px; border-radius: 10px; }
+            .title { margin:0; font-size: 20px; }
+            .sub { margin:2px 0 0; color:#666; font-size:12px; }
+            .grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom: 12px; }
+            .card { border:1px solid #ddd; border-radius:10px; padding:10px; }
+            .card h4 { margin:0 0 6px; font-size: 13px; color:#444; }
+            .big { font-size: 24px; font-weight: 700; margin: 0; }
+            table { width:100%; border-collapse: collapse; margin-top: 8px; }
+            th, td { border-bottom: 1px solid #eee; padding: 6px; font-size: 12px; text-align:left; }
+            th { background:#fafafa; }
+          </style>
+        </head>
+        <body>
+          <div class="head">
+            <img class="logo" src="${getBaseUrl()}${companyProfile.logo}" alt="Logo" />
+            <div>
+              <h1 class="title">${companyProfile.name} - Daily Closing Report</h1>
+              <p class="sub">Report Date: ${formatIsoDayLabel(reportDateIso)} | Exported: ${new Date().toLocaleString()} | ${companyProfile.logoHint}</p>
+            </div>
+          </div>
+          <div class="grid">
+            <div class="card"><h4>Total Orders</h4><p class="big">${reportOrdersSnapshot.length}</p></div>
+            <div class="card"><h4>Total Paid Revenue</h4><p class="big">$${reportRevenueSnapshot.toFixed(2)}</p></div>
+            <div class="card"><h4>Cash Payments</h4><p class="big">${reportCashCount} | $${reportCashAmount.toFixed(2)}</p></div>
+            <div class="card"><h4>Online Payments</h4><p class="big">${reportOnlineCount} | $${reportOnlineAmount.toFixed(2)}</p></div>
+          </div>
+          <div class="card" style="margin-bottom: 12px;"><h4>Operational Summary</h4><p style="margin:0;">Paid orders: ${reportPaidOrdersSnapshot.length} | Cancelled: ${reportCancelledCount}</p></div>
+          <table>
+            <thead>
+              <tr><th>Receipt</th><th>Table</th><th>Status</th><th>Payment</th><th>Total</th><th>Created</th></tr>
+            </thead>
+            <tbody>
+              ${reportOrdersSnapshot.map(order => `<tr><td>${order.receipt_id}</td><td>${order.table_number}</td><td>${order.status}</td><td>${order.payment_status}</td><td>$${order.total.toFixed(2)}</td><td>${new Date(order.created_at).toLocaleString()}</td></tr>`).join('')}
+            </tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([reportHtml], { type: 'text/html;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `daily-closing-report-${reportDateIso}-A4.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('A4 report downloaded (HTML)');
   };
 
   const exportTodayAccountingCsv = (reportDateIso: string, reportOrdersSnapshot: Order[], reportPaymentEventsSnapshot: PaymentEventAudit[]) => {
@@ -1395,6 +1467,92 @@ export default function AdminDashboard() {
                 <div className="flex items-baseline gap-2">
                   <h3 className="text-3xl font-black text-[#e4e1e6]">{estimatedWaitMinutes}m</h3>
                 </div>
+              </div>
+            </section>
+
+            <section className="admin-panel rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-bold text-[#e4e1e6]">Accounting Exports</h3>
+                  <p className="text-xs text-[#958da1] mt-1">Download CSV and A4 closing reports by date or date range.</p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full xl:w-auto">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">Report Date</label>
+                    <input
+                      type="date"
+                      value={selectedReportDate}
+                      onChange={(e) => setSelectedReportDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">From</label>
+                    <input
+                      type="date"
+                      value={reportFromDate}
+                      onChange={(e) => setReportFromDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">To</label>
+                    <input
+                      type="date"
+                      value={reportToDate}
+                      onChange={(e) => setReportToDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  onClick={() => exportTodayAccountingCsv(selectedReportDate, selectedDayOrders, selectedDayPaymentEvents)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#1f1f22] border border-[#4a4455]/20 text-[#e4e1e6] hover:bg-[#2a2a2d] flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> Daily CSV
+                </button>
+                <button
+                  onClick={() => exportDateRangeAccountingCsv(rangeStartIso, rangeEndIso, rangeOrders, rangePaymentEvents)}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#1f1f22] border border-[#4a4455]/20 text-[#e4e1e6] hover:bg-[#2a2a2d] flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> Range CSV
+                </button>
+                <button
+                  onClick={() => printDailyClosingReport(
+                    selectedReportDate,
+                    selectedDayOrders,
+                    selectedDayPaidOrders,
+                    selectedDayRevenue,
+                    selectedDayCashCount,
+                    selectedDayOnlineCount,
+                    selectedDayCashAmount,
+                    selectedDayOnlineAmount,
+                    selectedDayCancelledOrders
+                  )}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#7c3aed] text-[#ede0ff] hover:brightness-110 flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" /> Print A4
+                </button>
+                <button
+                  onClick={() => downloadDailyClosingReportA4(
+                    selectedReportDate,
+                    selectedDayOrders,
+                    selectedDayPaidOrders,
+                    selectedDayRevenue,
+                    selectedDayCashCount,
+                    selectedDayOnlineCount,
+                    selectedDayCashAmount,
+                    selectedDayOnlineAmount,
+                    selectedDayCancelledOrders
+                  )}
+                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-[#4edea3] text-[#003824] hover:brightness-110 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> Download A4
+                </button>
               </div>
             </section>
 
