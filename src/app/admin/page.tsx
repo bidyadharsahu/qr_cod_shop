@@ -132,6 +132,32 @@ export default function AdminDashboard() {
 
   const isAddOnOrder = (order: Order) => (order.customer_note || '').includes('ADD_ON_ORDER');
   const isNewOrder = (order: Order) => (order.customer_note || '').includes('NEW_ORDER');
+
+  const extractGlobalKitchenNotes = useCallback((customerNote?: string | null) => {
+    const note = customerNote || '';
+    return {
+      allergies: note.match(/ALLERGIES:\s*([^|]+)/i)?.[1]?.trim() || '',
+      exclusions: note.match(/EXCLUDE:\s*([^|]+)/i)?.[1]?.trim() || '',
+      spice: note.match(/SPICE:\s*([^|]+)/i)?.[1]?.trim() || '',
+      notes: note.match(/NOTES:\s*([^|]+)/i)?.[1]?.trim() || '',
+    };
+  }, []);
+
+  const getOrderKitchenRisk = useCallback((order: Order) => {
+    const global = extractGlobalKitchenNotes(order.customer_note);
+    const itemAllergyCount = (order.items || []).filter(item => item.allergy_alerts && item.allergy_alerts.length > 0).length;
+    const hasGlobalAllergy = global.allergies.length > 0;
+    const hasSpiceNote = global.spice.length > 0 || (order.items || []).some(item => Boolean(item.spice_level));
+    const hasChefNote = global.notes.length > 0 || (order.items || []).some(item => Boolean(item.special_instructions));
+    return {
+      global,
+      hasAllergy: hasGlobalAllergy || itemAllergyCount > 0,
+      itemAllergyCount,
+      hasSpiceNote,
+      hasChefNote,
+    };
+  }, [extractGlobalKitchenNotes]);
+
   const getItemKitchenSummary = (item: Order['items'][number]) => {
     const notes: string[] = [];
     if (item.spice_level) notes.push(`Spice: ${item.spice_level}`);
@@ -154,12 +180,12 @@ export default function AdminDashboard() {
       return;
     }
 
-    const customerNote = order.customer_note || '';
+    const kitchenRisk = getOrderKitchenRisk(order);
     const globalInstructionLines = [
-      customerNote.match(/ALLERGIES:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/EXCLUDE:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/SPICE:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/NOTES:\s*([^|]+)/i)?.[1]?.trim(),
+      kitchenRisk.global.allergies && `Allergies: ${kitchenRisk.global.allergies}`,
+      kitchenRisk.global.exclusions && `Exclusions: ${kitchenRisk.global.exclusions}`,
+      kitchenRisk.global.spice && `Spice: ${kitchenRisk.global.spice}`,
+      kitchenRisk.global.notes && `Notes: ${kitchenRisk.global.notes}`,
     ].filter(Boolean) as string[];
 
     const itemsHtml = (order.items || [])
@@ -193,6 +219,7 @@ export default function AdminDashboard() {
             .kitchen-notes { margin-top: 10px; border: 1px solid #f4d1d1; background: #fff5f5; border-radius: 8px; padding: 8px; }
             .kitchen-notes h4 { margin: 0 0 6px; font-size: 12px; color: #a11; }
             .kitchen-notes p { margin: 3px 0; font-size: 12px; color: #5a1a1a; }
+            .allergy-banner { margin-top: 10px; border: 2px solid #c31818; background: #fff0f0; border-radius: 10px; padding: 8px; font-weight: 700; color: #a10e0e; text-transform: uppercase; font-size: 12px; letter-spacing: 0.03em; }
             .totals { margin-top: 10px; font-size: 13px; }
             .totals div { display:flex; justify-content:space-between; padding: 3px 0; }
             .grand { font-weight: 700; font-size: 16px; border-top: 1px solid #ddd; margin-top: 6px; padding-top: 6px; }
@@ -212,6 +239,7 @@ export default function AdminDashboard() {
           <table>
             ${itemsHtml}
           </table>
+          ${kitchenRisk.hasAllergy ? `<div class="allergy-banner">Allergy Alert: Follow allergy-safe prep protocol</div>` : ''}
           ${globalInstructionLines.length > 0 ? `
             <div class="kitchen-notes">
               <h4>Kitchen Instructions</h4>
@@ -247,12 +275,12 @@ export default function AdminDashboard() {
       return;
     }
 
-    const customerNote = order.customer_note || '';
+    const kitchenRisk = getOrderKitchenRisk(order);
     const globalInstructionLines = [
-      customerNote.match(/ALLERGIES:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/EXCLUDE:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/SPICE:\s*([^|]+)/i)?.[1]?.trim(),
-      customerNote.match(/NOTES:\s*([^|]+)/i)?.[1]?.trim(),
+      kitchenRisk.global.allergies && `Allergies: ${kitchenRisk.global.allergies}`,
+      kitchenRisk.global.exclusions && `Exclusions: ${kitchenRisk.global.exclusions}`,
+      kitchenRisk.global.spice && `Spice: ${kitchenRisk.global.spice}`,
+      kitchenRisk.global.notes && `Notes: ${kitchenRisk.global.notes}`,
     ].filter(Boolean) as string[];
 
     const itemsHtml = (order.items || [])
@@ -287,6 +315,7 @@ export default function AdminDashboard() {
             .kitchen-notes { margin-top: 10px; border: 1px solid #d7a7a7; background: #fff4f4; border-radius: 8px; padding: 8px; }
             .kitchen-notes h4 { margin: 0 0 6px; font-size: 12px; color: #8a1111; }
             .kitchen-notes p { margin: 3px 0; font-size: 12px; color: #651313; }
+            .allergy-banner { margin-top: 10px; border: 2px solid #b40f0f; background: #ffe9e9; border-radius: 10px; padding: 8px; font-weight: 700; color: #7f0909; text-transform: uppercase; font-size: 12px; letter-spacing: 0.04em; }
             .eta { margin-top: 10px; font-weight: bold; font-size: 14px; }
           </style>
         </head>
@@ -300,6 +329,7 @@ export default function AdminDashboard() {
           <table>
             ${itemsHtml}
           </table>
+          ${kitchenRisk.hasAllergy ? `<div class="allergy-banner">Allergy Alert: separate tools and avoid cross-contact</div>` : ''}
           ${globalInstructionLines.length > 0 ? `
             <div class="kitchen-notes">
               <h4>Guest-Level Kitchen Instructions</h4>
@@ -1148,7 +1178,35 @@ export default function AdminDashboard() {
     const addOnCount = filteredOrders.filter(isAddOnOrder).length;
     const newCount = filteredOrders.filter(isNewOrder).length;
     return { addOnCount, newCount };
+  }, [filteredOrders, getOrderKitchenRisk]);
+
+  const kitchenRiskSummary = useMemo(() => {
+    let allergyAlertOrders = 0;
+    let spiceNoteOrders = 0;
+    let chefNoteOrders = 0;
+
+    for (const order of filteredOrders) {
+      const risk = getOrderKitchenRisk(order);
+      if (risk.hasAllergy) allergyAlertOrders += 1;
+      if (risk.hasSpiceNote) spiceNoteOrders += 1;
+      if (risk.hasChefNote) chefNoteOrders += 1;
+    }
+
+    return { allergyAlertOrders, spiceNoteOrders, chefNoteOrders };
   }, [filteredOrders]);
+
+  const kitchenQueueRiskSummary = useMemo(() => {
+    let allergyAlertOrders = 0;
+    let spiceNoteOrders = 0;
+
+    for (const order of kitchenOrders) {
+      const risk = getOrderKitchenRisk(order);
+      if (risk.hasAllergy) allergyAlertOrders += 1;
+      if (risk.hasSpiceNote) spiceNoteOrders += 1;
+    }
+
+    return { allergyAlertOrders, spiceNoteOrders };
+  }, [kitchenOrders, getOrderKitchenRisk]);
 
   const filteredPaymentEvents = useMemo(() => {
     const q = orderSearch.trim().toLowerCase();
@@ -1831,7 +1889,7 @@ export default function AdminDashboard() {
               </select>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <div className="rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-4 py-3">
                 <p className="text-xs uppercase tracking-wide text-emerald-300/80">New Orders</p>
                 <p className="text-2xl font-bold text-emerald-300">{orderTypeSummary.newCount}</p>
@@ -1841,6 +1899,11 @@ export default function AdminDashboard() {
                 <p className="text-xs uppercase tracking-wide text-amber-300/80">Add-on Orders</p>
                 <p className="text-2xl font-bold text-amber-300">{orderTypeSummary.addOnCount}</p>
                 <p className="text-xs text-amber-200/70">Extra items after first order</p>
+              </div>
+              <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3">
+                <p className="text-xs uppercase tracking-wide text-rose-300/80">Allergy Alerts</p>
+                <p className="text-2xl font-bold text-rose-300">{kitchenRiskSummary.allergyAlertOrders}</p>
+                <p className="text-xs text-rose-200/70">Require allergy-safe prep</p>
               </div>
             </div>
 
@@ -1952,11 +2015,13 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredOrders.map(order => (
+                {filteredOrders.map(order => {
+                  const kitchenRisk = getOrderKitchenRisk(order);
+                  return (
                   <motion.div
                     key={order.id}
                     layout
-                    className={`rounded-xl p-4 border ${isAddOnOrder(order) ? 'order-addon-card border-amber-500/40' : 'bg-zinc-800/95 border-zinc-700'}`}
+                    className={`rounded-xl p-4 border ${kitchenRisk.hasAllergy ? 'border-rose-500/60 bg-rose-950/10' : isAddOnOrder(order) ? 'order-addon-card border-amber-500/40' : 'bg-zinc-800/95 border-zinc-700'}`}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-4 mb-4">
                       <div>
@@ -1977,6 +2042,17 @@ export default function AdminDashboard() {
                           )}
                           {isNewOrder(order) && (
                             <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40">NEW</span>
+                          )}
+                          {kitchenRisk.hasAllergy && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-rose-500/20 text-rose-200 border border-rose-400/70 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> ALLERGY ALERT
+                            </span>
+                          )}
+                          {kitchenRisk.hasSpiceNote && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-orange-500/20 text-orange-200 border border-orange-400/50">SPICE NOTE</span>
+                          )}
+                          {kitchenRisk.hasChefNote && (
+                            <span className="px-3 py-1 rounded-full text-xs font-semibold bg-sky-500/15 text-sky-200 border border-sky-400/40">CHEF NOTE</span>
                           )}
                         </div>
                         <p className="text-xl font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
@@ -2002,6 +2078,13 @@ export default function AdminDashboard() {
                         );
                       })}
                     </div>
+
+                    {kitchenRisk.global.allergies && (
+                      <div className="mb-4 rounded-lg border border-rose-500/50 bg-rose-500/15 px-3 py-2">
+                        <p className="text-xs font-semibold text-rose-100 uppercase tracking-wide">Allergy Alert</p>
+                        <p className="text-sm text-rose-50 mt-0.5">{kitchenRisk.global.allergies}</p>
+                      </div>
+                    )}
 
                     <div className="flex flex-wrap gap-2">
                       <button onClick={() => printOrderBill(order)} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
@@ -2034,7 +2117,8 @@ export default function AdminDashboard() {
                       )}
                     </div>
                   </motion.div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </motion.div>
@@ -2047,6 +2131,10 @@ export default function AdminDashboard() {
               <div>
                 <h1 className="text-xl font-bold">Kitchen Queue</h1>
                 <p className="text-xs text-gray-400 mt-1">Chef-focused view with only live kitchen orders.</p>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-400/60 bg-rose-500/20 text-rose-100">Allergy Alerts: {kitchenQueueRiskSummary.allergyAlertOrders}</span>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">Spice Notes: {kitchenQueueRiskSummary.spiceNoteOrders}</span>
+                </div>
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-400">Active tickets</p>
@@ -2063,13 +2151,27 @@ export default function AdminDashboard() {
               <div className="space-y-3">
                 {kitchenOrders.map(order => {
                   const ageMin = Math.floor((Date.now() - new Date(order.created_at).getTime()) / 60000);
+                  const kitchenRisk = getOrderKitchenRisk(order);
                   return (
-                    <div key={`kitchen-${order.id}`} className="admin-panel rounded-2xl p-4 border border-zinc-700/80">
+                    <div key={`kitchen-${order.id}`} className={`admin-panel rounded-2xl p-4 border ${kitchenRisk.hasAllergy ? 'border-rose-500/70 bg-rose-950/10' : 'border-zinc-700/80'}`}>
                       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                         <div>
                           <p className="text-lg font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
                           <p className="text-sm text-gray-300">Table {order.table_number} | {order.status.toUpperCase()}</p>
                           <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago | ETA {estimatePrepMinutes(order)} min</p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {kitchenRisk.hasAllergy && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-400/70 bg-rose-500/20 text-rose-100 flex items-center gap-1">
+                                <AlertTriangle className="w-3.5 h-3.5" /> ALLERGY ALERT
+                              </span>
+                            )}
+                            {kitchenRisk.hasSpiceNote && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">SPICE NOTE</span>
+                            )}
+                            {kitchenRisk.hasChefNote && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-sky-400/40 bg-sky-500/15 text-sky-100">CHEF NOTE</span>
+                            )}
+                          </div>
                         </div>
                         <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
                           order.status === 'confirmed' ? 'bg-blue-500/20 text-blue-300' :
@@ -2091,6 +2193,13 @@ export default function AdminDashboard() {
                           );
                         })}
                       </div>
+
+                      {kitchenRisk.global.allergies && (
+                        <div className="mb-3 rounded-lg border border-rose-500/60 bg-rose-500/20 px-3 py-2">
+                          <p className="text-xs uppercase font-semibold tracking-wide text-rose-100">Allergy Alert</p>
+                          <p className="text-sm text-rose-50 mt-0.5">{kitchenRisk.global.allergies}</p>
+                        </div>
+                      )}
 
                       <div className="flex flex-wrap gap-2">
                         {order.status === 'confirmed' && (
