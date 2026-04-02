@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -121,6 +121,7 @@ export default function AdminDashboard() {
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
   const [tableNumberInput, setTableNumberInput] = useState('');
+  const syncIntervalRef = useRef<number | null>(null);
   
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -823,8 +824,31 @@ export default function AdminDashboard() {
 
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
-    await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', order.id);
-    await supabase.from('restaurant_tables').update({ status: 'occupied', current_order_id: order.receipt_id }).eq('table_number', order.table_number);
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+      .eq('id', order.id);
+
+    if (orderError) {
+      showToast(`Error confirming order: ${orderError.message}`, 'error');
+      return;
+    }
+
+    const { error: tableError } = await supabase
+      .from('restaurant_tables')
+      .update({ status: 'occupied', current_order_id: order.receipt_id })
+      .eq('table_number', order.table_number);
+
+    if (tableError) {
+      showToast(`Order confirmed, but table status failed: ${tableError.message}`, 'error');
+      return;
+    }
+
+    setTables(prev => prev.map(t => (
+      t.table_number === order.table_number
+        ? { ...t, status: 'occupied', current_order_id: order.receipt_id }
+        : t
+    )));
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order confirmed!');
   };
@@ -836,12 +860,30 @@ export default function AdminDashboard() {
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    await supabase.from('orders').update({ status, updated_at: new Date().toISOString() }).eq('id', orderId);
+    const { error } = await supabase
+      .from('orders')
+      .update({ status, updated_at: new Date().toISOString() })
+      .eq('id', orderId);
+
+    if (error) {
+      showToast(`Error updating order: ${error.message}`, 'error');
+      return;
+    }
+
     showToast(`Order marked as ${status}`);
   };
 
   const sendOrderToKitchen = async (order: Order) => {
-    await supabase.from('orders').update({ status: 'preparing', updated_at: new Date().toISOString() }).eq('id', order.id);
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'preparing', updated_at: new Date().toISOString() })
+      .eq('id', order.id);
+
+    if (error) {
+      showToast(`Error sending order to kitchen: ${error.message}`, 'error');
+      return;
+    }
+
     await supabase.from('payment_event_audit').insert({
       order_id: order.id,
       receipt_id: order.receipt_id,
@@ -864,11 +906,36 @@ export default function AdminDashboard() {
 
   const handlePayment = async () => {
     if (!showPaymentModal) return;
-    await supabase.from('orders').update({
-      status: 'paid', payment_status: 'paid', payment_method: 'cash',
-      payment_type: 'direct_cash'
-    }).eq('id', showPaymentModal.id);
-    await supabase.from('restaurant_tables').update({ status: 'available', current_order_id: null }).eq('table_number', showPaymentModal.table_number);
+
+    const { error: orderError } = await supabase
+      .from('orders')
+      .update({
+        status: 'paid', payment_status: 'paid', payment_method: 'cash',
+        payment_type: 'direct_cash'
+      })
+      .eq('id', showPaymentModal.id);
+
+    if (orderError) {
+      showToast(`Could not record payment: ${orderError.message}`, 'error');
+      return;
+    }
+
+    const { error: tableError } = await supabase
+      .from('restaurant_tables')
+      .update({ status: 'available', current_order_id: null })
+      .eq('table_number', showPaymentModal.table_number);
+
+    if (tableError) {
+      showToast(`Payment saved, but table release failed: ${tableError.message}`, 'error');
+      return;
+    }
+
+    setTables(prev => prev.map(t => (
+      t.table_number === showPaymentModal.table_number
+        ? { ...t, status: 'available', current_order_id: null }
+        : t
+    )));
+
     await supabase.from('payment_event_audit').insert({
       order_id: showPaymentModal.id,
       receipt_id: showPaymentModal.receipt_id,
@@ -975,9 +1042,33 @@ export default function AdminDashboard() {
       }
     }
 
-    const { error } = await supabase.from('restaurant_tables').update({ status }).eq('id', id);
+    const nextStatus = status as RestaurantTable['status'];
+    const fallbackLiveReceipt = targetTable
+      ? (liveUnpaidOrderByTable.get(targetTable.table_number)?.receipt_id || null)
+      : null;
+    const nextCurrentOrderId = nextStatus === 'available'
+      ? null
+      : (targetTable?.current_order_id || fallbackLiveReceipt);
+
+    const { error } = await supabase
+      .from('restaurant_tables')
+      .update({
+        status: nextStatus,
+        current_order_id: nextCurrentOrderId,
+      })
+      .eq('id', id);
+
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
-    fetchTables();
+
+    setTables(prev => prev.map(table => (
+      table.id === id
+        ? {
+            ...table,
+            status: nextStatus,
+            current_order_id: table.id === id ? nextCurrentOrderId : table.current_order_id,
+          }
+        : table
+    )));
   };
 
   const applyCheckoutGateOverride = async () => {
@@ -1030,11 +1121,63 @@ export default function AdminDashboard() {
     showToast('Manager override recorded and table released.');
   };
 
+  const liveUnpaidOrderByTable = useMemo(() => {
+    const openByTable = new Map<number, Order>();
+    const sorted = [...orders]
+      .filter(o => !o.receipt_id?.startsWith('CALL-'))
+      .filter(o => o.payment_status !== 'paid' && !['cancelled', 'paid', 'completed'].includes(o.status))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    for (const order of sorted) {
+      if (!openByTable.has(order.table_number)) {
+        openByTable.set(order.table_number, order);
+      }
+    }
+
+    return openByTable;
+  }, [orders]);
+
+  const effectiveTables = useMemo(() => {
+    const orderByReceipt = new Map<string, Order>();
+    for (const order of orders) {
+      if (order.receipt_id) orderByReceipt.set(order.receipt_id, order);
+    }
+
+    return tables.map(table => {
+      const liveOrder = liveUnpaidOrderByTable.get(table.table_number);
+      if (liveOrder) {
+        if (table.status === 'available' || table.current_order_id !== liveOrder.receipt_id) {
+          return {
+            ...table,
+            status: 'occupied' as RestaurantTable['status'],
+            current_order_id: liveOrder.receipt_id,
+          };
+        }
+        return table;
+      }
+
+      if (table.status !== 'occupied' || !table.current_order_id) return table;
+
+      const orderForCurrentReceipt = orderByReceipt.get(table.current_order_id);
+      if (!orderForCurrentReceipt) return table;
+
+      if (orderForCurrentReceipt.payment_status === 'paid' || ['cancelled', 'paid', 'completed'].includes(orderForCurrentReceipt.status)) {
+        return {
+          ...table,
+          status: 'available' as RestaurantTable['status'],
+          current_order_id: null,
+        };
+      }
+
+      return table;
+    });
+  }, [tables, liveUnpaidOrderByTable, orders]);
+
   // Stats
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
   const todayRevenue = orders.filter(o => o.payment_status === 'paid' && new Date(o.created_at).toDateString() === new Date().toDateString()).reduce((sum, o) => sum + o.total, 0);
   const pendingOrders = orders.filter(o => !o.receipt_id?.startsWith('CALL-') && o.status === 'pending').length;
-  const activeTables = tables.filter(t => t.status !== 'available').length;
+  const activeTables = effectiveTables.filter(t => t.status !== 'available').length;
   const todayCancelledOrders = todayOrders.filter(o => o.status === 'cancelled').length;
   const todayPaidOrders = todayOrders.filter(o => o.payment_status === 'paid');
   const avgOrderValue = todayPaidOrders.length > 0 ? todayRevenue / todayPaidOrders.length : 0;
@@ -1242,6 +1385,24 @@ export default function AdminDashboard() {
 
     return tableMap;
   }, [orders]);
+
+  // Fallback sync polling protects dashboard flow if websocket subscriptions drop.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    syncIntervalRef.current = window.setInterval(() => {
+      fetchOrders();
+      fetchTables();
+      fetchPaymentEvents();
+    }, 12000);
+
+    return () => {
+      if (syncIntervalRef.current) {
+        window.clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
+    };
+  }, [isAuthenticated, fetchOrders, fetchTables, fetchPaymentEvents]);
 
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
@@ -1590,39 +1751,57 @@ export default function AdminDashboard() {
             </section>
 
             <section className="admin-panel rounded-2xl p-4 sm:p-5">
-              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+              <div className="flex flex-col gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-[#e4e1e6]">Accounting Exports</h3>
                   <p className="text-xs text-[#958da1] mt-1">Download CSV and A4 closing reports by date or date range.</p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full xl:w-auto">
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">Report Date</label>
-                    <input
-                      type="date"
-                      value={selectedReportDate}
-                      onChange={(e) => setSelectedReportDate(e.target.value)}
-                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                    />
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-[#4edea3]/30 bg-[#1b1b1e]/70 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h4 className="text-sm font-semibold text-[#e4e1e6]">Daily Report</h4>
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]">Single Day</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3">
+                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">Report Date</label>
+                      <input
+                        type="date"
+                        value={selectedReportDate}
+                        onChange={(e) => setSelectedReportDate(e.target.value)}
+                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-[#4edea3] mt-2 font-medium">{formatIsoDayLabel(selectedReportDate)}</p>
+                    <p className="text-[11px] text-[#958da1] mt-1">Used by Daily CSV and Print/Download A4 actions.</p>
                   </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">From</label>
-                    <input
-                      type="date"
-                      value={reportFromDate}
-                      onChange={(e) => setReportFromDate(e.target.value)}
-                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">To</label>
-                    <input
-                      type="date"
-                      value={reportToDate}
-                      onChange={(e) => setReportToDate(e.target.value)}
-                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                    />
+
+                  <div className="rounded-xl border border-[#4a4455]/35 bg-[#1b1b1e]/70 p-4">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <h4 className="text-sm font-semibold text-[#e4e1e6]">Date Range Report</h4>
+                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#958da1]">From - To</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3 mb-2">
+                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">From</label>
+                      <input
+                        type="date"
+                        value={reportFromDate}
+                        onChange={(e) => setReportFromDate(e.target.value)}
+                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3">
+                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">To</label>
+                      <input
+                        type="date"
+                        value={reportToDate}
+                        onChange={(e) => setReportToDate(e.target.value)}
+                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                      />
+                    </div>
+                    <p className="text-[11px] text-[#958da1] mt-2">
+                      Effective range: <span className="text-[#e4e1e6] font-medium">{formatIsoDayLabel(rangeStartIso)}</span> to <span className="text-[#e4e1e6] font-medium">{formatIsoDayLabel(rangeEndIso)}</span>
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1739,7 +1918,7 @@ export default function AdminDashboard() {
                   </button>
                 </h3>
                 <div className="grid grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
-                  {tables.map((table) => {
+                  {effectiveTables.map((table) => {
                      const isAvailable = table.status === 'available';
                      return (
                       <div 
@@ -1876,7 +2055,7 @@ export default function AdminDashboard() {
                 className="px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none"
               >
                 <option value="all">All Tables</option>
-                {tables.map(t => (
+                  {effectiveTables.map(t => (
                   <option key={t.id} value={t.table_number.toString()}>Table {t.table_number}</option>
                 ))}
               </select>
@@ -2328,10 +2507,10 @@ export default function AdminDashboard() {
                 <h1 className="text-5xl font-black tracking-tight text-[#e4e1e6] mt-2">Dining Floor</h1>
                 <div className="flex flex-wrap gap-2 mt-4">
                   <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
-                    {tables.filter(t => t.status === 'available').length} Tables Available
+                    {effectiveTables.filter(t => t.status === 'available').length} Tables Available
                   </span>
                   <span className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
-                    {tables.filter(t => t.status === 'occupied').length} Tables Occupied
+                    {effectiveTables.filter(t => t.status === 'occupied').length} Tables Occupied
                   </span>
                 </div>
               </div>
@@ -2353,7 +2532,7 @@ export default function AdminDashboard() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {tables.map(table => (
+                {effectiveTables.map(table => (
                   <motion.div key={table.id} className={`bg-[#1b1b1e] border rounded-2xl p-5 shadow-sm ${
                     table.status === 'available' ? 'border-emerald-500/30' :
                     table.status === 'occupied' ? 'border-amber-500/40' :

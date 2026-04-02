@@ -301,6 +301,7 @@ function OrderContent() {
   const confirmationFlashTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
   const voiceStatusTimerRef = useRef<number | null>(null);
+  const handledOrderTransitionsRef = useRef<Set<string>>(new Set());
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -534,6 +535,45 @@ function OrderContent() {
     navigator.vibrate([45, 30, 65]);
   };
 
+  const handleOrderTransition = useCallback((nextStatus: string, orderId: number) => {
+    const transitionKey = `${orderId}:${nextStatus}`;
+    if (handledOrderTransitionsRef.current.has(transitionKey)) return;
+    handledOrderTransitionsRef.current.add(transitionKey);
+
+    if (nextStatus === 'confirmed') {
+      triggerConfirmationHaptic();
+      setWaitingForConfirmation(false);
+      setCurrentOrderId(null);
+      setShowConfirmationFlash(true);
+      if (confirmationFlashTimerRef.current) {
+        window.clearTimeout(confirmationFlashTimerRef.current);
+      }
+      confirmationFlashTimerRef.current = window.setTimeout(() => {
+        setShowConfirmationFlash(false);
+      }, 1200);
+      addBotMessage(
+        `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
+        [
+          { label: '➕ Order More', value: 'more' },
+          { label: '💵 Add Tip & Bill', value: 'pay' }
+        ]
+      );
+      return;
+    }
+
+    if (nextStatus === 'cancelled') {
+      setWaitingForConfirmation(false);
+      setCurrentOrderId(null);
+      addBotMessage(
+        `😔 Sorry, this item is currently unavailable.\n\nWould you like to see the menu again?`,
+        [
+          { label: '🍹 Show Menu', value: 'menu' },
+          { label: '💬 Get Recommendation', value: 'recommend' }
+        ]
+      );
+    }
+  }, [lastOrderWasAddOn, receiptId, tableNumber, lastSubmittedItemsCount, lastSubmittedSubtotal]);
+
   // Call waiter function
   const callWaiter = async () => {
     if (callingWaiter) return;
@@ -672,35 +712,7 @@ function OrderContent() {
           filter: `id=eq.${currentOrderId}`
         },
         (payload: any) => {
-          if (payload.new.status === 'confirmed') {
-            triggerConfirmationHaptic();
-            setWaitingForConfirmation(false);
-            setCurrentOrderId(null);
-            setShowConfirmationFlash(true);
-            if (confirmationFlashTimerRef.current) {
-              window.clearTimeout(confirmationFlashTimerRef.current);
-            }
-            confirmationFlashTimerRef.current = window.setTimeout(() => {
-              setShowConfirmationFlash(false);
-            }, 1200);
-            addBotMessage(
-              `✅ Your ${lastOrderWasAddOn ? 'add-on ' : ''}order has been confirmed!\n\nReceipt: ${receiptId}\nTable: ${tableNumber}\nItems: ${lastSubmittedItemsCount}\nSubtotal: $${lastSubmittedSubtotal.toFixed(2)}\n\n🍹 Your drinks are being prepared!\n💵 Pay cash to the manager when ready.`,
-              [
-                { label: '➕ Order More', value: 'more' },
-                { label: '💵 Add Tip & Bill', value: 'pay' }
-              ]
-            );
-          } else if (payload.new.status === 'cancelled') {
-            setWaitingForConfirmation(false);
-            setCurrentOrderId(null);
-            addBotMessage(
-              `😔 Sorry, this item is currently unavailable.\n\nWould you like to see the menu again?`,
-              [
-                { label: '🍹 Show Menu', value: 'menu' },
-                { label: '💬 Get Recommendation', value: 'recommend' }
-              ]
-            );
-          }
+          handleOrderTransition(payload.new.status, currentOrderId);
         }
       )
       .subscribe();
@@ -708,7 +720,27 @@ function OrderContent() {
     return () => {
       supabase.removeChannel(orderSub);
     };
-  }, [currentOrderId, waitingForConfirmation, receiptId, tableNumber, lastSubmittedSubtotal, lastSubmittedItemsCount, lastOrderWasAddOn]);
+  }, [currentOrderId, waitingForConfirmation, handleOrderTransition]);
+
+  // Fallback polling prevents stuck "waiting" state if websocket updates are missed.
+  useEffect(() => {
+    if (!currentOrderId || !waitingForConfirmation) return;
+
+    const pollId = window.setInterval(async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('id', currentOrderId)
+        .single();
+
+      if (!data?.status) return;
+      if (data.status === 'confirmed' || data.status === 'cancelled') {
+        handleOrderTransition(data.status, currentOrderId);
+      }
+    }, 9000);
+
+    return () => window.clearInterval(pollId);
+  }, [currentOrderId, waitingForConfirmation, handleOrderTransition]);
 
   // Welcome message
   useEffect(() => {
@@ -1395,8 +1427,14 @@ function OrderContent() {
       }
 
       if (insertedData && insertedData[0]) {
-        setCurrentOrderId(insertedData[0].id);
-        setLatestOrderIdForPayment(insertedData[0].id);
+        const insertedOrderId = insertedData[0].id;
+        setCurrentOrderId(insertedOrderId);
+        setLatestOrderIdForPayment(insertedOrderId);
+        // Keep table occupancy in sync immediately instead of waiting for manual admin actions.
+        await supabase
+          .from('restaurant_tables')
+          .update({ status: 'occupied', current_order_id: receipt })
+          .eq('table_number', parseInt(tableNumber));
       }
 
       setSubmittedQuantities(prev => {
