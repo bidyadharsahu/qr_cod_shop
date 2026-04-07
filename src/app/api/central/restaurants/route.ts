@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Restaurant } from '@/lib/types';
 import { normalizeRestaurantSlug } from '@/lib/tenant';
@@ -39,6 +40,17 @@ function buildTenantUrls(origin: string, slug: string) {
     adminLogin: `${tenantBase}/admin/login`,
     adminDashboard: `${tenantBase}/admin`,
   };
+}
+
+function generateTenantPassword(slug: string): string {
+  const seed = normalizeRestaurantSlug(slug).slice(0, 6) || 'tenant';
+  const random = crypto
+    .randomBytes(6)
+    .toString('base64url')
+    .replace(/[^a-zA-Z0-9]/g, '')
+    .slice(0, 8);
+
+  return `${seed}@${random}`;
 }
 
 function emptyMetrics(): TenantMetrics {
@@ -195,9 +207,9 @@ export async function POST(req: NextRequest) {
 
   const tenant = insertedRestaurant as Restaurant;
 
-  const managerCreds = { username: 'manager', password: `${tenant.slug}@123` };
-  const chefCreds = { username: 'chef', password: `${tenant.slug}@123` };
-  const adminCreds = { username: 'admin', password: `${tenant.slug}@123` };
+  const managerCreds = { username: 'manager', password: generateTenantPassword(tenant.slug) };
+  const chefCreds = { username: 'chef', password: generateTenantPassword(tenant.slug) };
+  const adminCreds = { username: 'admin', password: generateTenantPassword(tenant.slug) };
 
   const rollbackRestaurant = async () => {
     await supabase

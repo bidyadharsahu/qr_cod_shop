@@ -12,6 +12,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from('restaurants')
     .select('id, slug, name, plan, status')
+    .eq('slug', 'default')
     .eq('status', 'active')
     .order('name', { ascending: true });
 

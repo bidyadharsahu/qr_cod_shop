@@ -23,11 +23,6 @@ const DEFAULT_RESTAURANT_OPTION: Restaurant = {
   status: 'active',
 };
 
-interface TenantCatalogResponse {
-  restaurants?: Restaurant[];
-  error?: string;
-}
-
 interface TenantResolveResponse {
   restaurant?: Restaurant;
   error?: string;
@@ -79,7 +74,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
       return;
     }
 
-    if (sessionSlug) {
+    if (sessionSlug && sessionSlug !== DEFAULT_RESTAURANT_CONTEXT.restaurantSlug) {
       router.push(`/t/${sessionSlug}/admin`);
       return;
     }
@@ -111,32 +106,33 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
           return;
         }
 
-        const response = await fetch('/api/tenant/catalog', { cache: 'no-store' });
-        const payload = await response.json() as TenantCatalogResponse;
-        const next = payload.restaurants || [];
+        const response = await fetch(
+          `/api/tenant/resolve?slug=${encodeURIComponent(DEFAULT_RESTAURANT_CONTEXT.restaurantSlug)}`,
+          { cache: 'no-store' },
+        );
+        const payload = await response.json() as TenantResolveResponse;
 
-        if (!response.ok || next.length === 0) {
+        if (!response.ok || !payload.restaurant || payload.restaurant.status === 'disabled') {
           setRestaurants([DEFAULT_RESTAURANT_OPTION]);
           setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
+          setTenantLabel(DEFAULT_RESTAURANT_OPTION.name);
           return;
         }
 
-        setRestaurants(next);
-
-        const normalized = normalizeRestaurantSlug(restaurantSlug);
-        if (!next.some((r) => normalizeRestaurantSlug(r.slug) === normalized)) {
-          setRestaurantSlug(next[0].slug);
-        }
+        setRestaurants([payload.restaurant]);
+        setRestaurantSlug(payload.restaurant.slug);
+        setTenantLabel(payload.restaurant.name);
       } catch {
         setRestaurants([DEFAULT_RESTAURANT_OPTION]);
         setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
+        setTenantLabel(DEFAULT_RESTAURANT_OPTION.name);
       } finally {
         setTenantLoading(false);
       }
     };
 
     loadRestaurants();
-  }, [normalizedForcedSlug, restaurantSlug, tenantScopedLogin]);
+  }, [normalizedForcedSlug, tenantScopedLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -214,7 +210,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
               <p className="text-gray-400 text-sm">
                 {tenantScopedLogin
                   ? (tenantLabel ? `${tenantLabel} • Manager/Chef/Admin Login` : 'Manager/Chef/Admin Login')
-                  : 'Manager and Chef Login'}
+                  : `${tenantLabel || DEFAULT_RESTAURANT_OPTION.name} • Staff Login`}
               </p>
             </div>
 
@@ -313,6 +309,12 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
               <p className="text-[11px] text-zinc-500 text-center">
                 Manager uses dashboard controls. Chef gets kitchen-only workflow. Credentials are tenant-specific.
               </p>
+
+              {!tenantScopedLogin && (
+                <p className="text-[11px] text-zinc-500 text-center">
+                  Other tenants must use their private URL: /t/your-tenant-slug/admin/login
+                </p>
+              )}
 
               {!tenantScopedLogin && (
                 <p className="text-[11px] text-zinc-500 text-center">

@@ -1,21 +1,25 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import Link from 'next/link';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabase';
 import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 import { getCurrentTheme, type AppTheme } from '@/lib/themes';
 import type { Order, MenuItem, RestaurantTable, PaymentEventAudit } from '@/lib/types';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
-import { clearAdminSession, normalizeRestaurantSlug, readAdminSession } from '@/lib/tenant';
+import {
+  clearAdminSession,
+  DEFAULT_RESTAURANT_CONTEXT,
+  normalizeRestaurantSlug,
+  readAdminSession,
+} from '@/lib/tenant';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, ShoppingCart, CircleDollarSign, ClipboardList, Timer, Eye, Table as TableIcon, 
-  LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
+  Plus, QrCode, Bell, X, Check, ChefHat,
   DollarSign, Clock, Users, Trash2, Edit, Search,
-  PhoneCall, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap
+  PhoneCall, Sparkles, AlertTriangle, TrendingUp, CreditCard, WandSparkles, Printer, Download, Palette, Zap, LogOut
 } from 'lucide-react';
 import { ResponsiveContainer, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, Bar, Cell } from 'recharts';
 
@@ -24,10 +28,17 @@ interface PaymentGatewayStatus {
   paypalConfigured: boolean;
   mode: 'sandbox' | 'live';
   anyProviderConfigured: boolean;
+  accountActive?: boolean;
+  plan?: 'basic' | 'premium';
 }
 
 type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
 type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
+type RealtimeHealth = 'connecting' | 'live' | 'degraded';
+
+interface AdminDashboardProps {
+  forcedTenantSlug?: string;
+}
 
 const DEFAULT_COMPANY_PROFILE = {
   name: 'netrikxr.shop',
@@ -55,25 +66,23 @@ const formatIsoDayLabel = (isoDay: string) => {
   });
 };
 
-interface AdminDashboardProps {
-  forcedTenantSlug?: string;
-}
-
-export default function AdminDashboard(props: AdminDashboardProps = {}) {
+export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps = {}) {
   const router = useRouter();
-  const normalizedForcedTenantSlug = normalizeRestaurantSlug(props.forcedTenantSlug || '');
+  const normalizedForcedTenantSlug = normalizeRestaurantSlug(forcedTenantSlug || '');
   const tenantScopedDashboard = Boolean(normalizedForcedTenantSlug);
-  const tenantLoginRoute = tenantScopedDashboard ? `/t/${normalizedForcedTenantSlug}/admin/login` : '/admin/login';
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [staffRole, setStaffRole] = useState<StaffRole>('manager');
   const [staffUser, setStaffUser] = useState<string>('');
-  const [restaurantId, setRestaurantId] = useState<number>(tenantScopedDashboard ? 0 : 1);
-  const [restaurantSlug, setRestaurantSlug] = useState<string>(normalizedForcedTenantSlug || 'default');
-  const [restaurantName, setRestaurantName] = useState<string>('Default Restaurant');
-  const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
+  const [restaurantId, setRestaurantId] = useState<number>(DEFAULT_RESTAURANT_CONTEXT.restaurantId);
+  const [restaurantSlug, setRestaurantSlug] = useState<string>(
+    normalizedForcedTenantSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug,
+  );
+  const [restaurantName, setRestaurantName] = useState<string>(DEFAULT_RESTAURANT_CONTEXT.restaurantName);
+  const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('basic');
   const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
+  const [realtimeHealth, setRealtimeHealth] = useState<RealtimeHealth>('connecting');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -135,11 +144,23 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
   const [tableNumberInput, setTableNumberInput] = useState('');
-  const syncIntervalRef = useRef<number | null>(null);
-  const tableReconcileRef = useRef(false);
   
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+
+  const canManageOrders = staffRole === 'manager' || staffRole === 'restaurant_admin';
+
+  const tenantAdminLoginPath = tenantScopedDashboard
+    ? `/t/${normalizedForcedTenantSlug}/admin/login`
+    : '/admin/login';
+
+  const tenantBasePath = useMemo(() => {
+    const normalized = normalizeRestaurantSlug(restaurantSlug || '');
+    if (!normalized || normalized === DEFAULT_RESTAURANT_CONTEXT.restaurantSlug) return '';
+    return `/t/${normalized}`;
+  }, [restaurantSlug]);
+
+  const tenantOrderPath = `${tenantBasePath || ''}/order`;
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -185,17 +206,6 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
     return 'https://qr-cod-shop.vercel.app';
-  };
-
-  const getTenantOrderUrl = (tableNumber: number | string) => {
-    const normalizedSlug = normalizeRestaurantSlug(restaurantSlug || normalizedForcedTenantSlug || '');
-    const encodedTable = encodeURIComponent(String(tableNumber));
-
-    if (normalizedSlug) {
-      return `${getBaseUrl()}/t/${encodeURIComponent(normalizedSlug)}/order?table=${encodedTable}&restaurant=${restaurantId}`;
-    }
-
-    return `${getBaseUrl()}/order?table=${encodedTable}&restaurant=${restaurantId}`;
   };
 
   const printOrderBill = (order: Order) => {
@@ -710,12 +720,13 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     showToast('Date-range CSV exported');
   };
 
-  // Auth check with tenant-scoped staff session
+  // Auth check - bind dashboard session to the expected tenant URL.
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = () => {
       const session = readAdminSession();
+
       if (!session.authenticated) {
-        router.push(tenantLoginRoute);
+        router.push(tenantAdminLoginPath);
         return;
       }
 
@@ -725,61 +736,47 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       }
 
       const sessionSlug = normalizeRestaurantSlug(session.restaurantSlug || '');
+
       if (tenantScopedDashboard && sessionSlug !== normalizedForcedTenantSlug) {
         clearAdminSession();
-        router.push(tenantLoginRoute);
+        router.push(`/t/${normalizedForcedTenantSlug}/admin/login`);
         return;
       }
 
-      if (!tenantScopedDashboard && sessionSlug) {
+      if (!tenantScopedDashboard && sessionSlug && sessionSlug !== DEFAULT_RESTAURANT_CONTEXT.restaurantSlug) {
         router.push(`/t/${sessionSlug}/admin`);
         return;
       }
 
-      const nextRole: StaffRole = session.staffRole === 'chef' || session.staffRole === 'restaurant_admin'
-        ? session.staffRole
-        : 'manager';
+      const effectiveSlug = tenantScopedDashboard
+        ? normalizedForcedTenantSlug
+        : (sessionSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
 
-      setStaffRole(nextRole);
+      const role: StaffRole = session.staffRole === 'chef'
+        ? 'chef'
+        : session.staffRole === 'restaurant_admin'
+          ? 'restaurant_admin'
+          : 'manager';
+
+      setStaffRole(role);
       setStaffUser(session.staffUser || '');
-      setRestaurantId(session.restaurantId);
-      setRestaurantSlug(sessionSlug || normalizedForcedTenantSlug || 'default');
-      setRestaurantName(session.restaurantName || 'Default Restaurant');
+      setRestaurantId(session.restaurantId || DEFAULT_RESTAURANT_CONTEXT.restaurantId);
+      setRestaurantSlug(effectiveSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
+      setRestaurantName(
+        (session.restaurantName || DEFAULT_RESTAURANT_CONTEXT.restaurantName).trim() || DEFAULT_RESTAURANT_CONTEXT.restaurantName,
+      );
       setIsAuthenticated(true);
-      setActiveTab(nextRole === 'chef' ? 'kitchen' : 'dashboard');
-
-      const { data } = await supabase
-        .from('restaurants')
-        .select('name, slug, plan, status')
-        .eq('id', session.restaurantId)
-        .maybeSingle();
-
-      if (data) {
-        const nextSlug = normalizeRestaurantSlug(data.slug || session.restaurantSlug || normalizedForcedTenantSlug || 'default');
-        if (tenantScopedDashboard && nextSlug !== normalizedForcedTenantSlug) {
-          clearAdminSession();
-          router.push(tenantLoginRoute);
-          return;
-        }
-
-        setRestaurantSlug(nextSlug);
-        setRestaurantName((data.name || session.restaurantName || 'Default Restaurant').trim());
-        setRestaurantPlan(data.plan === 'premium' ? 'premium' : 'basic');
-        const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
-        setRestaurantStatus(nextStatus);
-
-        if (nextStatus === 'disabled') {
-          clearAdminSession();
-          router.push(tenantLoginRoute);
-          return;
-        }
-      }
-
+      setActiveTab(role === 'chef' ? 'kitchen' : 'dashboard');
       setAuthLoading(false);
     };
 
     checkAuth();
-  }, [normalizedForcedTenantSlug, router, tenantLoginRoute, tenantScopedDashboard]);
+  }, [
+    normalizedForcedTenantSlug,
+    router,
+    tenantAdminLoginPath,
+    tenantScopedDashboard,
+  ]);
 
   // Tampa timezone clock - updates every second
   useEffect(() => {
@@ -808,34 +805,117 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     return () => clearInterval(interval);
   }, []);
 
+  const fetchRestaurantMeta = useCallback(async () => {
+    const slug = normalizeRestaurantSlug(restaurantSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
+    if (!slug) return;
+
+    try {
+      const response = await fetch(`/api/tenant/resolve?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+      const payload = await response.json() as {
+        restaurant?: {
+          id: number;
+          slug: string;
+          name: string;
+          plan: 'basic' | 'premium';
+          status: 'active' | 'disabled';
+        };
+      };
+
+      if (!response.ok || !payload.restaurant) return;
+
+      const nextRestaurant = payload.restaurant;
+      const nextStatus = nextRestaurant.status === 'disabled' ? 'disabled' : 'active';
+      const nextPlan = nextRestaurant.plan === 'premium' ? 'premium' : 'basic';
+
+      setRestaurantId(nextRestaurant.id);
+      setRestaurantSlug(normalizeRestaurantSlug(nextRestaurant.slug || slug));
+      setRestaurantName((nextRestaurant.name || DEFAULT_RESTAURANT_CONTEXT.restaurantName).trim() || DEFAULT_RESTAURANT_CONTEXT.restaurantName);
+      setRestaurantStatus(nextStatus);
+      setRestaurantPlan(nextPlan);
+
+      if (nextStatus === 'disabled') {
+        clearAdminSession();
+        showToast('Restaurant access is disabled. Contact central support.', 'error');
+        router.push(tenantAdminLoginPath);
+      }
+    } catch {
+      // Keep current in-memory session context if tenant metadata call fails.
+    }
+  }, [restaurantSlug, router, tenantAdminLoginPath]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    void fetchRestaurantMeta();
+  }, [fetchRestaurantMeta, isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId) return;
+
+    const restaurantSub = supabase
+      .channel(`admin-restaurant-meta-${restaurantId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'restaurants',
+        filter: `id=eq.${restaurantId}`,
+      }, (payload: any) => {
+        const nextStatus = payload?.new?.status === 'disabled' ? 'disabled' : 'active';
+        const nextPlan = payload?.new?.plan === 'premium' ? 'premium' : 'basic';
+
+        setRestaurantStatus(nextStatus);
+        setRestaurantPlan(nextPlan);
+
+        if (nextStatus === 'disabled') {
+          clearAdminSession();
+          showToast('Restaurant access is disabled. Contact central support.', 'error');
+          router.push(tenantAdminLoginPath);
+        }
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void fetchRestaurantMeta();
+        }
+      });
+
+    return () => {
+      supabase.removeChannel(restaurantSub);
+    };
+  }, [fetchRestaurantMeta, isAuthenticated, restaurantId, router, tenantAdminLoginPath]);
+
   // Fetch functions
   const fetchOrders = useCallback(async () => {
     if (!restaurantId) return;
+
     const { data } = await supabase
       .from('orders')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
+
     if (data) setOrders(data as Order[]);
   }, [restaurantId]);
 
   const fetchMenu = useCallback(async () => {
     if (!restaurantId) return;
+
     const { data } = await supabase
       .from('menu_items')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('category', { ascending: true });
+
     if (data) setMenuItems((data as MenuItem[]).map(withResolvedMenuImage));
   }, [restaurantId]);
 
   const fetchTables = useCallback(async () => {
     if (!restaurantId) return;
+
     const { data } = await supabase
       .from('restaurant_tables')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .order('table_number', { ascending: true });
+
     if (data) setTables(data as RestaurantTable[]);
   }, [restaurantId]);
 
@@ -852,10 +932,32 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     if (data) setPaymentEvents(data as PaymentEventAudit[]);
   }, [restaurantId]);
 
-  // Initial fetch & realtime
+  const runFullSync = useCallback(() => {
+    void fetchOrders();
+    void fetchMenu();
+    void fetchTables();
+    void fetchPaymentEvents();
+  }, [fetchMenu, fetchOrders, fetchPaymentEvents, fetchTables]);
+
+  // Initial fetch, realtime updates, reconnect recovery, and fallback polling.
   useEffect(() => {
-    if (!isAuthenticated) return;
-    fetchOrders(); fetchMenu(); fetchTables(); fetchPaymentEvents();
+    if (!isAuthenticated || !restaurantId) return;
+
+    setRealtimeHealth('connecting');
+    runFullSync();
+
+    const handleChannelStatus = (status: string) => {
+      if (status === 'SUBSCRIBED') {
+        setRealtimeHealth('live');
+        runFullSync();
+        return;
+      }
+
+      if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+        setRealtimeHealth('degraded');
+        runFullSync();
+      }
+    };
 
     const ordersSub = supabase.channel(`orders-rt-${restaurantId}`)
       .on('postgres_changes', {
@@ -864,20 +966,21 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
         table: 'orders',
         filter: `restaurant_id=eq.${restaurantId}`,
       }, (payload) => {
-        fetchOrders();
+        void fetchOrders();
+
         if (payload.eventType === 'INSERT') {
           const newOrder = payload.new as Order;
+          if (newOrder.restaurant_id !== restaurantId) return;
+
           setNotifications(prev => [newOrder, ...prev]);
+
           // Play notification sound
           const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsffK3O5cR1Gga9zvPwm1IAAKrJ7fSxZgkAlbTY5rF6IwB4o9Lss3okAHGb0vK9gSwAYJHQ87WHLgBVitLyuYYsAFGF0fXAhhYAAI/W//bPZQAAoNz/+M1WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
           audio.play().catch(() => {});
           setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== newOrder.id)), 30000);
         }
-      }).subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          fetchOrders();
-        }
-      });
+      })
+      .subscribe(handleChannelStatus);
 
     const menuSub = supabase
       .channel(`menu-rt-${restaurantId}`)
@@ -886,12 +989,10 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
         schema: 'public',
         table: 'menu_items',
         filter: `restaurant_id=eq.${restaurantId}`,
-      }, () => fetchMenu())
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          fetchMenu();
-        }
-      });
+      }, () => {
+        void fetchMenu();
+      })
+      .subscribe(handleChannelStatus);
 
     const tablesSub = supabase
       .channel(`tables-rt-${restaurantId}`)
@@ -900,12 +1001,10 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
         schema: 'public',
         table: 'restaurant_tables',
         filter: `restaurant_id=eq.${restaurantId}`,
-      }, () => fetchTables())
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          fetchTables();
-        }
-      });
+      }, () => {
+        void fetchTables();
+      })
+      .subscribe(handleChannelStatus);
 
     const paymentEventsSub = supabase
       .channel(`payment-events-rt-${restaurantId}`)
@@ -914,49 +1013,53 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
         schema: 'public',
         table: 'payment_event_audit',
         filter: `restaurant_id=eq.${restaurantId}`,
-      }, () => fetchPaymentEvents())
-      .subscribe((status) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          fetchPaymentEvents();
-        }
-      });
+      }, () => {
+        void fetchPaymentEvents();
+      })
+      .subscribe(handleChannelStatus);
+
+    const fallbackPoll = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        runFullSync();
+      }
+    }, 12000);
+
+    const handleOnline = () => {
+      runFullSync();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runFullSync();
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
+      window.clearInterval(fallbackPoll);
+      window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibility);
+
       supabase.removeChannel(ordersSub);
       supabase.removeChannel(menuSub);
       supabase.removeChannel(tablesSub);
       supabase.removeChannel(paymentEventsSub);
     };
-  }, [isAuthenticated, restaurantId, fetchOrders, fetchMenu, fetchTables, fetchPaymentEvents]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !restaurantId) return;
-
-    const restaurantStatusSub = supabase
-      .channel(`restaurant-status-${restaurantId}`)
-      .on('postgres_changes', {
-        event: 'UPDATE',
-        schema: 'public',
-        table: 'restaurants',
-        filter: `id=eq.${restaurantId}`,
-      }, (payload: any) => {
-        const nextStatus = payload?.new?.status === 'disabled' ? 'disabled' : 'active';
-        setRestaurantStatus(nextStatus);
-        if (nextStatus === 'disabled') {
-          clearAdminSession();
-          router.push(tenantLoginRoute);
-        }
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(restaurantStatusSub);
-    };
-  }, [isAuthenticated, restaurantId, router, tenantLoginRoute]);
+  }, [
+    fetchMenu,
+    fetchOrders,
+    fetchPaymentEvents,
+    fetchTables,
+    isAuthenticated,
+    restaurantId,
+    runFullSync,
+  ]);
 
   // Real-time payment modal updates
   useEffect(() => {
-    if (!showPaymentModal) {
+    if (!showPaymentModal || !restaurantId) {
       setPaymentModalData(null);
       return;
     }
@@ -976,53 +1079,41 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
           filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload: any) => {
-          const nextOrder = payload.new as Order;
-          if (nextOrder.id === showPaymentModal.id) {
-            setPaymentModalData(nextOrder);
+          if (payload?.new?.id === showPaymentModal.id) {
+            setPaymentModalData(payload.new as Order);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          void fetchOrders();
+        }
+      });
 
     return () => {
       supabase.removeChannel(paymentSub);
     };
-  }, [showPaymentModal, restaurantId]);
+  }, [fetchOrders, restaurantId, showPaymentModal]);
 
   const handleLogout = () => {
     clearAdminSession();
-    router.push(tenantLoginRoute);
+    router.push(tenantAdminLoginPath);
   };
 
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
-    const { error: orderError } = await supabase
+    await supabase
       .from('orders')
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
 
-    if (orderError) {
-      showToast(`Error confirming order: ${orderError.message}`, 'error');
-      return;
-    }
-
-    const { error: tableError } = await supabase
+    await supabase
       .from('restaurant_tables')
       .update({ status: 'occupied', current_order_id: order.receipt_id })
       .eq('table_number', order.table_number)
       .eq('restaurant_id', restaurantId);
 
-    if (tableError) {
-      showToast(`Order confirmed, but table status failed: ${tableError.message}`, 'error');
-      return;
-    }
-
-    setTables(prev => prev.map(t => (
-      t.table_number === order.table_number
-        ? { ...t, status: 'occupied', current_order_id: order.receipt_id }
-        : t
-    )));
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order confirmed!');
   };
@@ -1033,36 +1124,27 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
+
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order cancelled', 'error');
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    const { error } = await supabase
+    await supabase
       .from('orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', orderId)
       .eq('restaurant_id', restaurantId);
 
-    if (error) {
-      showToast(`Error updating order: ${error.message}`, 'error');
-      return;
-    }
-
     showToast(`Order marked as ${status}`);
   };
 
   const sendOrderToKitchen = async (order: Order) => {
-    const { error } = await supabase
+    await supabase
       .from('orders')
       .update({ status: 'preparing', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
-
-    if (error) {
-      showToast(`Error sending order to kitchen: ${error.message}`, 'error');
-      return;
-    }
 
     await supabase.from('payment_event_audit').insert({
       restaurant_id: restaurantId,
@@ -1088,36 +1170,18 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
   const handlePayment = async () => {
     if (!showPaymentModal) return;
 
-    const { error: orderError } = await supabase
-      .from('orders')
-      .update({
-        status: 'paid', payment_status: 'paid', payment_method: 'cash',
-        payment_type: 'direct_cash'
-      })
+    await supabase.from('orders').update({
+      status: 'paid', payment_status: 'paid', payment_method: 'cash',
+      payment_type: 'direct_cash'
+    })
       .eq('id', showPaymentModal.id)
       .eq('restaurant_id', restaurantId);
 
-    if (orderError) {
-      showToast(`Could not record payment: ${orderError.message}`, 'error');
-      return;
-    }
-
-    const { error: tableError } = await supabase
+    await supabase
       .from('restaurant_tables')
       .update({ status: 'available', current_order_id: null })
       .eq('table_number', showPaymentModal.table_number)
       .eq('restaurant_id', restaurantId);
-
-    if (tableError) {
-      showToast(`Payment saved, but table release failed: ${tableError.message}`, 'error');
-      return;
-    }
-
-    setTables(prev => prev.map(t => (
-      t.table_number === showPaymentModal.table_number
-        ? { ...t, status: 'available', current_order_id: null }
-        : t
-    )));
 
     await supabase.from('payment_event_audit').insert({
       restaurant_id: restaurantId,
@@ -1159,6 +1223,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
           .update(data)
           .eq('id', editMenuItem.id)
           .eq('restaurant_id', restaurantId);
+
         if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
       } else {
         const { error } = await supabase.from('menu_items').insert(data);
@@ -1178,6 +1243,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       .delete()
       .eq('id', id)
       .eq('restaurant_id', restaurantId);
+
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Item deleted');
     fetchMenu();
@@ -1189,6 +1255,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       .update({ available: !item.available })
       .eq('id', item.id)
       .eq('restaurant_id', restaurantId);
+
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     fetchMenu();
   };
@@ -1197,14 +1264,15 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
   const addTable = async () => {
     const num = parseInt(tableNumberInput);
     if (isNaN(num) || num <= 0) { showToast('Invalid table number', 'error'); return; }
-    if (restaurantPlan === 'basic' && tables.length >= 10) {
-      showToast('Basic plan supports up to 10 tables. Upgrade to premium for more.', 'error');
-      return;
-    }
     try {
       const { error } = await supabase
         .from('restaurant_tables')
-        .insert({ restaurant_id: restaurantId, table_number: num, status: 'available' });
+        .insert({
+          restaurant_id: restaurantId,
+          table_number: num,
+          status: 'available',
+        });
+
       if (error) {
         if (error.message.includes('duplicate') || error.code === '23505') {
           showToast('Table already exists', 'error');
@@ -1226,6 +1294,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       .delete()
       .eq('id', id)
       .eq('restaurant_id', restaurantId);
+
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Table deleted');
     fetchTables();
@@ -1249,39 +1318,19 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       }
     }
 
-    const nextStatus = status as RestaurantTable['status'];
-    const fallbackLiveReceipt = targetTable
-      ? (liveUnpaidOrderByTable.get(targetTable.table_number)?.receipt_id || null)
-      : null;
-    const nextCurrentOrderId = nextStatus === 'available'
-      ? null
-      : (targetTable?.current_order_id || fallbackLiveReceipt);
-
     const { error } = await supabase
       .from('restaurant_tables')
-      .update({
-        status: nextStatus,
-        current_order_id: nextCurrentOrderId,
-      })
+      .update({ status })
       .eq('id', id)
       .eq('restaurant_id', restaurantId);
 
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
-
-    setTables(prev => prev.map(table => (
-      table.id === id
-        ? {
-            ...table,
-            status: nextStatus,
-            current_order_id: table.id === id ? nextCurrentOrderId : table.current_order_id,
-          }
-        : table
-    )));
+    fetchTables();
   };
 
   const applyCheckoutGateOverride = async () => {
     if (!checkoutGateTable) return;
-    if (!canManage) {
+    if (!canManageOrders) {
       showToast('Only manager or restaurant admin can apply checkout override.', 'error');
       return;
     }
@@ -1331,109 +1380,11 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     showToast('Manager override recorded and table released.');
   };
 
-  const liveUnpaidOrderByTable = useMemo(() => {
-    const openByTable = new Map<number, Order>();
-    const sorted = [...orders]
-      .filter(o => !o.receipt_id?.startsWith('CALL-'))
-      .filter(o => o.payment_status !== 'paid' && !['cancelled', 'paid', 'completed'].includes(o.status))
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    for (const order of sorted) {
-      if (!openByTable.has(order.table_number)) {
-        openByTable.set(order.table_number, order);
-      }
-    }
-
-    return openByTable;
-  }, [orders]);
-
-  const effectiveTables = useMemo(() => {
-    const orderByReceipt = new Map<string, Order>();
-    for (const order of orders) {
-      if (order.receipt_id) orderByReceipt.set(order.receipt_id, order);
-    }
-
-    return tables.map(table => {
-      const liveOrder = liveUnpaidOrderByTable.get(table.table_number);
-      if (liveOrder) {
-        if (table.status === 'available' || table.current_order_id !== liveOrder.receipt_id) {
-          return {
-            ...table,
-            status: 'occupied' as RestaurantTable['status'],
-            current_order_id: liveOrder.receipt_id,
-          };
-        }
-        return table;
-      }
-
-      if (table.status !== 'occupied' || !table.current_order_id) return table;
-
-      const orderForCurrentReceipt = orderByReceipt.get(table.current_order_id);
-      if (!orderForCurrentReceipt) return table;
-
-      if (orderForCurrentReceipt.payment_status === 'paid' || ['cancelled', 'paid', 'completed'].includes(orderForCurrentReceipt.status)) {
-        return {
-          ...table,
-          status: 'available' as RestaurantTable['status'],
-          current_order_id: null,
-        };
-      }
-
-      return table;
-    });
-  }, [tables, liveUnpaidOrderByTable, orders]);
-
-  // Persist derived table occupancy so stale records self-heal after dropped events.
-  useEffect(() => {
-    if (!isAuthenticated || !restaurantId || tables.length === 0) return;
-    if (tableReconcileRef.current) return;
-
-    const pendingUpdates = effectiveTables
-      .map((effectiveTable) => {
-        const rawTable = tables.find((table) => table.id === effectiveTable.id);
-        if (!rawTable) return null;
-        if (rawTable.status === effectiveTable.status && rawTable.current_order_id === effectiveTable.current_order_id) {
-          return null;
-        }
-        return {
-          id: effectiveTable.id,
-          status: effectiveTable.status,
-          current_order_id: effectiveTable.current_order_id,
-        };
-      })
-      .filter(Boolean) as Array<{ id: number; status: RestaurantTable['status']; current_order_id: string | null }>;
-
-    if (pendingUpdates.length === 0) return;
-
-    tableReconcileRef.current = true;
-
-    const reconcile = async () => {
-      try {
-        await Promise.all(
-          pendingUpdates.map((update) =>
-            supabase
-              .from('restaurant_tables')
-              .update({
-                status: update.status,
-                current_order_id: update.current_order_id,
-              })
-              .eq('id', update.id)
-              .eq('restaurant_id', restaurantId)
-          )
-        );
-      } finally {
-        tableReconcileRef.current = false;
-      }
-    };
-
-    reconcile();
-  }, [effectiveTables, isAuthenticated, restaurantId, tables]);
-
   // Stats
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
   const todayRevenue = orders.filter(o => o.payment_status === 'paid' && new Date(o.created_at).toDateString() === new Date().toDateString()).reduce((sum, o) => sum + o.total, 0);
-  const pendingOrders = orders.filter(o => !o.receipt_id?.startsWith('CALL-') && o.status === 'pending').length;
-  const activeTables = effectiveTables.filter(t => t.status !== 'available').length;
+  const pendingOrders = orders.filter(o => o.status === 'pending').length;
+  const activeTables = tables.filter(t => t.status !== 'available').length;
   const todayCancelledOrders = todayOrders.filter(o => o.status === 'cancelled').length;
   const todayPaidOrders = todayOrders.filter(o => o.payment_status === 'paid');
   const avgOrderValue = todayPaidOrders.length > 0 ? todayRevenue / todayPaidOrders.length : 0;
@@ -1642,24 +1593,6 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     return tableMap;
   }, [orders]);
 
-  // Fallback sync polling protects dashboard flow if websocket subscriptions drop.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-
-    syncIntervalRef.current = window.setInterval(() => {
-      fetchOrders();
-      fetchTables();
-      fetchPaymentEvents();
-    }, 12000);
-
-    return () => {
-      if (syncIntervalRef.current) {
-        window.clearInterval(syncIntervalRef.current);
-        syncIntervalRef.current = null;
-      }
-    };
-  }, [isAuthenticated, fetchOrders, fetchTables, fetchPaymentEvents]);
-
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
     setWaiterCalls(prev => prev.filter(c => c.id !== call.id));
@@ -1668,6 +1601,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
       .eq('id', call.id)
       .eq('restaurant_id', restaurantId);
+
     if (error) {
       showToast('Could not acknowledge waiter call. Please retry.', 'error');
       return;
@@ -1696,13 +1630,26 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
   }, [uiTone]);
 
   useEffect(() => {
+    if (!isAuthenticated || !restaurantId) {
+      setPaymentGatewayLoading(false);
+      return;
+    }
+
+    setPaymentGatewayLoading(true);
+
     const fetchPaymentGatewayStatus = async () => {
       try {
-        const res = await fetch(`/api/payment/status?restaurantId=${restaurantId}`, {
-          headers: {
-            'x-restaurant-id': String(restaurantId),
+        const res = await fetch(
+          `/api/payment/status?restaurantId=${restaurantId}&restaurantSlug=${encodeURIComponent(restaurantSlug)}`,
+          {
+            headers: {
+              'x-restaurant-id': String(restaurantId),
+              'x-restaurant-slug': restaurantSlug,
+            },
+            cache: 'no-store',
           },
-        });
+        );
+
         if (!res.ok) return;
         const data = await res.json() as PaymentGatewayStatus;
         setPaymentGatewayStatus(data);
@@ -1714,7 +1661,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
     };
 
     fetchPaymentGatewayStatus();
-  }, [restaurantId]);
+  }, [isAuthenticated, restaurantId, restaurantSlug]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1740,8 +1687,6 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
       { id: 'menu', label: 'Menu' },
       { id: 'tables', label: 'Tables' },
     ];
-
-  const canManage = staffRole === 'manager' || staffRole === 'restaurant_admin';
 
   const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
     { id: 'corporate', label: 'Corporate' },
@@ -1845,8 +1790,9 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
               </div>
               <div className="min-w-0">
                 <p className="font-black text-xl tracking-tight truncate text-[#e4e1e6]">{companyProfile.name}</p>
-                <p className="text-[10px] text-[#958da1] uppercase tracking-[0.14em] truncate">
-                  {companyProfile.subtitle} | {restaurantName} | {restaurantPlan.toUpperCase()} | {restaurantStatus.toUpperCase()}
+                <p className="text-[10px] text-[#958da1] uppercase tracking-[0.14em] truncate">{companyProfile.subtitle}</p>
+                <p className="text-[10px] text-[#d2bbff] truncate">
+                  Tenant: {restaurantName} | {restaurantPlan.toUpperCase()} | {restaurantStatus.toUpperCase()}
                 </p>
               </div>
             </div>
@@ -1889,7 +1835,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-              <div className="hidden lg:flex items-center w-44 xl:w-52 h-10 rounded-xl border border-[#3b3450] bg-[#0e0e11] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[#7c3aed] focus-within:ring-1 focus-within:ring-[#7c3aed]/35 transition-all">
+              <div className="hidden lg:flex items-center w-56 xl:w-64 h-10 rounded-xl border border-[#3b3450] bg-[#0e0e11] px-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] focus-within:border-[#7c3aed] focus-within:ring-1 focus-within:ring-[#7c3aed]/35 transition-all">
                 <Search className="w-4 h-4 text-[#958da1] mr-2.5" />
                 <input
                   type="text"
@@ -1899,6 +1845,18 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                   className="w-full bg-transparent border-0 p-0 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none"
                 />
               </div>
+              <span
+                className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
+                  realtimeHealth === 'live'
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/35'
+                    : realtimeHealth === 'degraded'
+                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/35'
+                      : 'bg-sky-500/15 text-sky-300 border border-sky-500/35'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-current" />
+                Realtime {realtimeHealth}
+              </span>
               {waiterCalls.length > 0 && (
                 <div className="relative">
                   <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />
@@ -1912,11 +1870,14 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                 <LogOut className="w-5 h-5" />
               </button>
               <div className="hidden sm:block h-6 w-px bg-[#2a2a33]" />
-              <div className="flex items-center gap-2 rounded-xl border border-[#2a2a33] bg-[#111118] px-3 py-1.5">
+              <div className="hidden sm:flex items-center gap-2 rounded-xl border border-[#2a2a33] bg-[#111118] px-3 py-1.5">
                 <div className="text-right leading-tight">
                   <p className="text-[11px] text-[#9f97b2]">Tampa, FL</p>
                   <p className="text-xs font-semibold text-[#e4e1e6]">{currentDate}</p>
                   <p className="text-xs font-bold" style={{ color: theme.primary }}>{currentTime}</p>
+                </div>
+                <div className="w-9 h-9 rounded-xl overflow-hidden border border-[#3a3a45] bg-[#1f1f22] relative">
+                  <Image src={companyProfile.logo} alt="Staff" fill sizes="36px" className="object-cover" />
                 </div>
               </div>
             </div>
@@ -1929,7 +1890,12 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                 {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="space-y-8 text-[#e4e1e6]">
-            <section className="flex justify-end items-center">
+            {/* Dashboard Header */}
+            <section className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+              <div>
+                <h2 className="text-4xl font-extrabold tracking-tighter text-[#e4e1e6]">Executive Dashboard</h2>
+                <p className="text-[#958da1] mt-2 font-light">Live orders, payments, and table operations in one clean workflow.</p>
+              </div>
               <div className="flex gap-3">
                 <button 
                   onClick={() => {
@@ -2019,57 +1985,39 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
             </section>
 
             <section className="admin-panel rounded-2xl p-4 sm:p-5">
-              <div className="flex flex-col gap-4">
+              <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-bold text-[#e4e1e6]">Accounting Exports</h3>
                   <p className="text-xs text-[#958da1] mt-1">Download CSV and A4 closing reports by date or date range.</p>
                 </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-[#4edea3]/30 bg-[#1b1b1e]/70 p-4">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <h4 className="text-sm font-semibold text-[#e4e1e6]">Daily Report</h4>
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#4edea3]">Single Day</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3">
-                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">Report Date</label>
-                      <input
-                        type="date"
-                        value={selectedReportDate}
-                        onChange={(e) => setSelectedReportDate(e.target.value)}
-                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                      />
-                    </div>
-                    <p className="text-[11px] text-[#4edea3] mt-2 font-medium">{formatIsoDayLabel(selectedReportDate)}</p>
-                    <p className="text-[11px] text-[#958da1] mt-1">Used by Daily CSV and Print/Download A4 actions.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full xl:w-auto">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">Report Date</label>
+                    <input
+                      type="date"
+                      value={selectedReportDate}
+                      onChange={(e) => setSelectedReportDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
                   </div>
-
-                  <div className="rounded-xl border border-[#4a4455]/35 bg-[#1b1b1e]/70 p-4">
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <h4 className="text-sm font-semibold text-[#e4e1e6]">Date Range Report</h4>
-                      <span className="text-[10px] font-semibold uppercase tracking-widest text-[#958da1]">From - To</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3 mb-2">
-                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">From</label>
-                      <input
-                        type="date"
-                        value={reportFromDate}
-                        onChange={(e) => setReportFromDate(e.target.value)}
-                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-[130px_minmax(0,1fr)] items-center gap-2 md:gap-3">
-                      <label className="text-[10px] uppercase tracking-widest text-[#958da1]">To</label>
-                      <input
-                        type="date"
-                        value={reportToDate}
-                        onChange={(e) => setReportToDate(e.target.value)}
-                        className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
-                      />
-                    </div>
-                    <p className="text-[11px] text-[#958da1] mt-2">
-                      Effective range: <span className="text-[#e4e1e6] font-medium">{formatIsoDayLabel(rangeStartIso)}</span> to <span className="text-[#e4e1e6] font-medium">{formatIsoDayLabel(rangeEndIso)}</span>
-                    </p>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">From</label>
+                    <input
+                      type="date"
+                      value={reportFromDate}
+                      onChange={(e) => setReportFromDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-widest text-[#958da1] mb-1">To</label>
+                    <input
+                      type="date"
+                      value={reportToDate}
+                      onChange={(e) => setReportToDate(e.target.value)}
+                      className="admin-input w-full px-3 py-2 text-sm text-[#e4e1e6] focus:outline-none"
+                    />
                   </div>
                 </div>
               </div>
@@ -2186,7 +2134,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                   </button>
                 </h3>
                 <div className="grid grid-cols-3 gap-4 max-h-[400px] overflow-y-auto pr-2">
-                  {effectiveTables.map((table) => {
+                  {tables.map((table) => {
                      const isAvailable = table.status === 'available';
                      return (
                       <div 
@@ -2323,7 +2271,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                 className="px-3 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-sm focus:outline-none"
               >
                 <option value="all">All Tables</option>
-                  {effectiveTables.map(t => (
+                {tables.map(t => (
                   <option key={t.id} value={t.table_number.toString()}>Table {t.table_number}</option>
                 ))}
               </select>
@@ -2530,7 +2478,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                       <button onClick={() => printOrderBill(order)} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                         <Printer className="w-4 h-4" /> Print Bill
                       </button>
-                      {canManage && order.status === 'pending' && (
+                      {canManageOrders && order.status === 'pending' && (
                         <>
                           <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                             <Check className="w-4 h-4" /> Confirm
@@ -2540,7 +2488,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                           </button>
                         </>
                       )}
-                      {canManage && order.status === 'confirmed' && (
+                      {canManageOrders && order.status === 'confirmed' && (
                         <button onClick={() => sendOrderToKitchen(order)} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                           <Printer className="w-4 h-4" /> Send to Kitchen
                         </button>
@@ -2550,7 +2498,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                           Served
                         </button>
                       )}
-                      {canManage && order.payment_status !== 'paid' && order.status !== 'pending' && (
+                      {canManageOrders && order.payment_status !== 'paid' && order.status !== 'pending' && (
                         <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 text-black rounded-lg text-sm font-medium transition-colors" style={{ background: theme.primary }}>
                           Record Cash Payment
                         </button>
@@ -2775,10 +2723,10 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                 <h1 className="text-5xl font-black tracking-tight text-[#e4e1e6] mt-2">Dining Floor</h1>
                 <div className="flex flex-wrap gap-2 mt-4">
                   <span className="px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
-                    {effectiveTables.filter(t => t.status === 'available').length} Tables Available
+                    {tables.filter(t => t.status === 'available').length} Tables Available
                   </span>
                   <span className="px-3 py-1 rounded-full bg-amber-500/15 border border-amber-400/30 text-amber-300 text-xs font-semibold">
-                    {effectiveTables.filter(t => t.status === 'occupied').length} Tables Occupied
+                    {tables.filter(t => t.status === 'occupied').length} Tables Occupied
                   </span>
                 </div>
               </div>
@@ -2800,7 +2748,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {effectiveTables.map(table => (
+                {tables.map(table => (
                   <motion.div key={table.id} className={`bg-[#1b1b1e] border rounded-2xl p-5 shadow-sm ${
                     table.status === 'available' ? 'border-emerald-500/30' :
                     table.status === 'occupied' ? 'border-amber-500/40' :
@@ -2859,7 +2807,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {tables.map(table => (
                       <div key={table.id} className="bg-white rounded-2xl p-4 text-center">
-                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getTenantOrderUrl(table.table_number))}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
+                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${getBaseUrl()}${tenantOrderPath}?table=${table.table_number}&restaurant=${restaurantId}&restaurantSlug=${restaurantSlug}`)}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
                         <p className="mt-3 font-bold text-black text-xl">Table {table.table_number}</p>
                         <p className="text-xs text-gray-500">Scan to order</p>
                       </div>
@@ -3138,7 +3086,7 @@ export default function AdminDashboard(props: AdminDashboardProps = {}) {
                   </button>
                   <button
                     onClick={applyCheckoutGateOverride}
-                    disabled={!canManage}
+                    disabled={!canManageOrders}
                     className="flex-1 py-2.5 rounded-lg font-semibold text-black disabled:opacity-50"
                     style={{ background: theme.primary }}
                   >
