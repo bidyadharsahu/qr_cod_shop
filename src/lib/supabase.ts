@@ -20,10 +20,6 @@ const tenantAwareFetch: typeof fetch = async (input, init) => {
     headers.set('x-restaurant-id', tenantId);
   }
 
-  if (window.sessionStorage.getItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated) === 'true') {
-    headers.set('x-central-admin', 'true');
-  }
-
   return fetch(input, {
     ...init,
     headers,

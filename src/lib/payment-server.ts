@@ -94,8 +94,11 @@ export async function logPaymentEvent(input: PaymentAuditLogInput): Promise<void
   if (!supabase) return;
 
   const resolvedRestaurantId = input.restaurantId
-    || (input.orderId ? await resolveRestaurantIdForOrder(input.orderId) : null)
-    || 1;
+    || (input.orderId ? await resolveRestaurantIdForOrder(input.orderId) : null);
+
+  if (!resolvedRestaurantId) {
+    return;
+  }
 
   const payload = {
     restaurant_id: resolvedRestaurantId,
@@ -137,11 +140,11 @@ export async function markOrderAsPaid(
 
   const { data: existingOrder, error: existingError } = await existingOrderQuery.maybeSingle();
 
-  const resolvedRestaurantId = (existingOrder as { restaurant_id?: number } | null)?.restaurant_id || restaurantId || 1;
+  const resolvedRestaurantId = (existingOrder as { restaurant_id?: number } | null)?.restaurant_id || restaurantId || null;
 
   if (existingError || !existingOrder) {
     await logPaymentEvent({
-      restaurantId: resolvedRestaurantId,
+      restaurantId: resolvedRestaurantId || undefined,
       orderId,
       provider: paymentMethod === 'card' ? 'stripe' : 'paypal',
       eventType: 'payment_mark_failed_order_lookup',
@@ -149,6 +152,10 @@ export async function markOrderAsPaid(
       transactionId,
       source,
     });
+    return false;
+  }
+
+  if (!resolvedRestaurantId) {
     return false;
   }
 

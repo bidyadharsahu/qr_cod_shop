@@ -30,6 +30,18 @@ Optional (for online payments):
 - Optional for server payment redirects:
 	- `SUPABASE_SERVICE_ROLE_KEY`
 
+Required for secure Central Admin server APIs:
+
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `CENTRAL_ADMIN_USERNAME`
+- `CENTRAL_ADMIN_PASSWORD`
+- `CENTRAL_ADMIN_SESSION_SECRET`
+
+Local development fallback only (not for production):
+
+- `NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME` (defaults to `owner`)
+- `NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD` (defaults to `owner123`)
+
 If payment keys are not set, cash flow remains fully working and online buttons show a graceful unavailable message.
 
 Webhook endpoints to configure in provider dashboards:
@@ -72,10 +84,11 @@ This migration:
 Central admin login:
 
 - URL: `/central/login`
-- default: `owner / owner123`
-- optional override env:
-	- `NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME`
-	- `NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD`
+- server-authenticated role: `super_admin`
+- production credentials are read from:
+	- `CENTRAL_ADMIN_USERNAME`
+	- `CENTRAL_ADMIN_PASSWORD`
+	- `CENTRAL_ADMIN_SESSION_SECRET`
 
 From central admin (`/central`), you can:
 

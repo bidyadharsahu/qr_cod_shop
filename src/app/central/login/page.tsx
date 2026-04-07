@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, ShieldCheck } from 'lucide-react';
-import { ADMIN_SESSION_KEYS } from '@/lib/tenant';
 
-const DEFAULT_SUPER_ADMIN_USERNAME = 'owner';
-const DEFAULT_SUPER_ADMIN_PASSWORD = 'owner123';
+interface CentralLoginResponse {
+  error?: string;
+}
 
 export default function CentralAdminLoginPage() {
   const router = useRouter();
@@ -17,10 +17,18 @@ export default function CentralAdminLoginPage() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    if (window.sessionStorage.getItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated) === 'true') {
-      router.push('/central');
-    }
+    const checkSession = async () => {
+      try {
+        const response = await fetch('/api/central/auth/session', { cache: 'no-store' });
+        if (response.ok) {
+          router.push('/central');
+        }
+      } catch {
+        // Keep user on login form when session check fails.
+      }
+    };
+
+    checkSession();
   }, [router]);
 
   const handleLogin = async (event: React.FormEvent) => {
@@ -28,23 +36,30 @@ export default function CentralAdminLoginPage() {
     setLoading(true);
     setError('');
 
-    await new Promise(resolve => setTimeout(resolve, 300));
+    try {
+      const response = await fetch('/api/central/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+        }),
+      });
 
-    const expectedUser = process.env.NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME || DEFAULT_SUPER_ADMIN_USERNAME;
-    const expectedPassword = process.env.NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD || DEFAULT_SUPER_ADMIN_PASSWORD;
+      if (!response.ok) {
+        const payload = await response.json() as CentralLoginResponse;
+        setError(payload.error || 'Invalid central admin credentials.');
+        setLoading(false);
+        return;
+      }
 
-    if (username.trim() !== expectedUser || password !== expectedPassword) {
-      setError('Invalid central admin credentials.');
+      router.push('/central');
+    } catch {
+      setError('Could not sign in right now. Please try again.');
       setLoading(false);
-      return;
     }
-
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated, 'true');
-      window.sessionStorage.setItem(ADMIN_SESSION_KEYS.centralAdminUser, username.trim());
-    }
-
-    router.push('/central');
   };
 
   return (

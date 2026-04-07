@@ -501,47 +501,46 @@ function OrderContent() {
     try { localStorage.setItem('netrikxr-favorites', JSON.stringify(favorites)); } catch (_) {}
   }, [favorites]);
 
+  const fetchRestaurantMeta = useCallback(async (cancelState?: { cancelled: boolean }) => {
+    const { data } = await supabase
+      .from('restaurants')
+      .select('id, name, slug, status, plan')
+      .eq('id', restaurantId)
+      .maybeSingle();
+
+    if (cancelState?.cancelled) return;
+
+    if (!data) {
+      const fallback = readRestaurantContext();
+      setRestaurantName(fallback.restaurantName);
+      setRestaurantStatus('active');
+      setRestaurantPlan('premium');
+      return;
+    }
+
+    const nextName = (data.name || 'Default Restaurant').trim() || 'Default Restaurant';
+    const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
+    const nextPlan = data.plan === 'premium' ? 'premium' : 'basic';
+
+    setRestaurantName(nextName);
+    setRestaurantStatus(nextStatus);
+    setRestaurantPlan(nextPlan);
+
+    persistRestaurantContext({
+      restaurantId: data.id,
+      restaurantSlug: data.slug || 'default',
+      restaurantName: nextName,
+    });
+  }, [restaurantId]);
+
   useEffect(() => {
-    let cancelled = false;
-
-    const loadRestaurantMeta = async () => {
-      const { data } = await supabase
-        .from('restaurants')
-        .select('id, name, slug, status, plan')
-        .eq('id', restaurantId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (!data) {
-        const fallback = readRestaurantContext();
-        setRestaurantName(fallback.restaurantName);
-        setRestaurantStatus('active');
-        setRestaurantPlan('premium');
-        return;
-      }
-
-      const nextName = (data.name || 'Default Restaurant').trim() || 'Default Restaurant';
-      const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
-      const nextPlan = data.plan === 'premium' ? 'premium' : 'basic';
-
-      setRestaurantName(nextName);
-      setRestaurantStatus(nextStatus);
-      setRestaurantPlan(nextPlan);
-
-      persistRestaurantContext({
-        restaurantId: data.id,
-        restaurantSlug: data.slug || 'default',
-        restaurantName: nextName,
-      });
-    };
-
-    loadRestaurantMeta();
+    const cancelState = { cancelled: false };
+    fetchRestaurantMeta(cancelState);
 
     return () => {
-      cancelled = true;
+      cancelState.cancelled = true;
     };
-  }, [restaurantId]);
+  }, [fetchRestaurantMeta]);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -559,12 +558,16 @@ function OrderContent() {
         setRestaurantStatus(nextStatus);
         setRestaurantPlan(nextPlan);
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'SUBSCRIBED') {
+          fetchRestaurantMeta();
+        }
+      });
 
     return () => {
       supabase.removeChannel(restaurantStatusSub);
     };
-  }, [restaurantId]);
+  }, [restaurantId, fetchRestaurantMeta]);
 
   useEffect(() => {
     if (restaurantStatus === 'disabled') {
@@ -762,7 +765,11 @@ function OrderContent() {
           fetchMenu();
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'SUBSCRIBED') {
+          fetchMenu();
+        }
+      });
 
     return () => {
       supabase.removeChannel(menuSub);
@@ -849,6 +856,20 @@ function OrderContent() {
   useEffect(() => {
     if (!currentOrderId || !waitingForConfirmation) return;
 
+    const syncCurrentOrderStatus = async () => {
+      const { data } = await supabase
+        .from('orders')
+        .select('status')
+        .eq('id', currentOrderId)
+        .eq('restaurant_id', restaurantId)
+        .single();
+
+      if (!data?.status) return;
+      if (data.status === 'confirmed' || data.status === 'cancelled') {
+        handleOrderTransition(data.status, currentOrderId);
+      }
+    };
+
     const orderSub = supabase
       .channel(`order-confirmation-${restaurantId}`)
       .on(
@@ -865,7 +886,11 @@ function OrderContent() {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'SUBSCRIBED') {
+          syncCurrentOrderStatus();
+        }
+      });
 
     return () => {
       supabase.removeChannel(orderSub);

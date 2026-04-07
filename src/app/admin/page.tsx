@@ -699,6 +699,11 @@ export default function AdminDashboard() {
         return;
       }
 
+      if (session.staffRole === 'super_admin') {
+        router.push('/central');
+        return;
+      }
+
       const nextRole: StaffRole = session.staffRole === 'chef' || session.staffRole === 'restaurant_admin'
         ? session.staffRole
         : 'manager';
@@ -1151,6 +1156,10 @@ export default function AdminDashboard() {
   const addTable = async () => {
     const num = parseInt(tableNumberInput);
     if (isNaN(num) || num <= 0) { showToast('Invalid table number', 'error'); return; }
+    if (restaurantPlan === 'basic' && tables.length >= 10) {
+      showToast('Basic plan supports up to 10 tables. Upgrade to premium for more.', 'error');
+      return;
+    }
     try {
       const { error } = await supabase
         .from('restaurant_tables')

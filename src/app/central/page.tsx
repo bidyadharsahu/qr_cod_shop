@@ -16,20 +16,8 @@ import {
   ToggleRight,
   Users,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import type { Restaurant } from '@/lib/types';
-import { ADMIN_SESSION_KEYS, normalizeRestaurantSlug } from '@/lib/tenant';
-
-interface RestaurantOrderRow {
-  restaurant_id: number;
-  payment_status: 'paid' | 'unpaid';
-  total: number;
-}
-
-interface RestaurantTableRow {
-  restaurant_id: number;
-  status: 'available' | 'booked' | 'occupied';
-}
+import { normalizeRestaurantSlug } from '@/lib/tenant';
 
 interface TenantMetrics {
   orders: number;
@@ -45,6 +33,27 @@ interface CredentialsHint {
   manager: { username: string; password: string };
   chef: { username: string; password: string };
   admin: { username: string; password: string };
+}
+
+interface CentralRestaurantListResponse {
+  restaurants?: Restaurant[];
+  metricsByRestaurant?: Record<string, TenantMetrics>;
+  error?: string;
+}
+
+interface CentralRestaurantCreateResponse {
+  restaurant?: Restaurant;
+  credentials?: {
+    manager: { username: string; password: string };
+    chef: { username: string; password: string };
+    admin: { username: string; password: string };
+  };
+  error?: string;
+}
+
+interface CentralRestaurantPatchResponse {
+  restaurant?: Restaurant;
+  error?: string;
 }
 
 const emptyMetrics = (): TenantMetrics => ({
@@ -99,59 +108,33 @@ export default function CentralAdminPage() {
     setError('');
 
     try {
-      const { data: restaurantData, error: restaurantError } = await supabase
-        .from('restaurants')
-        .select('id, slug, name, owner_email, plan, status, is_default, created_at, updated_at')
-        .order('created_at', { ascending: true });
+      const response = await fetch('/api/central/restaurants', { cache: 'no-store' });
 
-      if (restaurantError) {
-        setError(`Could not load restaurants: ${restaurantError.message}`);
+      if (response.status === 401) {
+        router.push('/central/login');
+        return;
+      }
+
+      const payload = await response.json() as CentralRestaurantListResponse;
+
+      if (!response.ok) {
+        setError(payload.error || 'Could not load central admin data.');
         setRestaurants([]);
         setMetricsByRestaurant({});
         return;
       }
 
-      const tenantRows = (restaurantData || []) as Restaurant[];
+      const tenantRows = payload.restaurants || [];
       setRestaurants(tenantRows);
 
-      if (tenantRows.length === 0) {
-        setMetricsByRestaurant({});
-        return;
-      }
-
-      const restaurantIds = tenantRows.map((restaurant) => restaurant.id);
-
-      const [{ data: orderRows }, { data: tableRows }] = await Promise.all([
-        supabase
-          .from('orders')
-          .select('restaurant_id, payment_status, total')
-          .in('restaurant_id', restaurantIds),
-        supabase
-          .from('restaurant_tables')
-          .select('restaurant_id, status')
-          .in('restaurant_id', restaurantIds),
-      ]);
-
       const nextMetrics: Record<number, TenantMetrics> = {};
-      restaurantIds.forEach((id) => {
-        nextMetrics[id] = emptyMetrics();
-      });
-
-      (orderRows as RestaurantOrderRow[] | null)?.forEach((row) => {
-        const target = nextMetrics[row.restaurant_id] || (nextMetrics[row.restaurant_id] = emptyMetrics());
-        target.orders += 1;
-        if (row.payment_status === 'paid') {
-          target.paidOrders += 1;
-          target.revenue += Number(row.total || 0);
-        }
-      });
-
-      (tableRows as RestaurantTableRow[] | null)?.forEach((row) => {
-        const target = nextMetrics[row.restaurant_id] || (nextMetrics[row.restaurant_id] = emptyMetrics());
-        target.totalTables += 1;
-        if (row.status !== 'available') {
-          target.activeTables += 1;
-        }
+      Object.entries(payload.metricsByRestaurant || {}).forEach(([restaurantId, metrics]) => {
+        const numericId = Number(restaurantId);
+        if (!Number.isFinite(numericId)) return;
+        nextMetrics[numericId] = {
+          ...emptyMetrics(),
+          ...metrics,
+        };
       });
 
       setMetricsByRestaurant(nextMetrics);
@@ -160,24 +143,33 @@ export default function CentralAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    const ensureSessionAndLoad = async () => {
+      try {
+        const response = await fetch('/api/central/auth/session', { cache: 'no-store' });
+        if (!response.ok) {
+          router.push('/central/login');
+          return;
+        }
 
-    if (window.sessionStorage.getItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated) !== 'true') {
-      router.push('/central/login');
-      return;
-    }
+        loadCentralData();
+      } catch {
+        router.push('/central/login');
+      }
+    };
 
-    loadCentralData();
+    ensureSessionAndLoad();
   }, [router, loadCentralData]);
 
-  const handleLogout = () => {
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.removeItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated);
-      window.sessionStorage.removeItem(ADMIN_SESSION_KEYS.centralAdminUser);
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/central/auth/logout', { method: 'POST' });
+    } catch {
+      // Even if logout API fails, force navigation to login.
     }
+
     router.push('/central/login');
   };
 
@@ -203,68 +195,35 @@ export default function CentralAdminPage() {
     setSaving(true);
 
     try {
-      const { data: insertedRestaurant, error: insertError } = await supabase
-        .from('restaurants')
-        .insert({
+      const response = await fetch('/api/central/restaurants', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           name: trimmedName,
           slug: normalizedSlug,
-          owner_email: ownerEmail.trim() || null,
+          ownerEmail: ownerEmail.trim() || null,
           plan,
-          status: 'active',
-          is_default: false,
-        })
-        .select('id, slug, name, owner_email, plan, status, is_default, created_at, updated_at')
-        .single();
+        }),
+      });
 
-      if (insertError || !insertedRestaurant) {
-        setError(insertError?.message || 'Failed to create restaurant.');
+      if (response.status === 401) {
+        router.push('/central/login');
         return;
       }
 
-      const tenant = insertedRestaurant as Restaurant;
-      const managerCreds = { username: 'manager', password: `${tenant.slug}@123` };
-      const chefCreds = { username: 'chef', password: `${tenant.slug}@123` };
-      const adminCreds = { username: 'admin', password: `${tenant.slug}@123` };
+      const payload = await response.json() as CentralRestaurantCreateResponse;
 
-      await supabase.from('restaurant_staff').insert([
-        {
-          restaurant_id: tenant.id,
-          username: managerCreds.username,
-          password: managerCreds.password,
-          role: 'manager',
-          is_active: true,
-        },
-        {
-          restaurant_id: tenant.id,
-          username: chefCreds.username,
-          password: chefCreds.password,
-          role: 'chef',
-          is_active: true,
-        },
-        {
-          restaurant_id: tenant.id,
-          username: adminCreds.username,
-          password: adminCreds.password,
-          role: 'restaurant_admin',
-          is_active: true,
-        },
-      ]);
+      if (!response.ok || !payload.restaurant || !payload.credentials) {
+        setError(payload.error || 'Failed to create restaurant.');
+        return;
+      }
 
-      await supabase.from('app_settings').upsert({
-        restaurant_id: tenant.id,
-        business_name: tenant.name,
-        admin_subtitle: 'Admin Panel',
-        logo_url: '/icons/icon-192x192.png',
-        logo_hint: 'Logo Placeholder',
-      }, { onConflict: 'restaurant_id' });
-
-      const defaultTables = Array.from({ length: 7 }, (_, index) => ({
-        restaurant_id: tenant.id,
-        table_number: index + 1,
-        status: 'available',
-      }));
-
-      await supabase.from('restaurant_tables').insert(defaultTables);
+      const tenant = payload.restaurant;
+      const managerCreds = payload.credentials.manager;
+      const chefCreds = payload.credentials.chef;
+      const adminCreds = payload.credentials.admin;
 
       setCredentialsHint({
         restaurantName: tenant.name,
@@ -292,16 +251,25 @@ export default function CentralAdminPage() {
     setError('');
     setSuccess('');
 
-    const { error: updateError } = await supabase
-      .from('restaurants')
-      .update({
+    const response = await fetch(`/api/central/restaurants/${id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         plan: nextPlan,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id);
+      }),
+    });
 
-    if (updateError) {
-      setError(`Could not update plan: ${updateError.message}`);
+    if (response.status === 401) {
+      router.push('/central/login');
+      return;
+    }
+
+    const payload = await response.json() as CentralRestaurantPatchResponse;
+
+    if (!response.ok) {
+      setError(`Could not update plan: ${payload.error || 'Unknown error'}`);
       return;
     }
 
@@ -315,16 +283,25 @@ export default function CentralAdminPage() {
 
     const nextStatus: 'active' | 'disabled' = restaurant.status === 'active' ? 'disabled' : 'active';
 
-    const { error: updateError } = await supabase
-      .from('restaurants')
-      .update({
+    const response = await fetch(`/api/central/restaurants/${restaurant.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         status: nextStatus,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', restaurant.id);
+      }),
+    });
 
-    if (updateError) {
-      setError(`Could not update status: ${updateError.message}`);
+    if (response.status === 401) {
+      router.push('/central/login');
+      return;
+    }
+
+    const payload = await response.json() as CentralRestaurantPatchResponse;
+
+    if (!response.ok) {
+      setError(`Could not update status: ${payload.error || 'Unknown error'}`);
       return;
     }
 
