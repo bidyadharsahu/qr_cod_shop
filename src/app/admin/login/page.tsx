@@ -4,9 +4,9 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { LogIn, ArrowLeft } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import type { Restaurant } from '@/lib/types';
 import {
+  clearAdminSession,
   DEFAULT_RESTAURANT_CONTEXT,
   normalizeRestaurantSlug,
   persistAdminSession,
@@ -14,12 +14,6 @@ import {
 } from '@/lib/tenant';
 
 type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
-
-const FALLBACK_STAFF_CREDENTIALS: Record<StaffRole, { username: string; password: string }> = {
-  manager: { username: 'hello', password: '789456' },
-  chef: { username: 'chef', password: 'chef123' },
-  restaurant_admin: { username: 'admin', password: 'admin123' },
-};
 
 const DEFAULT_RESTAURANT_OPTION: Restaurant = {
   id: DEFAULT_RESTAURANT_CONTEXT.restaurantId,
@@ -29,49 +23,120 @@ const DEFAULT_RESTAURANT_OPTION: Restaurant = {
   status: 'active',
 };
 
-function LoginContent() {
+interface TenantCatalogResponse {
+  restaurants?: Restaurant[];
+  error?: string;
+}
+
+interface TenantResolveResponse {
+  restaurant?: Restaurant;
+  error?: string;
+}
+
+interface TenantAuthLoginResponse {
+  authenticated?: boolean;
+  staffRole?: StaffRole;
+  staffUser?: string;
+  restaurant?: Restaurant;
+  error?: string;
+}
+
+interface AdminLoginPageProps {
+  forcedTenantSlug?: string;
+}
+
+function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
   const router = useRouter();
+  const normalizedForcedSlug = normalizeRestaurantSlug(forcedTenantSlug || '');
+  const tenantScopedLogin = Boolean(normalizedForcedSlug);
+  const backToPath = tenantScopedLogin ? `/t/${normalizedForcedSlug}` : '/';
+
   const [role, setRole] = useState<StaffRole>('manager');
   const [restaurants, setRestaurants] = useState<Restaurant[]>([DEFAULT_RESTAURANT_OPTION]);
-  const [restaurantSlug, setRestaurantSlug] = useState(DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
+  const [restaurantSlug, setRestaurantSlug] = useState(normalizedForcedSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
+  const [tenantLabel, setTenantLabel] = useState<string>('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [tenantLoading, setTenantLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const tenantAdminPath = tenantScopedLogin ? `/t/${normalizedForcedSlug}/admin` : '/admin';
 
   // Check if already logged in
   useEffect(() => {
     const session = readAdminSession();
-    if (session.authenticated) {
-      router.push('/admin');
+    if (!session.authenticated) return;
+
+    if (session.staffRole === 'super_admin') {
+      router.push('/central');
+      return;
     }
-  }, [router]);
+
+    const sessionSlug = normalizeRestaurantSlug(session.restaurantSlug || '');
+    if (tenantScopedLogin && sessionSlug !== normalizedForcedSlug) {
+      clearAdminSession();
+      return;
+    }
+
+    if (sessionSlug) {
+      router.push(`/t/${sessionSlug}/admin`);
+      return;
+    }
+
+    router.push(tenantAdminPath);
+  }, [normalizedForcedSlug, router, tenantAdminPath, tenantScopedLogin]);
 
   useEffect(() => {
     const loadRestaurants = async () => {
-      const { data, error: restaurantsError } = await supabase
-        .from('restaurants')
-        .select('id, slug, name, plan, status')
-        .eq('status', 'active')
-        .order('name', { ascending: true });
+      setTenantLoading(true);
+      setError('');
 
-      if (restaurantsError || !data || data.length === 0) {
+      try {
+        if (tenantScopedLogin) {
+          const response = await fetch(`/api/tenant/resolve?slug=${encodeURIComponent(normalizedForcedSlug)}`, {
+            cache: 'no-store',
+          });
+
+          const payload = await response.json() as TenantResolveResponse;
+          if (!response.ok || !payload.restaurant) {
+            setError(payload.error || 'This tenant URL is invalid or unavailable.');
+            setRestaurants([]);
+            return;
+          }
+
+          setRestaurants([payload.restaurant]);
+          setRestaurantSlug(payload.restaurant.slug);
+          setTenantLabel(payload.restaurant.name);
+          return;
+        }
+
+        const response = await fetch('/api/tenant/catalog', { cache: 'no-store' });
+        const payload = await response.json() as TenantCatalogResponse;
+        const next = payload.restaurants || [];
+
+        if (!response.ok || next.length === 0) {
+          setRestaurants([DEFAULT_RESTAURANT_OPTION]);
+          setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
+          return;
+        }
+
+        setRestaurants(next);
+
+        const normalized = normalizeRestaurantSlug(restaurantSlug);
+        if (!next.some((r) => normalizeRestaurantSlug(r.slug) === normalized)) {
+          setRestaurantSlug(next[0].slug);
+        }
+      } catch {
         setRestaurants([DEFAULT_RESTAURANT_OPTION]);
         setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
-        return;
-      }
-
-      const next = data as Restaurant[];
-      setRestaurants(next);
-
-      const normalized = normalizeRestaurantSlug(restaurantSlug);
-      if (!next.some(r => normalizeRestaurantSlug(r.slug) === normalized)) {
-        setRestaurantSlug(next[0].slug);
+      } finally {
+        setTenantLoading(false);
       }
     };
 
     loadRestaurants();
-  }, [restaurantSlug]);
+  }, [normalizedForcedSlug, restaurantSlug, tenantScopedLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -81,76 +146,61 @@ function LoginContent() {
     // Small delay for UX
     await new Promise(resolve => setTimeout(resolve, 500));
     
-    const normalizedSlug = normalizeRestaurantSlug(restaurantSlug);
-    const selectedRestaurant = restaurants.find(r => normalizeRestaurantSlug(r.slug) === normalizedSlug) || null;
-
-    let resolvedRestaurant = selectedRestaurant;
-    if (!resolvedRestaurant) {
-      const { data } = await supabase
-        .from('restaurants')
-        .select('id, slug, name, plan, status')
-        .eq('slug', normalizedSlug)
-        .maybeSingle();
-
-      if (data) {
-        resolvedRestaurant = data as Restaurant;
-      }
-    }
-
-    if (!resolvedRestaurant) {
-      resolvedRestaurant = DEFAULT_RESTAURANT_OPTION;
-    }
-
-    if (resolvedRestaurant.status !== 'active') {
-      setError('Restaurant account is disabled. Contact support.');
-      setLoading(false);
-      return;
-    }
-
+    const normalizedSlug = tenantScopedLogin ? normalizedForcedSlug : normalizeRestaurantSlug(restaurantSlug);
     const usernameTrimmed = username.trim();
 
-    const { data: staffMatch, error: staffError } = await supabase
-      .from('restaurant_staff')
-      .select('id, username, role, is_active')
-      .eq('restaurant_id', resolvedRestaurant.id)
-      .eq('role', role)
-      .eq('username', usernameTrimmed)
-      .eq('password', password)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    const fallback = FALLBACK_STAFF_CREDENTIALS[role];
-    const fallbackAllowed =
-      normalizeRestaurantSlug(resolvedRestaurant.slug) === DEFAULT_RESTAURANT_CONTEXT.restaurantSlug
-      && usernameTrimmed === fallback.username
-      && password === fallback.password;
-
-    const isAuthenticated = Boolean(staffMatch) || (!staffError && fallbackAllowed) || (staffError && fallbackAllowed);
-
-    if (!isAuthenticated) {
-      setError(`Invalid ${role} credentials for ${resolvedRestaurant.name}`);
+    if (!normalizedSlug) {
+      setError('Please select a valid restaurant.');
       setLoading(false);
       return;
     }
 
-    persistAdminSession({
-      staffRole: role,
-      staffUser: usernameTrimmed,
-      restaurantId: resolvedRestaurant.id,
-      restaurantSlug: resolvedRestaurant.slug,
-      restaurantName: resolvedRestaurant.name,
-    });
+    try {
+      const response = await fetch('/api/tenant/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          restaurantSlug: normalizedSlug,
+          username: usernameTrimmed,
+          password,
+          role,
+        }),
+      });
 
-    router.push('/admin');
+      const payload = await response.json() as TenantAuthLoginResponse;
+
+      if (!response.ok || !payload.authenticated || !payload.restaurant) {
+        setError(payload.error || 'Invalid credentials.');
+        setLoading(false);
+        return;
+      }
+
+      persistAdminSession({
+        staffRole: payload.staffRole || role,
+        staffUser: payload.staffUser || usernameTrimmed,
+        restaurantId: payload.restaurant.id,
+        restaurantSlug: payload.restaurant.slug,
+        restaurantName: payload.restaurant.name,
+      });
+
+      const scopedSlug = normalizeRestaurantSlug(payload.restaurant.slug || normalizedSlug);
+      router.push(scopedSlug ? `/t/${scopedSlug}/admin` : tenantAdminPath);
+    } catch {
+      setError('Could not sign in right now. Please try again.');
+      setLoading(false);
+      return;
+    }
   };
 
   return (
     <div className="min-h-screen bg-zinc-900 flex flex-col">
       {/* Back button */}
       <div className="p-6">
-        <Link href="/" className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-2">
+        <Link href={backToPath} className="text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-2">
           <ArrowLeft className="w-5 h-5" />
-          <span>Back to Home</span>
+          <span>{tenantScopedLogin ? 'Back to Tenant Home' : 'Back to Home'}</span>
         </Link>
       </div>
 
@@ -160,8 +210,12 @@ function LoginContent() {
           <div className="bg-zinc-800 rounded-2xl p-8 shadow-xl">
             {/* Header */}
             <div className="text-center mb-8">
-              <h1 className="text-3xl font-bold text-amber-400 mb-2">Staff Portal</h1>
-              <p className="text-gray-400 text-sm">Manager and Chef Login</p>
+              <h1 className="text-3xl font-bold text-amber-400 mb-2">{tenantScopedLogin ? 'Tenant Staff Portal' : 'Staff Portal'}</h1>
+              <p className="text-gray-400 text-sm">
+                {tenantScopedLogin
+                  ? (tenantLabel ? `${tenantLabel} • Manager/Chef/Admin Login` : 'Manager/Chef/Admin Login')
+                  : 'Manager and Chef Login'}
+              </p>
             </div>
 
             {/* Error Message */}
@@ -172,20 +226,29 @@ function LoginContent() {
             )}
 
             <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">Restaurant</label>
-                <select
-                  value={restaurantSlug}
-                  onChange={(e) => setRestaurantSlug(e.target.value)}
-                  className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
-                >
-                  {restaurants.map((restaurant) => (
-                    <option key={restaurant.id} value={restaurant.slug}>
-                      {restaurant.name} ({restaurant.plan})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {tenantScopedLogin ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Tenant URL</label>
+                  <div className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-zinc-200 text-sm">
+                    {tenantLoading ? 'Loading tenant...' : `/${normalizedForcedSlug}`}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Restaurant</label>
+                  <select
+                    value={restaurantSlug}
+                    onChange={(e) => setRestaurantSlug(e.target.value)}
+                    className="w-full px-4 py-3 bg-zinc-700 border border-zinc-600 rounded-lg text-white focus:outline-none focus:border-amber-500 transition-colors"
+                  >
+                    {restaurants.map((restaurant) => (
+                      <option key={restaurant.id} value={restaurant.slug}>
+                        {restaurant.name} ({restaurant.plan})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">Role</label>
@@ -231,7 +294,7 @@ function LoginContent() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || (tenantScopedLogin && tenantLoading)}
                 className="w-full bg-amber-500 hover:bg-amber-400 text-black px-6 py-3.5 rounded-lg font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
               >
                 {loading ? (
@@ -251,9 +314,11 @@ function LoginContent() {
                 Manager uses dashboard controls. Chef gets kitchen-only workflow. Credentials are tenant-specific.
               </p>
 
-              <p className="text-[11px] text-zinc-500 text-center">
-                Super admin? <Link className="text-amber-400 hover:text-amber-300" href="/central/login">Open central panel login</Link>
-              </p>
+              {!tenantScopedLogin && (
+                <p className="text-[11px] text-zinc-500 text-center">
+                  Super admin? <Link className="text-amber-400 hover:text-amber-300" href="/central/login">Open central panel login</Link>
+                </p>
+              )}
             </form>
           </div>
         </div>
@@ -262,14 +327,14 @@ function LoginContent() {
   );
 }
 
-export default function LoginPage() {
+export default function LoginPage(props: AdminLoginPageProps = {}) {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-zinc-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-amber-500"></div>
       </div>
     }>
-      <LoginContent />
+      <LoginContent {...props} />
     </Suspense>
   );
 }

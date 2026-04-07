@@ -30,6 +30,17 @@ interface CreateRestaurantBody {
   plan?: 'basic' | 'premium';
 }
 
+function buildTenantUrls(origin: string, slug: string) {
+  const tenantBase = `${origin}/t/${slug}`;
+
+  return {
+    base: tenantBase,
+    order: `${tenantBase}/order`,
+    adminLogin: `${tenantBase}/admin/login`,
+    adminDashboard: `${tenantBase}/admin`,
+  };
+}
+
 function emptyMetrics(): TenantMetrics {
   return {
     orders: 0,
@@ -269,5 +280,6 @@ export async function POST(req: NextRequest) {
       chef: chefCreds,
       admin: adminCreds,
     },
+    urls: buildTenantUrls(req.nextUrl.origin, tenant.slug),
   }, { status: 201 });
 }

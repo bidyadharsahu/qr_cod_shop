@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { getRestaurantSubscription } from '@/lib/payment-server';
-import { resolveTenantIdFromRequest } from '@/lib/tenant-server';
+import { getTenantIdFromRequest } from '@/lib/tenant-server';
 
 export async function GET(req: NextRequest) {
-  const tenantId = resolveTenantIdFromRequest(req);
+  const tenantId = getTenantIdFromRequest(req);
+  if (!tenantId) {
+    return NextResponse.json({
+      error: 'Tenant id is required via x-restaurant-id header or restaurantId query param.',
+    }, { status: 400 });
+  }
+
   const subscription = await getRestaurantSubscription(tenantId);
 
   const accountActive = subscription ? subscription.status !== 'disabled' : false;

@@ -27,12 +27,20 @@ interface TenantMetrics {
   activeTables: number;
 }
 
+interface TenantUrls {
+  base: string;
+  order: string;
+  adminLogin: string;
+  adminDashboard: string;
+}
+
 interface CredentialsHint {
   restaurantName: string;
   restaurantSlug: string;
   manager: { username: string; password: string };
   chef: { username: string; password: string };
   admin: { username: string; password: string };
+  urls: TenantUrls;
 }
 
 interface CentralRestaurantListResponse {
@@ -48,6 +56,7 @@ interface CentralRestaurantCreateResponse {
     chef: { username: string; password: string };
     admin: { username: string; password: string };
   };
+  urls?: TenantUrls;
   error?: string;
 }
 
@@ -63,6 +72,18 @@ const emptyMetrics = (): TenantMetrics => ({
   totalTables: 0,
   activeTables: 0,
 });
+
+const buildTenantUrls = (slug: string): TenantUrls => {
+  const normalized = normalizeRestaurantSlug(slug);
+  const base = `/t/${normalized}`;
+
+  return {
+    base,
+    order: `${base}/order`,
+    adminLogin: `${base}/admin/login`,
+    adminDashboard: `${base}/admin`,
+  };
+};
 
 export default function CentralAdminPage() {
   const router = useRouter();
@@ -231,6 +252,7 @@ export default function CentralAdminPage() {
         manager: managerCreds,
         chef: chefCreds,
         admin: adminCreds,
+        urls: payload.urls || buildTenantUrls(tenant.slug),
       });
 
       setRestaurantName('');
@@ -363,6 +385,9 @@ export default function CentralAdminPage() {
             <p>Manager: {credentialsHint.manager.username} / {credentialsHint.manager.password}</p>
             <p>Chef: {credentialsHint.chef.username} / {credentialsHint.chef.password}</p>
             <p>Restaurant Admin: {credentialsHint.admin.username} / {credentialsHint.admin.password}</p>
+            <p className="pt-1">Tenant URL: <Link href={credentialsHint.urls.base} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.base}</Link></p>
+            <p>Order URL: <Link href={credentialsHint.urls.order} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.order}</Link></p>
+            <p>Tenant Admin Login: <Link href={credentialsHint.urls.adminLogin} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.adminLogin}</Link></p>
           </div>
         )}
 
@@ -471,6 +496,7 @@ export default function CentralAdminPage() {
               <div className="space-y-3">
                 {restaurants.map((restaurant) => {
                   const metrics = metricsByRestaurant[restaurant.id] || emptyMetrics();
+                  const tenantUrls = buildTenantUrls(restaurant.slug);
 
                   return (
                     <div key={restaurant.id} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
@@ -478,6 +504,11 @@ export default function CentralAdminPage() {
                         <div>
                           <p className="text-base font-semibold text-zinc-100">{restaurant.name}</p>
                           <p className="text-xs text-zinc-400">slug: {restaurant.slug} • owner: {restaurant.owner_email || 'n/a'}</p>
+                          <p className="text-[11px] text-zinc-500 mt-1">
+                            tenant: <Link href={tenantUrls.base} className="underline hover:text-zinc-300">{tenantUrls.base}</Link>
+                            {' • '}
+                            admin: <Link href={tenantUrls.adminLogin} className="underline hover:text-zinc-300">{tenantUrls.adminLogin}</Link>
+                          </p>
                         </div>
 
                         <div className="flex flex-wrap items-center gap-2">

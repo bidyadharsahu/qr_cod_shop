@@ -9,7 +9,7 @@ import type { MenuItem } from '@/lib/types';
 import { processChatMessage, type ChatbotResponse, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
-import { persistRestaurantContext, readRestaurantContext } from '@/lib/tenant';
+import { normalizeRestaurantSlug, persistRestaurantContext, readRestaurantContext } from '@/lib/tenant';
 import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
@@ -79,6 +79,17 @@ interface PaymentGatewayStatus {
   plan?: 'basic' | 'premium';
 }
 
+interface TenantResolveResponse {
+  restaurant?: {
+    id: number;
+    slug: string;
+    name: string;
+    plan: 'basic' | 'premium';
+    status: 'active' | 'disabled';
+  };
+  error?: string;
+}
+
 interface VoiceRecognitionEvent {
   resultIndex?: number;
   results: ArrayLike<ArrayLike<{ transcript: string }>>;
@@ -97,6 +108,10 @@ interface VoiceRecognitionInstance {
 
 interface VoiceRecognitionFactory {
   new (): VoiceRecognitionInstance;
+}
+
+interface OrderPageProps {
+  forcedTenantSlug?: string;
 }
 
 const VOICE_NUMBERS: Record<string, number> = {
@@ -205,17 +220,30 @@ const getSmartDayGreeting = (themeName: string): string => {
   return dayVibe;
 };
 
-function OrderContent() {
+function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   const searchParams = useSearchParams();
+  const normalizedForcedTenantSlug = normalizeRestaurantSlug(forcedTenantSlug || '');
+  const tenantScopedOrder = Boolean(normalizedForcedTenantSlug);
   const tableParam = searchParams.get('table');
+  const restaurantSlugParam = normalizeRestaurantSlug(
+    searchParams.get('restaurantSlug')
+    || searchParams.get('tenant')
+    || ''
+  );
   const restaurantIdParam = parsePositiveInt(searchParams.get('restaurant') || searchParams.get('restaurantId'));
 
   const [restaurantId, setRestaurantId] = useState<number>(() => {
+    if (tenantScopedOrder) return 0;
     return restaurantIdParam || readRestaurantContext().restaurantId;
+  });
+  const [restaurantSlug, setRestaurantSlug] = useState<string>(() => {
+    if (tenantScopedOrder) return normalizedForcedTenantSlug;
+    return restaurantSlugParam || readRestaurantContext().restaurantSlug;
   });
   const [restaurantName, setRestaurantName] = useState<string>(() => readRestaurantContext().restaurantName);
   const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
   const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
+  const [tenantResolving, setTenantResolving] = useState<boolean>(tenantScopedOrder);
 
   // Helper: read table from cookie (synchronous, works in all browsers)
   const getTableFromCookie = (): string | null => {
@@ -252,13 +280,69 @@ function OrderContent() {
   }, [tableParam]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (tenantScopedOrder) return;
     if (!restaurantIdParam || restaurantIdParam === restaurantId) return;
     setRestaurantId(restaurantIdParam);
-  }, [restaurantIdParam, restaurantId]);
+  }, [restaurantIdParam, restaurantId, tenantScopedOrder]);
 
   useEffect(() => {
-    persistRestaurantContext({ restaurantId });
-  }, [restaurantId]);
+    if (tenantScopedOrder) return;
+    if (!restaurantSlugParam || restaurantSlugParam === restaurantSlug) return;
+    setRestaurantSlug(restaurantSlugParam);
+  }, [restaurantSlug, restaurantSlugParam, tenantScopedOrder]);
+
+  useEffect(() => {
+    if (!tenantScopedOrder) {
+      setTenantResolving(false);
+      return;
+    }
+
+    const resolveTenant = async () => {
+      setTenantResolving(true);
+
+      try {
+        const response = await fetch(`/api/tenant/resolve?slug=${encodeURIComponent(normalizedForcedTenantSlug)}`, {
+          cache: 'no-store',
+        });
+        const payload = await response.json() as TenantResolveResponse;
+
+        if (!response.ok || !payload.restaurant) {
+          setRestaurantStatus('disabled');
+          setMenuLoadError(payload.error || 'Tenant URL is invalid or unavailable.');
+          return;
+        }
+
+        const tenant = payload.restaurant;
+        setRestaurantId(tenant.id);
+        setRestaurantSlug(normalizeRestaurantSlug(tenant.slug || normalizedForcedTenantSlug));
+        setRestaurantName((tenant.name || 'Default Restaurant').trim() || 'Default Restaurant');
+        setRestaurantPlan(tenant.plan === 'premium' ? 'premium' : 'basic');
+        setRestaurantStatus(tenant.status === 'disabled' ? 'disabled' : 'active');
+
+        persistRestaurantContext({
+          restaurantId: tenant.id,
+          restaurantSlug: tenant.slug,
+          restaurantName: tenant.name,
+        });
+      } catch {
+        setRestaurantStatus('disabled');
+        setMenuLoadError('Could not resolve tenant URL. Please verify the QR/link and try again.');
+      } finally {
+        setTenantResolving(false);
+      }
+    };
+
+    resolveTenant();
+  }, [normalizedForcedTenantSlug, tenantScopedOrder]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    persistRestaurantContext({
+      restaurantId,
+      restaurantSlug,
+      restaurantName,
+    });
+  }, [restaurantId, restaurantName, restaurantSlug]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -502,6 +586,8 @@ function OrderContent() {
   }, [favorites]);
 
   const fetchRestaurantMeta = useCallback(async (cancelState?: { cancelled: boolean }) => {
+    if (!restaurantId) return;
+
     const { data } = await supabase
       .from('restaurants')
       .select('id, name, slug, status, plan')
@@ -511,6 +597,12 @@ function OrderContent() {
     if (cancelState?.cancelled) return;
 
     if (!data) {
+      if (tenantScopedOrder) {
+        setRestaurantStatus('disabled');
+        setMenuLoadError('Tenant could not be resolved from this URL.');
+        return;
+      }
+
       const fallback = readRestaurantContext();
       setRestaurantName(fallback.restaurantName);
       setRestaurantStatus('active');
@@ -518,20 +610,28 @@ function OrderContent() {
       return;
     }
 
+    const nextSlug = normalizeRestaurantSlug(data.slug || 'default');
+    if (tenantScopedOrder && nextSlug !== normalizedForcedTenantSlug) {
+      setRestaurantStatus('disabled');
+      setMenuLoadError('Tenant URL does not match this restaurant context.');
+      return;
+    }
+
     const nextName = (data.name || 'Default Restaurant').trim() || 'Default Restaurant';
     const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
     const nextPlan = data.plan === 'premium' ? 'premium' : 'basic';
 
+    setRestaurantSlug(nextSlug);
     setRestaurantName(nextName);
     setRestaurantStatus(nextStatus);
     setRestaurantPlan(nextPlan);
 
     persistRestaurantContext({
       restaurantId: data.id,
-      restaurantSlug: data.slug || 'default',
+      restaurantSlug: nextSlug,
       restaurantName: nextName,
     });
-  }, [restaurantId]);
+  }, [normalizedForcedTenantSlug, restaurantId, tenantScopedOrder]);
 
   useEffect(() => {
     const cancelState = { cancelled: false };
@@ -605,11 +705,17 @@ function OrderContent() {
   }, [tableNumber, restaurantId]);
 
   useEffect(() => {
+    if (!restaurantId || tenantResolving) {
+      if (!tenantResolving) setPaymentGatewayLoading(false);
+      return;
+    }
+
     const fetchPaymentGatewayStatus = async () => {
       try {
-        const res = await fetch(`/api/payment/status?restaurantId=${restaurantId}`, {
+        const res = await fetch(`/api/payment/status?restaurantId=${restaurantId}&restaurantSlug=${encodeURIComponent(restaurantSlug)}`, {
           headers: {
             'x-restaurant-id': String(restaurantId),
+            'x-restaurant-slug': restaurantSlug,
           },
         });
         if (!res.ok) return;
@@ -623,7 +729,7 @@ function OrderContent() {
     };
 
     fetchPaymentGatewayStatus();
-  }, [restaurantId]);
+  }, [restaurantId, restaurantSlug, tenantResolving]);
 
   // If the customer empties cart after the flow completes, start a fresh add-on baseline.
   useEffect(() => {
@@ -725,6 +831,11 @@ function OrderContent() {
   // Initial fetch + real-time menu sync
   useEffect(() => {
     const fetchMenu = async () => {
+      if (!restaurantId || tenantResolving) {
+        if (!tenantResolving) setMenuLoading(false);
+        return;
+      }
+
       if (restaurantStatus === 'disabled') {
         setMenuLoading(false);
         setMenuLoadError('Restaurant is temporarily disabled. Please contact support.');
@@ -774,7 +885,7 @@ function OrderContent() {
     return () => {
       supabase.removeChannel(menuSub);
     };
-  }, [menuReloadTick, restaurantId, restaurantStatus]);
+  }, [menuReloadTick, restaurantId, restaurantStatus, tenantResolving]);
 
   // Verify payment on return from Stripe or PayPal checkout pages.
   useEffect(() => {
@@ -802,12 +913,14 @@ function OrderContent() {
           provider: 'stripe' | 'paypal';
           orderId: number;
           restaurantId: number;
+          restaurantSlug: string;
           sessionId?: string;
           paypalToken?: string;
         } = {
           provider: provider === 'paypal' ? 'paypal' : 'stripe',
           orderId,
           restaurantId,
+          restaurantSlug,
         };
 
         if (provider === 'paypal') {
@@ -825,6 +938,7 @@ function OrderContent() {
           headers: {
             'Content-Type': 'application/json',
             'x-restaurant-id': String(restaurantId),
+            'x-restaurant-slug': restaurantSlug,
           },
           body: JSON.stringify(payload),
         });
@@ -850,7 +964,7 @@ function OrderContent() {
     };
 
     verifyPayment();
-  }, [searchParams, restaurantId]);
+  }, [searchParams, restaurantId, restaurantSlug]);
 
   // Listen for order confirmation/cancellation from admin
   useEffect(() => {
@@ -1826,6 +1940,7 @@ function OrderContent() {
         headers: {
           'Content-Type': 'application/json',
           'x-restaurant-id': String(restaurantId),
+          'x-restaurant-slug': restaurantSlug,
         },
         body: JSON.stringify({
           provider,
@@ -1834,6 +1949,7 @@ function OrderContent() {
           amount: total,
           tableNumber,
           restaurantId,
+          restaurantSlug,
         }),
       });
 
@@ -3073,14 +3189,14 @@ function OrderContent() {
   );
 }
 
-export default function OrderPage() {
+export default function OrderPage(props: OrderPageProps = {}) {
   return (
     <Suspense fallback={
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: '#f59e0b' }}></div>
       </div>
     }>
-      <OrderContent />
+      <OrderContent {...props} />
     </Suspense>
   );
 }

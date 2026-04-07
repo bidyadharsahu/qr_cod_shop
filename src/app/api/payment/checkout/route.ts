@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPayPalAccessToken, getRestaurantSubscription, getTenantOrder, logPaymentEvent, PAYPAL_BASE } from '@/lib/payment-server';
-import { resolveTenantIdFromRequest } from '@/lib/tenant-server';
+import { getTenantIdFromRequest, normalizeTenantSlug, parseTenantId } from '@/lib/tenant-server';
 
 type PaymentProvider = 'card' | 'paypal';
 
@@ -11,10 +11,19 @@ interface CheckoutRequest {
   amount: number;
   tableNumber: string;
   restaurantId?: number;
+  restaurantSlug?: string;
 }
 
 function getBaseUrl(req: NextRequest): string {
   return process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
+}
+
+function getCheckoutReturnBaseUrl(baseUrl: string, body: CheckoutRequest, restaurantId: number): string {
+  const tenantSlug = normalizeTenantSlug(body.restaurantSlug || '');
+  const orderPath = tenantSlug ? `/t/${encodeURIComponent(tenantSlug)}/order` : '/order';
+  const slugQuery = tenantSlug ? `&restaurantSlug=${encodeURIComponent(tenantSlug)}` : '';
+
+  return `${baseUrl}${orderPath}?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}${slugQuery}`;
 }
 
 async function createStripeCheckout(req: NextRequest, body: CheckoutRequest, restaurantId: number): Promise<NextResponse> {
@@ -34,12 +43,13 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest, res
   }
 
   const baseUrl = getBaseUrl(req);
+  const returnBase = getCheckoutReturnBaseUrl(baseUrl, body, restaurantId);
   const amountCents = Math.max(50, Math.round(body.amount * 100));
 
   const payload = new URLSearchParams();
   payload.append('mode', 'payment');
-  payload.append('success_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}&order=${body.orderId}`);
-  payload.append('cancel_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=cancel&provider=stripe&order=${body.orderId}`);
+  payload.append('success_url', `${returnBase}&payment=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}&order=${body.orderId}`);
+  payload.append('cancel_url', `${returnBase}&payment=cancel&provider=stripe&order=${body.orderId}`);
   payload.append('line_items[0][quantity]', '1');
   payload.append('line_items[0][price_data][currency]', 'usd');
   payload.append('line_items[0][price_data][product_data][name]', `Order ${body.receiptId}`);
@@ -120,6 +130,7 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest, res
   }
 
   const baseUrl = getBaseUrl(req);
+  const returnBase = getCheckoutReturnBaseUrl(baseUrl, body, restaurantId);
   const orderRes = await fetch(`${PAYPAL_BASE}/v2/checkout/orders`, {
     method: 'POST',
     headers: {
@@ -139,8 +150,8 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest, res
         },
       ],
       application_context: {
-        return_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=success&provider=paypal&order=${body.orderId}`,
-        cancel_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=cancel&provider=paypal&order=${body.orderId}`,
+        return_url: `${returnBase}&payment=success&provider=paypal&order=${body.orderId}`,
+        cancel_url: `${returnBase}&payment=cancel&provider=paypal&order=${body.orderId}`,
         user_action: 'PAY_NOW',
       },
     }),
@@ -197,8 +208,18 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest, res
 
 export async function POST(req: NextRequest) {
   try {
-    const tenantId = resolveTenantIdFromRequest(req);
     const body = await req.json() as CheckoutRequest;
+    const headerTenantId = getTenantIdFromRequest(req);
+    const bodyTenantId = parseTenantId(body?.restaurantId);
+    const tenantId = headerTenantId || bodyTenantId;
+
+    if (!tenantId) {
+      return NextResponse.json({ error: 'Tenant id is required for checkout.' }, { status: 400 });
+    }
+
+    if (headerTenantId && bodyTenantId && headerTenantId !== bodyTenantId) {
+      return NextResponse.json({ error: 'Tenant mismatch between header and request body.' }, { status: 400 });
+    }
 
     if (!body || !body.provider || !body.orderId || !body.receiptId || !body.tableNumber) {
       return NextResponse.json({ error: 'Missing required checkout fields.' }, { status: 400 });

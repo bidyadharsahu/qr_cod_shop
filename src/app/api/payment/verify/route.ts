@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPayPalAccessToken, logPaymentEvent, markOrderAsPaid, PAYPAL_BASE } from '@/lib/payment-server';
-import { resolveTenantIdFromRequest } from '@/lib/tenant-server';
+import { getTenantIdFromRequest, parseTenantId } from '@/lib/tenant-server';
 
 async function verifyStripePayment(orderId: number, sessionId: string, restaurantId: number): Promise<boolean> {
   await logPaymentEvent({
@@ -152,7 +152,6 @@ async function verifyPayPalPayment(orderId: number, token: string, restaurantId:
 
 export async function POST(req: NextRequest) {
   try {
-    const tenantId = resolveTenantIdFromRequest(req);
     const body = await req.json() as {
       provider?: 'stripe' | 'paypal';
       orderId?: number;
@@ -160,6 +159,18 @@ export async function POST(req: NextRequest) {
       sessionId?: string;
       paypalToken?: string;
     };
+
+    const headerTenantId = getTenantIdFromRequest(req);
+    const bodyTenantId = parseTenantId(body?.restaurantId);
+    const tenantId = headerTenantId || bodyTenantId;
+
+    if (!tenantId) {
+      return NextResponse.json({ success: false, error: 'Tenant id is required for verification.' }, { status: 400 });
+    }
+
+    if (headerTenantId && bodyTenantId && headerTenantId !== bodyTenantId) {
+      return NextResponse.json({ success: false, error: 'Tenant mismatch between header and request body.' }, { status: 400 });
+    }
 
     if (!body.provider || !body.orderId) {
       return NextResponse.json({ success: false, error: 'Missing verification fields.' }, { status: 400 });

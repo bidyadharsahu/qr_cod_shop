@@ -10,7 +10,7 @@ import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 import { getCurrentTheme, type AppTheme } from '@/lib/themes';
 import type { Order, MenuItem, RestaurantTable, PaymentEventAudit } from '@/lib/types';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
-import { clearAdminSession, readAdminSession } from '@/lib/tenant';
+import { clearAdminSession, normalizeRestaurantSlug, readAdminSession } from '@/lib/tenant';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, ShoppingCart, CircleDollarSign, ClipboardList, Timer, Eye, Table as TableIcon, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
@@ -55,13 +55,22 @@ const formatIsoDayLabel = (isoDay: string) => {
   });
 };
 
-export default function AdminDashboard() {
+interface AdminDashboardProps {
+  forcedTenantSlug?: string;
+}
+
+export default function AdminDashboard(props: AdminDashboardProps = {}) {
   const router = useRouter();
+  const normalizedForcedTenantSlug = normalizeRestaurantSlug(props.forcedTenantSlug || '');
+  const tenantScopedDashboard = Boolean(normalizedForcedTenantSlug);
+  const tenantLoginRoute = tenantScopedDashboard ? `/t/${normalizedForcedTenantSlug}/admin/login` : '/admin/login';
+
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
   const [staffRole, setStaffRole] = useState<StaffRole>('manager');
   const [staffUser, setStaffUser] = useState<string>('');
-  const [restaurantId, setRestaurantId] = useState<number>(1);
+  const [restaurantId, setRestaurantId] = useState<number>(tenantScopedDashboard ? 0 : 1);
+  const [restaurantSlug, setRestaurantSlug] = useState<string>(normalizedForcedTenantSlug || 'default');
   const [restaurantName, setRestaurantName] = useState<string>('Default Restaurant');
   const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
   const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
@@ -176,6 +185,17 @@ export default function AdminDashboard() {
   const getBaseUrl = () => {
     if (typeof window !== 'undefined') return window.location.origin;
     return 'https://qr-cod-shop.vercel.app';
+  };
+
+  const getTenantOrderUrl = (tableNumber: number | string) => {
+    const normalizedSlug = normalizeRestaurantSlug(restaurantSlug || normalizedForcedTenantSlug || '');
+    const encodedTable = encodeURIComponent(String(tableNumber));
+
+    if (normalizedSlug) {
+      return `${getBaseUrl()}/t/${encodeURIComponent(normalizedSlug)}/order?table=${encodedTable}&restaurant=${restaurantId}`;
+    }
+
+    return `${getBaseUrl()}/order?table=${encodedTable}&restaurant=${restaurantId}`;
   };
 
   const printOrderBill = (order: Order) => {
@@ -695,12 +715,24 @@ export default function AdminDashboard() {
     const checkAuth = async () => {
       const session = readAdminSession();
       if (!session.authenticated) {
-        router.push('/admin/login');
+        router.push(tenantLoginRoute);
         return;
       }
 
       if (session.staffRole === 'super_admin') {
         router.push('/central');
+        return;
+      }
+
+      const sessionSlug = normalizeRestaurantSlug(session.restaurantSlug || '');
+      if (tenantScopedDashboard && sessionSlug !== normalizedForcedTenantSlug) {
+        clearAdminSession();
+        router.push(tenantLoginRoute);
+        return;
+      }
+
+      if (!tenantScopedDashboard && sessionSlug) {
+        router.push(`/t/${sessionSlug}/admin`);
         return;
       }
 
@@ -711,17 +743,26 @@ export default function AdminDashboard() {
       setStaffRole(nextRole);
       setStaffUser(session.staffUser || '');
       setRestaurantId(session.restaurantId);
+      setRestaurantSlug(sessionSlug || normalizedForcedTenantSlug || 'default');
       setRestaurantName(session.restaurantName || 'Default Restaurant');
       setIsAuthenticated(true);
       setActiveTab(nextRole === 'chef' ? 'kitchen' : 'dashboard');
 
       const { data } = await supabase
         .from('restaurants')
-        .select('name, plan, status')
+        .select('name, slug, plan, status')
         .eq('id', session.restaurantId)
         .maybeSingle();
 
       if (data) {
+        const nextSlug = normalizeRestaurantSlug(data.slug || session.restaurantSlug || normalizedForcedTenantSlug || 'default');
+        if (tenantScopedDashboard && nextSlug !== normalizedForcedTenantSlug) {
+          clearAdminSession();
+          router.push(tenantLoginRoute);
+          return;
+        }
+
+        setRestaurantSlug(nextSlug);
         setRestaurantName((data.name || session.restaurantName || 'Default Restaurant').trim());
         setRestaurantPlan(data.plan === 'premium' ? 'premium' : 'basic');
         const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
@@ -729,7 +770,7 @@ export default function AdminDashboard() {
 
         if (nextStatus === 'disabled') {
           clearAdminSession();
-          router.push('/admin/login');
+          router.push(tenantLoginRoute);
           return;
         }
       }
@@ -738,7 +779,7 @@ export default function AdminDashboard() {
     };
 
     checkAuth();
-  }, [router]);
+  }, [normalizedForcedTenantSlug, router, tenantLoginRoute, tenantScopedDashboard]);
 
   // Tampa timezone clock - updates every second
   useEffect(() => {
@@ -903,7 +944,7 @@ export default function AdminDashboard() {
         setRestaurantStatus(nextStatus);
         if (nextStatus === 'disabled') {
           clearAdminSession();
-          router.push('/admin/login');
+          router.push(tenantLoginRoute);
         }
       })
       .subscribe();
@@ -911,7 +952,7 @@ export default function AdminDashboard() {
     return () => {
       supabase.removeChannel(restaurantStatusSub);
     };
-  }, [isAuthenticated, restaurantId, router]);
+  }, [isAuthenticated, restaurantId, router, tenantLoginRoute]);
 
   // Real-time payment modal updates
   useEffect(() => {
@@ -950,7 +991,7 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     clearAdminSession();
-    router.push('/admin/login');
+    router.push(tenantLoginRoute);
   };
 
   // Order actions - NO WhatsApp redirect
@@ -2818,7 +2859,7 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {tables.map(table => (
                       <div key={table.id} className="bg-white rounded-2xl p-4 text-center">
-                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${getBaseUrl()}/order?table=${table.table_number}&restaurant=${restaurantId}`)}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
+                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(getTenantOrderUrl(table.table_number))}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
                         <p className="mt-3 font-bold text-black text-xl">Table {table.table_number}</p>
                         <p className="text-xs text-gray-500">Scan to order</p>
                       </div>
