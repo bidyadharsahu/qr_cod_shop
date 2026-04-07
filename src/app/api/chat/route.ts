@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
-        'X-Title': 'Coasis SIA Chat Humanizer',
+        'X-Title': 'netrikxr.shop SIA Chat Humanizer',
       },
       body: JSON.stringify({
         model,

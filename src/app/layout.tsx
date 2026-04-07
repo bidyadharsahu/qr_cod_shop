@@ -3,13 +3,13 @@ import { Suspense } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Coasis - Order",
-  description: "Coasis Restaurant Bar & Suites - Scan, Order, Enjoy",
+  title: "netrikxr.shop - Tenant Order App",
+  description: "Multi-tenant QR ordering platform by netrikxr.shop",
   formatDetection: {
     telephone: false,
   },
   other: {
-    "application-name": "Coasis",
+    "application-name": "netrikxr.shop",
     "msapplication-TileColor": "#0a0a0a",
     "msapplication-TileImage": "/icons/icon-144x144.png",
     "msapplication-tap-highlight": "no",

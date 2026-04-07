@@ -48,16 +48,26 @@ export default function CentralAdminLoginPage() {
         }),
       });
 
+      let payload: CentralLoginResponse = {};
+      try {
+        payload = await response.json() as CentralLoginResponse;
+      } catch {
+        payload = {};
+      }
+
       if (!response.ok) {
-        const payload = await response.json() as CentralLoginResponse;
-        setError(payload.error || 'Invalid central admin credentials.');
-        setLoading(false);
+        const fallback = response.status === 503
+          ? 'Central admin is not configured. Set CENTRAL_ADMIN_USERNAME, CENTRAL_ADMIN_PASSWORD, and CENTRAL_ADMIN_SESSION_SECRET.'
+          : 'Invalid central admin credentials.';
+
+        setError(payload.error || fallback);
         return;
       }
 
       router.push('/central');
     } catch {
       setError('Could not sign in right now. Please try again.');
+    } finally {
       setLoading(false);
     }
   };

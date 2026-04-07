@@ -432,7 +432,7 @@ export default function CentralAdminPage() {
                     if (!restaurantSlug.trim()) setRestaurantSlug(normalizeRestaurantSlug(nextName));
                   }}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                  placeholder="Coasis Downtown"
+                  placeholder="Tenant Name (example: Green Bowl Downtown)"
                   required
                 />
               </div>
@@ -443,7 +443,7 @@ export default function CentralAdminPage() {
                   value={restaurantSlug}
                   onChange={(event) => setRestaurantSlug(normalizeRestaurantSlug(event.target.value))}
                   className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
-                  placeholder="coasis-downtown"
+                  placeholder="tenant-slug (example: green-bowl-downtown)"
                   required
                 />
               </div>

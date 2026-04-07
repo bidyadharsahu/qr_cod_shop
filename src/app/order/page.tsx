@@ -1038,9 +1038,10 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       const storedCount = parseInt(localStorage.getItem('netrikxr-order-count') || '0');
       setOrderCount(storedCount);
       const loyaltyMsg = storedCount > 0 ? `\n\n🌟 Welcome back! You've ordered ${storedCount} time${storedCount > 1 ? 's' : ''} with us!` : '';
+      const displayRestaurantName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
 
       addBotMessage(
-        `Welcome to Coasis! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\nBefore we place your order, I can note allergies, ingredient exclusions, and spice level for the kitchen.\n\n🔥 Popular tonight:\n• Marinated Lambchops\n• Seafood Trio\n• Strip Steak\n\nWhat would you like to try?`,
+        `Welcome to ${displayRestaurantName}! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\nBefore we place your order, I can note allergies, ingredient exclusions, and spice level for the kitchen.\n\nPopular tonight:\n- Marinated Lambchops\n- Seafood Trio\n- Strip Steak\n\nWhat would you like to try?`,
         [
           { label: '🍽️ See Menu', value: 'menu' },
           { label: '🔥 Popular', value: 'popular' },
@@ -1120,10 +1121,17 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   }, []);
 
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
+    const tenantDisplayName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
+    const normalizedContent = content
+      .replace(/Coasis Restaurant Bar & Suites/gi, tenantDisplayName)
+      .replace(/Welcome to Coasis/gi, `Welcome to ${tenantDisplayName}`)
+      .replace(/Coasis's\s+AI/gi, `${tenantDisplayName}'s AI`)
+      .replace(/Coasis has/gi, 'this restaurant has');
+
     const msg: ChatMessage = {
       id: Date.now().toString(),
       role: 'bot',
-      content,
+      content: normalizedContent,
       createdAt: Date.now(),
       options,
       ...extra
@@ -1205,30 +1213,30 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       case 'popular':
         addUserMessage('Show popular items');
         addBotMessage(
-          `?? Most Popular Tonight:\n\n� **Marinated Lambchops** � $42\n� **Strip Steak** � $30\n� **Seafood Trio** � $42\n� **Southern Fried Chicken** � $28\n� **Coasis Burger** � $18\n\nType any dish name and I'll tell you all about it!`,
+          `Most Popular Tonight:\n\n- Marinated Lambchops - $42\n- Strip Steak - $30\n- Seafood Trio - $42\n- Southern Fried Chicken - $28\n\nType any dish name and I will tell you all about it.`,
           [
-            { label: '??? Full Menu', value: 'menu' },
-            { label: '?? View Cart', value: 'cart' }
+            { label: 'Full Menu', value: 'menu' },
+            { label: 'View Cart', value: 'cart' }
           ]
         );
         break;
       case 'spicy':
         addUserMessage('Show spicy dishes');
         addBotMessage(
-          `??? Spicy picks:\n\n?? **Crispy Chilli Garlic Shrimp** � $14\n?? **Blue Cheese Buffalo Wings** � $14\n?? **Cajun Seafood Dip** � $18\n?? **Salmon & Crab Fried Rice** � $38\n\nWant to try one? Just type the name!`,
+          `Spicy Picks:\n\n- Crispy Chilli Garlic Shrimp - $14\n- Blue Cheese Buffalo Wings - $14\n- Cajun Seafood Dip - $18\n- Salmon and Crab Fried Rice - $38\n\nWant to try one? Just type the name.`,
           [
-            { label: '??? Full Menu', value: 'menu' },
-            { label: '?? View Cart', value: 'cart' }
+            { label: 'Full Menu', value: 'menu' },
+            { label: 'View Cart', value: 'cart' }
           ]
         );
         break;
       case 'seafood':
         addUserMessage('Show seafood dishes');
         addBotMessage(
-          `?? Seafood Favorites:\n\n� **Chargrilled Oysters** � $18/$32\n� **Seafood Trio** � $42\n� **Lobster & Crab Fried Rice** � $42\n� **Salmon & Crab Fried Rice** � $38\n� **Crispy Chilli Garlic Shrimp** � $14\n� **Grilled or Fried Branzino** � $34\n\nType any dish name for details!`,
+          `Seafood Favorites:\n\n- Chargrilled Oysters - $18/$32\n- Seafood Trio - $42\n- Lobster and Crab Fried Rice - $42\n- Salmon and Crab Fried Rice - $38\n- Crispy Chilli Garlic Shrimp - $14\n- Grilled or Fried Branzino - $34\n\nType any dish name for details.`,
           [
-            { label: '??? Full Menu', value: 'menu' },
-            { label: '?? View Cart', value: 'cart' }
+            { label: 'Full Menu', value: 'menu' },
+            { label: 'View Cart', value: 'cart' }
           ]
         );
         break;

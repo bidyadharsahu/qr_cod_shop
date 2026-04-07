@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Coasis Admin Panel",
-  description: "Restaurant Admin Dashboard - Manage orders, menu, and tables",
+  title: "netrikxr.shop Tenant Admin",
+  description: "Tenant restaurant admin dashboard",
   other: {
-    "application-name": "Coasis Admin",
+    "application-name": "netrikxr.shop Tenant Admin",
   },
 };
 

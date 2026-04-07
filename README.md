@@ -1,6 +1,12 @@
-## QR Coasis Shop
+## netrikxr.shop Multi-Tenant SaaS
 
 Production-ready QR restaurant ordering app (customer + admin) built with Next.js and Supabase.
+
+Platform model:
+
+- `netrikxr.shop` is the SaaS provider (central/super admin owner).
+- Restaurants are tenants under `/t/{tenant-slug}`.
+- `coasis` can remain as one tenant, not the platform identity.
 
 ## Required Environment Variables
 
@@ -36,6 +42,61 @@ Required for secure Central Admin server APIs:
 - `CENTRAL_ADMIN_USERNAME`
 - `CENTRAL_ADMIN_PASSWORD`
 - `CENTRAL_ADMIN_SESSION_SECRET`
+
+## Quick Setup (Database + Credentials)
+
+1. Connect to Supabase:
+	- Create/open your Supabase project.
+	- Copy `Project URL` into `NEXT_PUBLIC_SUPABASE_URL`.
+	- Copy `anon public key` into `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+	- Copy `service_role key` into `SUPABASE_SERVICE_ROLE_KEY`.
+
+2. Run SQL migrations in Supabase SQL Editor in this order:
+	1. `SETUP_DATABASE.sql` (if first-time setup)
+	2. `ADD_MENU_IMAGE_COLUMN.sql`
+	3. `ADD_SAMPLE_MENU_PHOTOS.sql`
+	4. `ADD_PAYMENT_EVENT_AUDIT_TABLE.sql`
+	5. `ADD_APP_SETTINGS_TABLE.sql`
+	6. `MIGRATE_MULTI_TENANT.sql`
+	7. `ENFORCE_MULTI_TENANT_RLS.sql`
+
+3. Configure central admin (your netrikxr.shop owner login):
+	- `CENTRAL_ADMIN_USERNAME`
+	- `CENTRAL_ADMIN_PASSWORD`
+	- `CENTRAL_ADMIN_SESSION_SECRET`
+
+4. Start app:
+	- `npm install`
+	- `npm run dev`
+
+5. Login URLs:
+	- Central (platform owner): `/central/login`
+	- Default tenant staff login: `/admin/login`
+	- Tenant staff login: `/t/{tenant-slug}/admin/login`
+
+6. Credentials behavior:
+	- Central admin uses the env credentials above.
+	- Default tenant fallback staff (dev/backward compatibility):
+	  - manager: `hello / 789456`
+	  - chef: `chef / chef123`
+	  - restaurant_admin: `admin / admin123`
+	- Newly created tenant credentials are generated in Central Admin and shown once after tenant creation.
+
+## If Login Gets Stuck
+
+Most common cause is missing `SUPABASE_SERVICE_ROLE_KEY`.
+
+Checklist:
+
+1. Verify envs are set in local/hosting runtime:
+	- `NEXT_PUBLIC_SUPABASE_URL`
+	- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+	- `SUPABASE_SERVICE_ROLE_KEY`
+	- central admin envs (for `/central/login`)
+2. Restart dev server after changing envs.
+3. Confirm tenant is active in `restaurants.status = 'active'`.
+4. Try direct tenant route login: `/t/{tenant-slug}/admin/login`.
+5. If central login fails with configuration error, set all `CENTRAL_ADMIN_*` envs.
 
 Local development fallback only (not for production):
 

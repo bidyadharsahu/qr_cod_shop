@@ -463,9 +463,9 @@ const SPECIAL_INSTRUCTION_PATTERNS: Array<{ pattern: RegExp; value: string }> = 
 // ============================================
 const RESPONSES = {
   GREETING: [
-    "Hey! Welcome to Coasis! 🍽️ I'm SIA, your personal waiter tonight.\n\n🔥 What's hot right now:\n• Marinated Lambchops — absolute favorite\n• Seafood Trio — fresh catch of the day\n• Strip Steak — cooked to perfection\n\nWhat catches your eye? Just type a dish name and I'll tell you all about it!",
+    "Hey! Welcome in! 🍽️ I'm SIA, your personal waiter tonight.\n\n🔥 What's hot right now:\n• Marinated Lambchops — absolute favorite\n• Seafood Trio — fresh catch of the day\n• Strip Steak — cooked to perfection\n\nWhat catches your eye? Just type a dish name and I'll tell you all about it!",
     "Welcome in! 👋 I'm SIA — think of me as your table-side assistant.\n\nHungry? Here's what people are loving tonight:\n• Marinated Lambchops 🔥\n• Southern Fried Chicken\n• Chargrilled Oysters\n\nJust say a dish name and I'll break it down for you, or say 'menu' to browse!",
-    "Hey there! 🍴 Welcome to Coasis Restaurant Bar & Suites!\n\nI'm SIA — I know every dish on this menu. Ask me about anything!\n\nFeeling adventurous? Try 'something spicy' or 'seafood' — or just browse the menu!",
+    "Hey there! 🍴 Welcome to the restaurant!\n\nI'm SIA — I know every dish on this menu. Ask me about anything!\n\nFeeling adventurous? Try 'something spicy' or 'seafood' — or just browse the menu!",
   ],
   VIEW_MENU: [
     "Here's the full lineup! 👇 Tap a category or just type any dish name — I'll tell you what makes it special.",
@@ -485,7 +485,7 @@ const RESPONSES = {
   ITEM_NOT_FOUND: [
     "Hmm, I don't think we have that one. 🤔 But no worries — let me help!\n\nAre you in the mood for something meaty, seafood, or lighter? I'll point you in the right direction!",
     "That's not on our menu, but I've got plenty of great suggestions!\n\nTell me what you're craving — spicy? Seafood? Something hearty? I'll find your perfect match.",
-    "I couldn't find that one here. But hey, Coasis has some amazing options!\n\nWhat vibe are you going for? I'll steer you right. 🍽️",
+    "I couldn't find that one here. But hey, we have some amazing options!\n\nWhat vibe are you going for? I'll steer you right. 🍽️",
   ],
   ITEM_UNAVAILABLE: [
     "Ah, bummer! 😔 {item} is unavailable right now.\n\nBut I've got some great alternatives — want me to suggest something similar?",
@@ -535,8 +535,8 @@ const RESPONSES = {
     "Totally get it! 🌱 Here's what works great for vegetarians:\n\n🥗 **Coasis House Salad** — $14\n🥗 **Grilled Caesar Salad** — $16\n🍫 **Brownie Bites** — $10\n\nWant to add any of these? Just type the name!",
   ],
   SYSTEM_QUESTION: [
-    "I'm SIA — your Smart Interactive Assistant! 🤖 I work right here at Coasis Restaurant Bar & Suites.\n\nI know the entire menu, can describe any dish, take your order, and get it straight to the kitchen. Think of me as your digital waiter! 🍽️\n\nSo... what are you hungry for?",
-    "Hey! I'm SIA, Coasis's AI ordering assistant. 🤖\n\nI'm built to make your dining experience smooth — ask me about any dish, I'll tell you what's in it, what pairs well, and add it to your order when you're ready.\n\nReady to explore the menu?",
+    "I'm SIA — your Smart Interactive Assistant! 🤖 I work right here with the restaurant team.\n\nI know the entire menu, can describe any dish, take your order, and get it straight to the kitchen. Think of me as your digital waiter! 🍽️\n\nSo... what are you hungry for?",
+    "Hey! I'm SIA, your AI ordering assistant. 🤖\n\nI'm built to make your dining experience smooth — ask me about any dish, I'll tell you what's in it, what pairs well, and add it to your order when you're ready.\n\nReady to explore the menu?",
   ],
   VAGUE_MESSAGE: [
     "No worries, I'll help you decide! 🤔\n\nHere's what I'd go with tonight:\n• 🔥 **Marinated Lambchops** — our number one seller\n• 🦞 **Seafood Trio** — if you love the ocean\n• 🍗 **Southern Fried Chicken** — comfort food done right\n\nJust type a dish name and I'll tell you everything about it!",

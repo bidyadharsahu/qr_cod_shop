@@ -138,10 +138,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
     e.preventDefault();
     setLoading(true);
     setError('');
-    
-    // Small delay for UX
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
+
     const normalizedSlug = tenantScopedLogin ? normalizedForcedSlug : normalizeRestaurantSlug(restaurantSlug);
     const usernameTrimmed = username.trim();
 
@@ -165,11 +162,19 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
         }),
       });
 
-      const payload = await response.json() as TenantAuthLoginResponse;
+      let payload: TenantAuthLoginResponse = {};
+      try {
+        payload = await response.json() as TenantAuthLoginResponse;
+      } catch {
+        payload = {};
+      }
 
       if (!response.ok || !payload.authenticated || !payload.restaurant) {
-        setError(payload.error || 'Invalid credentials.');
-        setLoading(false);
+        const fallback = response.status === 503
+          ? 'Tenant auth service is not configured. Set SUPABASE_SERVICE_ROLE_KEY and restart the app.'
+          : 'Invalid credentials.';
+
+        setError(payload.error || fallback);
         return;
       }
 
@@ -185,8 +190,9 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
       router.push(scopedSlug ? `/t/${scopedSlug}/admin` : tenantAdminPath);
     } catch {
       setError('Could not sign in right now. Please try again.');
-      setLoading(false);
       return;
+    } finally {
+      setLoading(false);
     }
   };
 
