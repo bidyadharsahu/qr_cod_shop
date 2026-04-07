@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPayPalAccessToken, logPaymentEvent, markOrderAsPaid, PAYPAL_BASE } from '@/lib/payment-server';
+import { resolveTenantIdFromRequest } from '@/lib/tenant-server';
 
-async function verifyStripePayment(orderId: number, sessionId: string): Promise<boolean> {
+async function verifyStripePayment(orderId: number, sessionId: string, restaurantId: number): Promise<boolean> {
   await logPaymentEvent({
+    restaurantId,
     orderId,
     provider: 'stripe',
     eventType: 'verify_requested',
@@ -14,6 +16,7 @@ async function verifyStripePayment(orderId: number, sessionId: string): Promise<
   const stripeSecret = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecret) {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'stripe',
       eventType: 'verify_unavailable',
@@ -30,6 +33,7 @@ async function verifyStripePayment(orderId: number, sessionId: string): Promise<
 
   if (!response.ok) {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'stripe',
       eventType: 'verify_api_failed',
@@ -43,6 +47,7 @@ async function verifyStripePayment(orderId: number, sessionId: string): Promise<
   const data = await response.json() as { payment_status?: string };
   if (data.payment_status !== 'paid') {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'stripe',
       eventType: 'verify_not_paid',
@@ -55,6 +60,7 @@ async function verifyStripePayment(orderId: number, sessionId: string): Promise<
   }
 
   await logPaymentEvent({
+    restaurantId,
     orderId,
     provider: 'stripe',
     eventType: 'verify_paid_confirmed',
@@ -63,11 +69,12 @@ async function verifyStripePayment(orderId: number, sessionId: string): Promise<
     source: 'verify-route',
   });
 
-  return markOrderAsPaid(orderId, 'card', 'chatbot_payment', sessionId, 'verify-route');
+  return markOrderAsPaid(orderId, 'card', 'chatbot_payment', sessionId, 'verify-route', restaurantId);
 }
 
-async function verifyPayPalPayment(orderId: number, token: string): Promise<boolean> {
+async function verifyPayPalPayment(orderId: number, token: string, restaurantId: number): Promise<boolean> {
   await logPaymentEvent({
+    restaurantId,
     orderId,
     provider: 'paypal',
     eventType: 'verify_requested',
@@ -79,6 +86,7 @@ async function verifyPayPalPayment(orderId: number, token: string): Promise<bool
   const accessToken = await getPayPalAccessToken();
   if (!accessToken) {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'paypal',
       eventType: 'verify_unavailable',
@@ -99,6 +107,7 @@ async function verifyPayPalPayment(orderId: number, token: string): Promise<bool
 
   if (!captureRes.ok) {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'paypal',
       eventType: 'verify_api_failed',
@@ -116,6 +125,7 @@ async function verifyPayPalPayment(orderId: number, token: string): Promise<bool
 
   if (captureData.status !== 'COMPLETED') {
     await logPaymentEvent({
+      restaurantId,
       orderId,
       provider: 'paypal',
       eventType: 'verify_not_paid',
@@ -128,6 +138,7 @@ async function verifyPayPalPayment(orderId: number, token: string): Promise<bool
   }
 
   await logPaymentEvent({
+    restaurantId,
     orderId,
     provider: 'paypal',
     eventType: 'verify_paid_confirmed',
@@ -136,14 +147,16 @@ async function verifyPayPalPayment(orderId: number, token: string): Promise<bool
     source: 'verify-route',
   });
 
-  return markOrderAsPaid(orderId, 'online', 'chatbot_payment', captureData.id || token, 'verify-route');
+  return markOrderAsPaid(orderId, 'online', 'chatbot_payment', captureData.id || token, 'verify-route', restaurantId);
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const tenantId = resolveTenantIdFromRequest(req);
     const body = await req.json() as {
       provider?: 'stripe' | 'paypal';
       orderId?: number;
+      restaurantId?: number;
       sessionId?: string;
       paypalToken?: string;
     };
@@ -152,11 +165,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Missing verification fields.' }, { status: 400 });
     }
 
+    if (body.restaurantId && body.restaurantId !== tenantId) {
+      return NextResponse.json({ success: false, error: 'Tenant mismatch in verification request.' }, { status: 400 });
+    }
+
     if (body.provider === 'stripe') {
       if (!body.sessionId) {
         return NextResponse.json({ success: false, error: 'Missing Stripe session id.' }, { status: 400 });
       }
-      const success = await verifyStripePayment(body.orderId, body.sessionId);
+      const success = await verifyStripePayment(body.orderId, body.sessionId, tenantId);
       return NextResponse.json({ success });
     }
 
@@ -164,7 +181,7 @@ export async function POST(req: NextRequest) {
       if (!body.paypalToken) {
         return NextResponse.json({ success: false, error: 'Missing PayPal token.' }, { status: 400 });
       }
-      const success = await verifyPayPalPayment(body.orderId, body.paypalToken);
+      const success = await verifyPayPalPayment(body.orderId, body.paypalToken, tenantId);
       return NextResponse.json({ success });
     }
 

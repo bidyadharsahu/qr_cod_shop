@@ -1,5 +1,6 @@
 export interface MenuItem {
   id: number;
+  restaurant_id: number;
   name: string;
   price: number;
   category: string;
@@ -11,6 +12,7 @@ export interface MenuItem {
 
 export interface RestaurantTable {
   id: number;
+  restaurant_id: number;
   table_number: number;
   seats?: number;
   status: 'available' | 'booked' | 'occupied';
@@ -34,6 +36,7 @@ export interface OrderItem {
 
 export interface Order {
   id: number;
+  restaurant_id: number;
   receipt_id: string;
   table_number: number;
   items: OrderItem[];
@@ -54,6 +57,7 @@ export interface Order {
 
 export interface PaymentEventAudit {
   id: number;
+  restaurant_id: number;
   order_id: number | null;
   receipt_id: string | null;
   provider: 'stripe' | 'paypal' | 'system' | null;
@@ -66,4 +70,29 @@ export interface PaymentEventAudit {
   event_time: string;
   raw_payload?: Record<string, unknown> | null;
   created_at: string;
+}
+
+export interface Restaurant {
+  id: number;
+  slug: string;
+  name: string;
+  owner_email?: string | null;
+  plan: 'basic' | 'premium';
+  status: 'active' | 'disabled';
+  is_default?: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type StaffRole = 'manager' | 'chef' | 'restaurant_admin' | 'super_admin';
+
+export interface RestaurantStaff {
+  id: number;
+  restaurant_id: number;
+  username: string;
+  password: string;
+  role: Exclude<StaffRole, 'super_admin'>;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
 }

@@ -1,6 +1,34 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { ADMIN_SESSION_KEYS, TENANT_STORAGE_KEYS } from '@/lib/tenant';
 
 let _supabase: SupabaseClient | null = null;
+
+const tenantAwareFetch: typeof fetch = async (input, init) => {
+  if (typeof window === 'undefined') {
+    return fetch(input, init);
+  }
+
+  const headers = new Headers(init?.headers || {});
+  headers.set('X-Client-Info', 'netrikxr-pwa');
+
+  const tenantId =
+    window.sessionStorage.getItem(ADMIN_SESSION_KEYS.restaurantId)
+    || window.sessionStorage.getItem(TENANT_STORAGE_KEYS.restaurantId)
+    || window.localStorage.getItem(TENANT_STORAGE_KEYS.restaurantId);
+
+  if (tenantId) {
+    headers.set('x-restaurant-id', tenantId);
+  }
+
+  if (window.sessionStorage.getItem(ADMIN_SESSION_KEYS.centralAdminAuthenticated) === 'true') {
+    headers.set('x-central-admin', 'true');
+  }
+
+  return fetch(input, {
+    ...init,
+    headers,
+  });
+};
 
 export function getSupabase(): SupabaseClient {
   if (!_supabase) {
@@ -23,9 +51,10 @@ export function getSupabase(): SupabaseClient {
           },
         },
         global: {
+          fetch: tenantAwareFetch,
           headers: {
             'X-Client-Info': 'netrikxr-pwa',
-          },
+          }
         },
       });
     }

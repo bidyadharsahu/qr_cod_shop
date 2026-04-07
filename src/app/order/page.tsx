@@ -9,6 +9,7 @@ import type { MenuItem } from '@/lib/types';
 import { processChatMessage, type ChatbotResponse, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
+import { persistRestaurantContext, readRestaurantContext } from '@/lib/tenant';
 import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
@@ -55,6 +56,7 @@ interface PendingCheckoutItem {
 }
 
 interface QueuedCheckout {
+  restaurantId: number;
   tableNumber: string;
   pendingItems: PendingCheckoutItem[];
   isAddOnOrder: boolean;
@@ -73,6 +75,8 @@ interface PaymentGatewayStatus {
   paypalConfigured: boolean;
   mode: 'sandbox' | 'live';
   anyProviderConfigured: boolean;
+  accountActive?: boolean;
+  plan?: 'basic' | 'premium';
 }
 
 interface VoiceRecognitionEvent {
@@ -157,6 +161,13 @@ const getBestMenuVoiceMatch = (items: MenuItem[], query: string): MenuItem | nul
 
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
 
+const parsePositiveInt = (value: string | null): number | null => {
+  if (!value) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.trunc(parsed);
+};
+
 const formatDayLabel = (timestamp: number): string => {
   const date = new Date(timestamp);
   const today = new Date();
@@ -197,6 +208,14 @@ const getSmartDayGreeting = (themeName: string): string => {
 function OrderContent() {
   const searchParams = useSearchParams();
   const tableParam = searchParams.get('table');
+  const restaurantIdParam = parsePositiveInt(searchParams.get('restaurant') || searchParams.get('restaurantId'));
+
+  const [restaurantId, setRestaurantId] = useState<number>(() => {
+    return restaurantIdParam || readRestaurantContext().restaurantId;
+  });
+  const [restaurantName, setRestaurantName] = useState<string>(() => readRestaurantContext().restaurantName);
+  const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
+  const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
 
   // Helper: read table from cookie (synchronous, works in all browsers)
   const getTableFromCookie = (): string | null => {
@@ -231,6 +250,15 @@ function OrderContent() {
     // Always persist current table
     persistTable(tableParam || tableNumber);
   }, [tableParam]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!restaurantIdParam || restaurantIdParam === restaurantId) return;
+    setRestaurantId(restaurantIdParam);
+  }, [restaurantIdParam, restaurantId]);
+
+  useEffect(() => {
+    persistRestaurantContext({ restaurantId });
+  }, [restaurantId]);
 
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -302,6 +330,7 @@ function OrderContent() {
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
   const voiceStatusTimerRef = useRef<number | null>(null);
   const handledOrderTransitionsRef = useRef<Set<string>>(new Set());
+  const tenantDisabledNoticeRef = useRef(false);
 
   const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -473,6 +502,88 @@ function OrderContent() {
   }, [favorites]);
 
   useEffect(() => {
+    let cancelled = false;
+
+    const loadRestaurantMeta = async () => {
+      const { data } = await supabase
+        .from('restaurants')
+        .select('id, name, slug, status, plan')
+        .eq('id', restaurantId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (!data) {
+        const fallback = readRestaurantContext();
+        setRestaurantName(fallback.restaurantName);
+        setRestaurantStatus('active');
+        setRestaurantPlan('premium');
+        return;
+      }
+
+      const nextName = (data.name || 'Default Restaurant').trim() || 'Default Restaurant';
+      const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
+      const nextPlan = data.plan === 'premium' ? 'premium' : 'basic';
+
+      setRestaurantName(nextName);
+      setRestaurantStatus(nextStatus);
+      setRestaurantPlan(nextPlan);
+
+      persistRestaurantContext({
+        restaurantId: data.id,
+        restaurantSlug: data.slug || 'default',
+        restaurantName: nextName,
+      });
+    };
+
+    loadRestaurantMeta();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+
+    const restaurantStatusSub = supabase
+      .channel(`order-restaurant-status-${restaurantId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'restaurants',
+        filter: `id=eq.${restaurantId}`,
+      }, (payload: any) => {
+        const nextStatus = payload?.new?.status === 'disabled' ? 'disabled' : 'active';
+        const nextPlan = payload?.new?.plan === 'premium' ? 'premium' : 'basic';
+        setRestaurantStatus(nextStatus);
+        setRestaurantPlan(nextPlan);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restaurantStatusSub);
+    };
+  }, [restaurantId]);
+
+  useEffect(() => {
+    if (restaurantStatus === 'disabled') {
+      setMenuLoadError('Restaurant is temporarily disabled. Please contact staff.');
+      if (!tenantDisabledNoticeRef.current) {
+        addBotMessage('Service is temporarily paused for this restaurant. Please contact staff for assistance.', []);
+        tenantDisabledNoticeRef.current = true;
+      }
+      return;
+    }
+
+    if (tenantDisabledNoticeRef.current) {
+      tenantDisabledNoticeRef.current = false;
+      setMenuLoadError(null);
+      addBotMessage('Service is back online. You can continue ordering.', [{ label: '🍽️ See Menu', value: 'menu' }]);
+    }
+  }, [restaurantStatus]);
+
+  useEffect(() => {
     try {
       const raw = localStorage.getItem(CHECKOUT_QUEUE_KEY);
       if (!raw) return;
@@ -481,18 +592,23 @@ function OrderContent() {
         localStorage.removeItem(CHECKOUT_QUEUE_KEY);
         return;
       }
-      if (parsed.tableNumber === tableNumber) {
+      const queuedRestaurantId = parsed.restaurantId || 1;
+      if (parsed.tableNumber === tableNumber && queuedRestaurantId === restaurantId) {
         setQueuedCheckout(parsed);
       }
     } catch {
       localStorage.removeItem(CHECKOUT_QUEUE_KEY);
     }
-  }, [tableNumber]);
+  }, [tableNumber, restaurantId]);
 
   useEffect(() => {
     const fetchPaymentGatewayStatus = async () => {
       try {
-        const res = await fetch('/api/payment/status');
+        const res = await fetch(`/api/payment/status?restaurantId=${restaurantId}`, {
+          headers: {
+            'x-restaurant-id': String(restaurantId),
+          },
+        });
         if (!res.ok) return;
         const data = await res.json() as PaymentGatewayStatus;
         setPaymentGatewayStatus(data);
@@ -504,7 +620,7 @@ function OrderContent() {
     };
 
     fetchPaymentGatewayStatus();
-  }, []);
+  }, [restaurantId]);
 
   // If the customer empties cart after the flow completes, start a fresh add-on baseline.
   useEffect(() => {
@@ -577,9 +693,15 @@ function OrderContent() {
   // Call waiter function
   const callWaiter = async () => {
     if (callingWaiter) return;
+    if (restaurantStatus === 'disabled') {
+      addBotMessage('This restaurant account is currently unavailable. Please ask staff for help.', []);
+      return;
+    }
+
     setCallingWaiter(true);
     try {
       await supabase.from('orders').insert({
+        restaurant_id: restaurantId,
         table_number: parseInt(tableNumber),
         items: [{ id: 0, name: 'WAITER CALL', quantity: 1, price: 0 }],
         subtotal: 0, tip_amount: 0, tax_amount: 0, total: 0,
@@ -600,9 +722,20 @@ function OrderContent() {
   // Initial fetch + real-time menu sync
   useEffect(() => {
     const fetchMenu = async () => {
+      if (restaurantStatus === 'disabled') {
+        setMenuLoading(false);
+        setMenuLoadError('Restaurant is temporarily disabled. Please contact support.');
+        return;
+      }
+
       try {
         setMenuLoadError(null);
-        const { data, error } = await supabase.from('menu_items').select('*').eq('available', true).order('category');
+        const { data, error } = await supabase
+          .from('menu_items')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('available', true)
+          .order('category');
         if (error) {
           setMenuLoadError('Could not sync menu. Pull to refresh or tap retry.');
           return;
@@ -616,10 +749,15 @@ function OrderContent() {
 
     // Real-time menu updates
     const menuSub = supabase
-      .channel('menu-realtime-order')
+      .channel(`menu-realtime-order-${restaurantId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'menu_items' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'menu_items',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
         () => {
           fetchMenu();
         }
@@ -629,7 +767,7 @@ function OrderContent() {
     return () => {
       supabase.removeChannel(menuSub);
     };
-  }, [menuReloadTick]);
+  }, [menuReloadTick, restaurantId, restaurantStatus]);
 
   // Verify payment on return from Stripe or PayPal checkout pages.
   useEffect(() => {
@@ -653,9 +791,16 @@ function OrderContent() {
     const verifyPayment = async () => {
       setPaymentVerifying(true);
       try {
-        const payload: { provider: 'stripe' | 'paypal'; orderId: number; sessionId?: string; paypalToken?: string } = {
+        const payload: {
+          provider: 'stripe' | 'paypal';
+          orderId: number;
+          restaurantId: number;
+          sessionId?: string;
+          paypalToken?: string;
+        } = {
           provider: provider === 'paypal' ? 'paypal' : 'stripe',
           orderId,
+          restaurantId,
         };
 
         if (provider === 'paypal') {
@@ -670,7 +815,10 @@ function OrderContent() {
 
         const res = await fetch('/api/payment/verify', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-restaurant-id': String(restaurantId),
+          },
           body: JSON.stringify(payload),
         });
 
@@ -695,24 +843,26 @@ function OrderContent() {
     };
 
     verifyPayment();
-  }, [searchParams]);
+  }, [searchParams, restaurantId]);
 
   // Listen for order confirmation/cancellation from admin
   useEffect(() => {
     if (!currentOrderId || !waitingForConfirmation) return;
 
     const orderSub = supabase
-      .channel('order-confirmation')
+      .channel(`order-confirmation-${restaurantId}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `id=eq.${currentOrderId}`
+          filter: `restaurant_id=eq.${restaurantId}`
         },
         (payload: any) => {
-          handleOrderTransition(payload.new.status, currentOrderId);
+          if (payload.new?.id === currentOrderId) {
+            handleOrderTransition(payload.new.status, currentOrderId);
+          }
         }
       )
       .subscribe();
@@ -720,7 +870,7 @@ function OrderContent() {
     return () => {
       supabase.removeChannel(orderSub);
     };
-  }, [currentOrderId, waitingForConfirmation, handleOrderTransition]);
+  }, [currentOrderId, waitingForConfirmation, handleOrderTransition, restaurantId]);
 
   // Fallback polling prevents stuck "waiting" state if websocket updates are missed.
   useEffect(() => {
@@ -731,6 +881,7 @@ function OrderContent() {
         .from('orders')
         .select('status')
         .eq('id', currentOrderId)
+        .eq('restaurant_id', restaurantId)
         .single();
 
       if (!data?.status) return;
@@ -740,7 +891,7 @@ function OrderContent() {
     }, 9000);
 
     return () => window.clearInterval(pollId);
-  }, [currentOrderId, waitingForConfirmation, handleOrderTransition]);
+  }, [currentOrderId, waitingForConfirmation, handleOrderTransition, restaurantId]);
 
   // Welcome message
   useEffect(() => {
@@ -1375,6 +1526,9 @@ function OrderContent() {
     source: 'live' | 'queued'
   ) => {
     if (pendingItems.length === 0) return { success: false, reason: 'empty' as const };
+    if (restaurantStatus === 'disabled') {
+      return { success: false, reason: 'disabled' as const, message: 'Restaurant account is disabled.' };
+    }
 
     if (source === 'queued') setRetryingQueuedCheckout(true);
     else setLoading(true);
@@ -1392,6 +1546,7 @@ function OrderContent() {
     setLastOrderWasAddOn(isAddOnOrder);
 
     const orderData = {
+      restaurant_id: restaurantId,
       table_number: parseInt(tableNumber),
       items: pendingItems,
       subtotal: pendingSubtotalAmount,
@@ -1434,7 +1589,8 @@ function OrderContent() {
         await supabase
           .from('restaurant_tables')
           .update({ status: 'occupied', current_order_id: receipt })
-          .eq('table_number', parseInt(tableNumber));
+          .eq('table_number', parseInt(tableNumber))
+          .eq('restaurant_id', restaurantId);
       }
 
       setSubmittedQuantities(prev => {
@@ -1472,10 +1628,11 @@ function OrderContent() {
       if (source === 'queued') setRetryingQueuedCheckout(false);
       else setLoading(false);
     }
-  }, [guestInstructions, orderCount, saveQueuedCheckout, tableNumber]);
+  }, [guestInstructions, orderCount, saveQueuedCheckout, tableNumber, restaurantId, restaurantStatus]);
 
   const retryQueuedCheckout = useCallback(async () => {
     if (!queuedCheckout || !navigator.onLine || retryingQueuedCheckout || waitingForConfirmation) return;
+    if ((queuedCheckout.restaurantId || 1) !== restaurantId) return;
 
     const result = await submitPendingOrder(queuedCheckout.pendingItems, queuedCheckout.isAddOnOrder, 'queued');
     if (!result.success) {
@@ -1484,7 +1641,7 @@ function OrderContent() {
         [{ label: '🔄 Retry Now', value: 'checkout' }]
       );
     }
-  }, [queuedCheckout, retryingQueuedCheckout, submitPendingOrder, waitingForConfirmation]);
+  }, [queuedCheckout, retryingQueuedCheckout, submitPendingOrder, waitingForConfirmation, restaurantId]);
 
   useEffect(() => {
     if (!isOnline || !queuedCheckout || retryingQueuedCheckout || waitingForConfirmation) return;
@@ -1492,6 +1649,11 @@ function OrderContent() {
   }, [isOnline, queuedCheckout, retryingQueuedCheckout, retryQueuedCheckout, waitingForConfirmation]);
 
   const handleCheckout = async () => {
+    if (restaurantStatus === 'disabled') {
+      addBotMessage('Ordering is temporarily disabled for this restaurant. Please contact staff.', []);
+      return;
+    }
+
     if (cart.length === 0) {
       addBotMessage('Your cart is empty! Add some items first.', [{ label: '📋 View Menu', value: 'menu' }]);
       return;
@@ -1521,6 +1683,7 @@ function OrderContent() {
 
     if (!navigator.onLine) {
       const queued: QueuedCheckout = {
+        restaurantId,
         tableNumber,
         pendingItems,
         isAddOnOrder,
@@ -1542,6 +1705,7 @@ function OrderContent() {
     if (!result.success) {
       if (result.reason === 'network') {
         const queued: QueuedCheckout = {
+          restaurantId,
           tableNumber,
           pendingItems,
           isAddOnOrder,
@@ -1609,6 +1773,11 @@ function OrderContent() {
       : paymentGatewayStatus.paypalConfigured;
 
     if (!providerConfigured) {
+      if (paymentGatewayStatus.plan === 'basic') {
+        setPaymentStatusMessage('Online payment is enabled on premium plan only. Please pay cash to manager.');
+        return;
+      }
+
       setPaymentStatusMessage(
         provider === 'card'
           ? 'Card payment is in setup mode right now. Please pay cash to manager.'
@@ -1629,13 +1798,17 @@ function OrderContent() {
     try {
       const response = await fetch('/api/payment/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-restaurant-id': String(restaurantId),
+        },
         body: JSON.stringify({
           provider,
           orderId: paymentOrderId,
           receiptId,
           amount: total,
           tableNumber,
+          restaurantId,
         }),
       });
 
@@ -1676,7 +1849,8 @@ function OrderContent() {
           transaction_id: `cash-${Date.now()}`,
           updated_at: new Date().toISOString(),
         })
-        .eq('id', paymentOrderId);
+        .eq('id', paymentOrderId)
+        .eq('restaurant_id', restaurantId);
 
       if (error) {
         setPaymentStatusMessage('Could not confirm cash payment right now. Please ask manager to confirm.');
@@ -1686,11 +1860,13 @@ function OrderContent() {
       await supabase
         .from('restaurant_tables')
         .update({ status: 'available', current_order_id: null })
-        .eq('table_number', Number(tableNumber));
+        .eq('table_number', Number(tableNumber))
+        .eq('restaurant_id', restaurantId);
 
       await supabase
         .from('payment_event_audit')
         .insert({
+          restaurant_id: restaurantId,
           order_id: paymentOrderId,
           receipt_id: receiptId,
           provider: 'system',
@@ -1721,12 +1897,16 @@ function OrderContent() {
     
     if (receiptId) {
       const finalCalculation = calculateOrderTotal(subtotal, selectedTip);
-      const { error } = await supabase.from('orders').update({ 
-        rating, 
-        tip_amount: finalCalculation.tipAmount,
-        tax_amount: finalCalculation.taxAmount,
-        total: finalCalculation.total 
-      }).eq('receipt_id', receiptId);
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          rating,
+          tip_amount: finalCalculation.tipAmount,
+          tax_amount: finalCalculation.taxAmount,
+          total: finalCalculation.total,
+        })
+        .eq('receipt_id', receiptId)
+        .eq('restaurant_id', restaurantId);
       if (error) console.error('Rating update error:', error);
     }
     
@@ -1974,8 +2154,8 @@ function OrderContent() {
               <Image src="/icons/icon-96x96.png" alt="N" width={28} height={28} className="rounded-md" />
             </div>
             <div>
-              <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>Coasis</p>
-              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Assistant</p>
+              <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>{restaurantName}</p>
+              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Assistant • {restaurantPlan.toUpperCase()}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">

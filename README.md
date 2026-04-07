@@ -52,6 +52,46 @@ The payment audit table powers the admin payment timeline panel, including check
 
 The app settings table stores company branding (business name, subtitle, logo URL, and logo hint) used by the admin dashboard and printable reports.
 
+## Multi-Tenant SaaS Setup
+
+This app now supports multi-restaurant tenancy in one deployment.
+
+Run:
+
+1. `MIGRATE_MULTI_TENANT.sql`
+2. `ENFORCE_MULTI_TENANT_RLS.sql` (recommended for tenant isolation)
+
+This migration:
+
+- creates `restaurants` and `restaurant_staff`
+- adds `restaurant_id` to tenant tables
+- backfills existing data to default tenant
+- seeds default tenant staff users
+- adds tenant-safe unique constraints and realtime coverage
+
+Central admin login:
+
+- URL: `/central/login`
+- default: `owner / owner123`
+- optional override env:
+	- `NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME`
+	- `NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD`
+
+From central admin (`/central`), you can:
+
+- create restaurant tenants
+- assign plan (`basic` / `premium`)
+- activate or disable tenants
+- monitor tenant usage and revenue snapshots
+
+Restaurant staff login (`/admin/login`) is tenant-aware and supports:
+
+- manager
+- chef
+- restaurant_admin
+
+QR links now include `restaurant` in the query string so chatbot/menu/order/payment flow resolves the correct tenant context.
+
 ## Local Run
 
 ```bash

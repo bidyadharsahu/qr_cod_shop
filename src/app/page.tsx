@@ -72,6 +72,15 @@ export default function LandingPage() {
               <span className="relative z-10 tracking-wide">STAFF LOGIN</span>
             </Link>
           </motion.div>
+
+          <div className="mt-4 text-center">
+            <Link
+              href="/central/login"
+              className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg border border-emerald-400/40 text-emerald-200 hover:bg-emerald-500/10 text-sm font-medium"
+            >
+              CENTRAL ADMIN
+            </Link>
+          </div>
         </motion.div>
       </div>
     </div>

@@ -10,6 +10,7 @@ import { calculateOrderTotal, formatCurrency } from '@/lib/calculations';
 import { getCurrentTheme, type AppTheme } from '@/lib/themes';
 import type { Order, MenuItem, RestaurantTable, PaymentEventAudit } from '@/lib/types';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
+import { clearAdminSession, readAdminSession } from '@/lib/tenant';
 import { 
   LayoutDashboard, ShoppingBag, UtensilsCrossed, Grid3X3, ShoppingCart, CircleDollarSign, ClipboardList, Timer, Eye, Table as TableIcon, 
   LogOut, Plus, QrCode, Bell, X, Check, ChefHat,
@@ -26,7 +27,7 @@ interface PaymentGatewayStatus {
 }
 
 type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
-type StaffRole = 'manager' | 'chef';
+type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
 
 const DEFAULT_COMPANY_PROFILE = {
   name: 'netrikxr.shop',
@@ -60,6 +61,10 @@ export default function AdminDashboard() {
   const [authLoading, setAuthLoading] = useState(true);
   const [staffRole, setStaffRole] = useState<StaffRole>('manager');
   const [staffUser, setStaffUser] = useState<string>('');
+  const [restaurantId, setRestaurantId] = useState<number>(1);
+  const [restaurantName, setRestaurantName] = useState<string>('Default Restaurant');
+  const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
+  const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -122,6 +127,7 @@ export default function AdminDashboard() {
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
   const [tableNumberInput, setTableNumberInput] = useState('');
   const syncIntervalRef = useRef<number | null>(null);
+  const tableReconcileRef = useRef(false);
   
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
@@ -349,6 +355,7 @@ export default function AdminDashboard() {
 
   const logPaymentFollowUp = async (order: Order, eventType: 'payment_followup_sent' | 'walkout_risk_flagged') => {
     await supabase.from('payment_event_audit').insert({
+      restaurant_id: restaurantId,
       order_id: order.id,
       receipt_id: order.receipt_id,
       provider: 'system',
@@ -373,10 +380,12 @@ export default function AdminDashboard() {
   };
 
   const fetchBrandingSettings = useCallback(async () => {
+    if (!restaurantId) return;
+
     const { data } = await supabase
       .from('app_settings')
       .select('business_name, admin_subtitle, logo_url, logo_hint')
-      .eq('id', 1)
+      .eq('restaurant_id', restaurantId)
       .maybeSingle();
 
     if (!data) return;
@@ -390,13 +399,13 @@ export default function AdminDashboard() {
 
     setCompanyProfile(next);
     setBrandingForm(next);
-  }, []);
+  }, [restaurantId]);
 
   const saveBrandingSettings = async () => {
     setSavingBranding(true);
     try {
       const payload = {
-        id: 1,
+        restaurant_id: restaurantId,
         business_name: brandingForm.name.trim() || DEFAULT_COMPANY_PROFILE.name,
         admin_subtitle: brandingForm.subtitle.trim() || DEFAULT_COMPANY_PROFILE.subtitle,
         logo_url: brandingForm.logo.trim() || DEFAULT_COMPANY_PROFILE.logo,
@@ -404,7 +413,7 @@ export default function AdminDashboard() {
         updated_at: new Date().toISOString(),
       };
 
-      const { error } = await supabase.from('app_settings').upsert(payload, { onConflict: 'id' });
+      const { error } = await supabase.from('app_settings').upsert(payload, { onConflict: 'restaurant_id' });
 
       if (error) {
         showToast('Could not save branding settings. Run app settings SQL first.', 'error');
@@ -681,22 +690,48 @@ export default function AdminDashboard() {
     showToast('Date-range CSV exported');
   };
 
-  // Auth check - using sessionStorage
+  // Auth check with tenant-scoped staff session
   useEffect(() => {
-    const checkAuth = () => {
-      const isLoggedIn = sessionStorage.getItem('admin_authenticated');
-      if (isLoggedIn !== 'true') { 
-        router.push('/admin/login'); 
-        return; 
+    const checkAuth = async () => {
+      const session = readAdminSession();
+      if (!session.authenticated) {
+        router.push('/admin/login');
+        return;
       }
-      const storedRole = sessionStorage.getItem('staff_role');
-      const nextRole: StaffRole = storedRole === 'chef' ? 'chef' : 'manager';
+
+      const nextRole: StaffRole = session.staffRole === 'chef' || session.staffRole === 'restaurant_admin'
+        ? session.staffRole
+        : 'manager';
+
       setStaffRole(nextRole);
-      setStaffUser(sessionStorage.getItem('staff_username') || '');
+      setStaffUser(session.staffUser || '');
+      setRestaurantId(session.restaurantId);
+      setRestaurantName(session.restaurantName || 'Default Restaurant');
       setIsAuthenticated(true);
       setActiveTab(nextRole === 'chef' ? 'kitchen' : 'dashboard');
+
+      const { data } = await supabase
+        .from('restaurants')
+        .select('name, plan, status')
+        .eq('id', session.restaurantId)
+        .maybeSingle();
+
+      if (data) {
+        setRestaurantName((data.name || session.restaurantName || 'Default Restaurant').trim());
+        setRestaurantPlan(data.plan === 'premium' ? 'premium' : 'basic');
+        const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
+        setRestaurantStatus(nextStatus);
+
+        if (nextStatus === 'disabled') {
+          clearAdminSession();
+          router.push('/admin/login');
+          return;
+        }
+      }
+
       setAuthLoading(false);
     };
+
     checkAuth();
   }, [router]);
 
@@ -729,37 +764,60 @@ export default function AdminDashboard() {
 
   // Fetch functions
   const fetchOrders = useCallback(async () => {
-    const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
+    if (!restaurantId) return;
+    const { data } = await supabase
+      .from('orders')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('created_at', { ascending: false });
     if (data) setOrders(data as Order[]);
-  }, []);
+  }, [restaurantId]);
 
   const fetchMenu = useCallback(async () => {
-    const { data } = await supabase.from('menu_items').select('*').order('category', { ascending: true });
+    if (!restaurantId) return;
+    const { data } = await supabase
+      .from('menu_items')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('category', { ascending: true });
     if (data) setMenuItems((data as MenuItem[]).map(withResolvedMenuImage));
-  }, []);
+  }, [restaurantId]);
 
   const fetchTables = useCallback(async () => {
-    const { data } = await supabase.from('restaurant_tables').select('*').order('table_number', { ascending: true });
+    if (!restaurantId) return;
+    const { data } = await supabase
+      .from('restaurant_tables')
+      .select('*')
+      .eq('restaurant_id', restaurantId)
+      .order('table_number', { ascending: true });
     if (data) setTables(data as RestaurantTable[]);
-  }, []);
+  }, [restaurantId]);
 
   const fetchPaymentEvents = useCallback(async () => {
+    if (!restaurantId) return;
+
     const { data } = await supabase
       .from('payment_event_audit')
       .select('*')
+      .eq('restaurant_id', restaurantId)
       .order('event_time', { ascending: false })
       .limit(120);
 
     if (data) setPaymentEvents(data as PaymentEventAudit[]);
-  }, []);
+  }, [restaurantId]);
 
   // Initial fetch & realtime
   useEffect(() => {
     if (!isAuthenticated) return;
     fetchOrders(); fetchMenu(); fetchTables(); fetchPaymentEvents();
 
-    const ordersSub = supabase.channel('orders-rt')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, (payload) => {
+    const ordersSub = supabase.channel(`orders-rt-${restaurantId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'orders',
+        filter: `restaurant_id=eq.${restaurantId}`,
+      }, (payload) => {
         fetchOrders();
         if (payload.eventType === 'INSERT') {
           const newOrder = payload.new as Order;
@@ -769,11 +827,53 @@ export default function AdminDashboard() {
           audio.play().catch(() => {});
           setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== newOrder.id)), 30000);
         }
-      }).subscribe();
+      }).subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          fetchOrders();
+        }
+      });
 
-    const menuSub = supabase.channel('menu-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchMenu()).subscribe();
-    const tablesSub = supabase.channel('tables-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'restaurant_tables' }, () => fetchTables()).subscribe();
-    const paymentEventsSub = supabase.channel('payment-events-rt').on('postgres_changes', { event: '*', schema: 'public', table: 'payment_event_audit' }, () => fetchPaymentEvents()).subscribe();
+    const menuSub = supabase
+      .channel(`menu-rt-${restaurantId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'menu_items',
+        filter: `restaurant_id=eq.${restaurantId}`,
+      }, () => fetchMenu())
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          fetchMenu();
+        }
+      });
+
+    const tablesSub = supabase
+      .channel(`tables-rt-${restaurantId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'restaurant_tables',
+        filter: `restaurant_id=eq.${restaurantId}`,
+      }, () => fetchTables())
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          fetchTables();
+        }
+      });
+
+    const paymentEventsSub = supabase
+      .channel(`payment-events-rt-${restaurantId}`)
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'payment_event_audit',
+        filter: `restaurant_id=eq.${restaurantId}`,
+      }, () => fetchPaymentEvents())
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          fetchPaymentEvents();
+        }
+      });
 
     return () => {
       supabase.removeChannel(ordersSub);
@@ -781,7 +881,32 @@ export default function AdminDashboard() {
       supabase.removeChannel(tablesSub);
       supabase.removeChannel(paymentEventsSub);
     };
-  }, [isAuthenticated, fetchOrders, fetchMenu, fetchTables, fetchPaymentEvents]);
+  }, [isAuthenticated, restaurantId, fetchOrders, fetchMenu, fetchTables, fetchPaymentEvents]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId) return;
+
+    const restaurantStatusSub = supabase
+      .channel(`restaurant-status-${restaurantId}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'restaurants',
+        filter: `id=eq.${restaurantId}`,
+      }, (payload: any) => {
+        const nextStatus = payload?.new?.status === 'disabled' ? 'disabled' : 'active';
+        setRestaurantStatus(nextStatus);
+        if (nextStatus === 'disabled') {
+          clearAdminSession();
+          router.push('/admin/login');
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(restaurantStatusSub);
+    };
+  }, [isAuthenticated, restaurantId, router]);
 
   // Real-time payment modal updates
   useEffect(() => {
@@ -795,17 +920,20 @@ export default function AdminDashboard() {
 
     // Listen for real-time updates to this specific order
     const paymentSub = supabase
-      .channel(`order-payment-${showPaymentModal.id}`)
+      .channel(`order-payment-${restaurantId}-${showPaymentModal.id}`)
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'orders',
-          filter: `id=eq.${showPaymentModal.id}`
+          filter: `restaurant_id=eq.${restaurantId}`,
         },
         (payload: any) => {
-          setPaymentModalData(payload.new as Order);
+          const nextOrder = payload.new as Order;
+          if (nextOrder.id === showPaymentModal.id) {
+            setPaymentModalData(nextOrder);
+          }
         }
       )
       .subscribe();
@@ -813,12 +941,10 @@ export default function AdminDashboard() {
     return () => {
       supabase.removeChannel(paymentSub);
     };
-  }, [showPaymentModal]);
+  }, [showPaymentModal, restaurantId]);
 
   const handleLogout = () => {
-    sessionStorage.removeItem('admin_authenticated');
-    sessionStorage.removeItem('staff_role');
-    sessionStorage.removeItem('staff_username');
+    clearAdminSession();
     router.push('/admin/login');
   };
 
@@ -827,7 +953,8 @@ export default function AdminDashboard() {
     const { error: orderError } = await supabase
       .from('orders')
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('restaurant_id', restaurantId);
 
     if (orderError) {
       showToast(`Error confirming order: ${orderError.message}`, 'error');
@@ -837,7 +964,8 @@ export default function AdminDashboard() {
     const { error: tableError } = await supabase
       .from('restaurant_tables')
       .update({ status: 'occupied', current_order_id: order.receipt_id })
-      .eq('table_number', order.table_number);
+      .eq('table_number', order.table_number)
+      .eq('restaurant_id', restaurantId);
 
     if (tableError) {
       showToast(`Order confirmed, but table status failed: ${tableError.message}`, 'error');
@@ -854,7 +982,11 @@ export default function AdminDashboard() {
   };
 
   const cancelOrder = async (order: Order) => {
-    await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).eq('id', order.id);
+    await supabase
+      .from('orders')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', order.id)
+      .eq('restaurant_id', restaurantId);
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order cancelled', 'error');
   };
@@ -863,7 +995,8 @@ export default function AdminDashboard() {
     const { error } = await supabase
       .from('orders')
       .update({ status, updated_at: new Date().toISOString() })
-      .eq('id', orderId);
+      .eq('id', orderId)
+      .eq('restaurant_id', restaurantId);
 
     if (error) {
       showToast(`Error updating order: ${error.message}`, 'error');
@@ -877,7 +1010,8 @@ export default function AdminDashboard() {
     const { error } = await supabase
       .from('orders')
       .update({ status: 'preparing', updated_at: new Date().toISOString() })
-      .eq('id', order.id);
+      .eq('id', order.id)
+      .eq('restaurant_id', restaurantId);
 
     if (error) {
       showToast(`Error sending order to kitchen: ${error.message}`, 'error');
@@ -885,6 +1019,7 @@ export default function AdminDashboard() {
     }
 
     await supabase.from('payment_event_audit').insert({
+      restaurant_id: restaurantId,
       order_id: order.id,
       receipt_id: order.receipt_id,
       provider: 'system',
@@ -913,7 +1048,8 @@ export default function AdminDashboard() {
         status: 'paid', payment_status: 'paid', payment_method: 'cash',
         payment_type: 'direct_cash'
       })
-      .eq('id', showPaymentModal.id);
+      .eq('id', showPaymentModal.id)
+      .eq('restaurant_id', restaurantId);
 
     if (orderError) {
       showToast(`Could not record payment: ${orderError.message}`, 'error');
@@ -923,7 +1059,8 @@ export default function AdminDashboard() {
     const { error: tableError } = await supabase
       .from('restaurant_tables')
       .update({ status: 'available', current_order_id: null })
-      .eq('table_number', showPaymentModal.table_number);
+      .eq('table_number', showPaymentModal.table_number)
+      .eq('restaurant_id', restaurantId);
 
     if (tableError) {
       showToast(`Payment saved, but table release failed: ${tableError.message}`, 'error');
@@ -937,6 +1074,7 @@ export default function AdminDashboard() {
     )));
 
     await supabase.from('payment_event_audit').insert({
+      restaurant_id: restaurantId,
       order_id: showPaymentModal.id,
       receipt_id: showPaymentModal.receipt_id,
       provider: 'system',
@@ -961,6 +1099,7 @@ export default function AdminDashboard() {
     const normalizedName = menuForm.name.trim();
     const normalizedCategory = menuForm.category.trim();
     const data = {
+      restaurant_id: restaurantId,
       name: normalizedName,
       price: parseFloat(menuForm.price),
       category: normalizedCategory,
@@ -969,7 +1108,11 @@ export default function AdminDashboard() {
     };
     try {
       if (editMenuItem) {
-        const { error } = await supabase.from('menu_items').update(data).eq('id', editMenuItem.id);
+        const { error } = await supabase
+          .from('menu_items')
+          .update(data)
+          .eq('id', editMenuItem.id)
+          .eq('restaurant_id', restaurantId);
         if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
       } else {
         const { error } = await supabase.from('menu_items').insert(data);
@@ -984,14 +1127,22 @@ export default function AdminDashboard() {
   };
 
   const deleteMenuItem = async (id: number) => {
-    const { error } = await supabase.from('menu_items').delete().eq('id', id);
+    const { error } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('id', id)
+      .eq('restaurant_id', restaurantId);
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Item deleted');
     fetchMenu();
   };
 
   const toggleAvailability = async (item: MenuItem) => {
-    const { error } = await supabase.from('menu_items').update({ available: !item.available }).eq('id', item.id);
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ available: !item.available })
+      .eq('id', item.id)
+      .eq('restaurant_id', restaurantId);
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     fetchMenu();
   };
@@ -1001,7 +1152,9 @@ export default function AdminDashboard() {
     const num = parseInt(tableNumberInput);
     if (isNaN(num) || num <= 0) { showToast('Invalid table number', 'error'); return; }
     try {
-      const { error } = await supabase.from('restaurant_tables').insert({ table_number: num, status: 'available' });
+      const { error } = await supabase
+        .from('restaurant_tables')
+        .insert({ restaurant_id: restaurantId, table_number: num, status: 'available' });
       if (error) {
         if (error.message.includes('duplicate') || error.code === '23505') {
           showToast('Table already exists', 'error');
@@ -1018,7 +1171,11 @@ export default function AdminDashboard() {
   };
 
   const deleteTable = async (id: number) => {
-    const { error } = await supabase.from('restaurant_tables').delete().eq('id', id);
+    const { error } = await supabase
+      .from('restaurant_tables')
+      .delete()
+      .eq('id', id)
+      .eq('restaurant_id', restaurantId);
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
     showToast('Table deleted');
     fetchTables();
@@ -1056,7 +1213,8 @@ export default function AdminDashboard() {
         status: nextStatus,
         current_order_id: nextCurrentOrderId,
       })
-      .eq('id', id);
+      .eq('id', id)
+      .eq('restaurant_id', restaurantId);
 
     if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
 
@@ -1073,8 +1231,8 @@ export default function AdminDashboard() {
 
   const applyCheckoutGateOverride = async () => {
     if (!checkoutGateTable) return;
-    if (staffRole !== 'manager') {
-      showToast('Only manager can apply checkout override.', 'error');
+    if (!canManage) {
+      showToast('Only manager or restaurant admin can apply checkout override.', 'error');
       return;
     }
 
@@ -1087,7 +1245,8 @@ export default function AdminDashboard() {
     const { error } = await supabase
       .from('restaurant_tables')
       .update({ status: 'available', current_order_id: null })
-      .eq('id', checkoutGateTable.id);
+      .eq('id', checkoutGateTable.id)
+      .eq('restaurant_id', restaurantId);
 
     if (error) {
       showToast(`Error: ${error.message}`, 'error');
@@ -1095,6 +1254,7 @@ export default function AdminDashboard() {
     }
 
     await supabase.from('payment_event_audit').insert({
+      restaurant_id: restaurantId,
       order_id: checkoutGateBlockingOrders[0]?.id ?? null,
       receipt_id: checkoutGateBlockingOrders[0]?.receipt_id ?? null,
       provider: 'system',
@@ -1172,6 +1332,52 @@ export default function AdminDashboard() {
       return table;
     });
   }, [tables, liveUnpaidOrderByTable, orders]);
+
+  // Persist derived table occupancy so stale records self-heal after dropped events.
+  useEffect(() => {
+    if (!isAuthenticated || !restaurantId || tables.length === 0) return;
+    if (tableReconcileRef.current) return;
+
+    const pendingUpdates = effectiveTables
+      .map((effectiveTable) => {
+        const rawTable = tables.find((table) => table.id === effectiveTable.id);
+        if (!rawTable) return null;
+        if (rawTable.status === effectiveTable.status && rawTable.current_order_id === effectiveTable.current_order_id) {
+          return null;
+        }
+        return {
+          id: effectiveTable.id,
+          status: effectiveTable.status,
+          current_order_id: effectiveTable.current_order_id,
+        };
+      })
+      .filter(Boolean) as Array<{ id: number; status: RestaurantTable['status']; current_order_id: string | null }>;
+
+    if (pendingUpdates.length === 0) return;
+
+    tableReconcileRef.current = true;
+
+    const reconcile = async () => {
+      try {
+        await Promise.all(
+          pendingUpdates.map((update) =>
+            supabase
+              .from('restaurant_tables')
+              .update({
+                status: update.status,
+                current_order_id: update.current_order_id,
+              })
+              .eq('id', update.id)
+              .eq('restaurant_id', restaurantId)
+          )
+        );
+      } finally {
+        tableReconcileRef.current = false;
+      }
+    };
+
+    reconcile();
+  }, [effectiveTables, isAuthenticated, restaurantId, tables]);
 
   // Stats
   const todayOrders = orders.filter(o => new Date(o.created_at).toDateString() === new Date().toDateString());
@@ -1407,7 +1613,11 @@ export default function AdminDashboard() {
   // Dismiss waiter call
   const dismissWaiterCall = async (call: Order) => {
     setWaiterCalls(prev => prev.filter(c => c.id !== call.id));
-    const { error } = await supabase.from('orders').update({ status: 'confirmed', updated_at: new Date().toISOString() }).eq('id', call.id);
+    const { error } = await supabase
+      .from('orders')
+      .update({ status: 'confirmed', updated_at: new Date().toISOString() })
+      .eq('id', call.id)
+      .eq('restaurant_id', restaurantId);
     if (error) {
       showToast('Could not acknowledge waiter call. Please retry.', 'error');
       return;
@@ -1438,7 +1648,11 @@ export default function AdminDashboard() {
   useEffect(() => {
     const fetchPaymentGatewayStatus = async () => {
       try {
-        const res = await fetch('/api/payment/status');
+        const res = await fetch(`/api/payment/status?restaurantId=${restaurantId}`, {
+          headers: {
+            'x-restaurant-id': String(restaurantId),
+          },
+        });
         if (!res.ok) return;
         const data = await res.json() as PaymentGatewayStatus;
         setPaymentGatewayStatus(data);
@@ -1450,7 +1664,7 @@ export default function AdminDashboard() {
     };
 
     fetchPaymentGatewayStatus();
-  }, []);
+  }, [restaurantId]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -1476,6 +1690,8 @@ export default function AdminDashboard() {
       { id: 'menu', label: 'Menu' },
       { id: 'tables', label: 'Tables' },
     ];
+
+  const canManage = staffRole === 'manager' || staffRole === 'restaurant_admin';
 
   const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
     { id: 'corporate', label: 'Corporate' },
@@ -1579,7 +1795,9 @@ export default function AdminDashboard() {
               </div>
               <div className="min-w-0">
                 <p className="font-black text-xl tracking-tight truncate text-[#e4e1e6]">{companyProfile.name}</p>
-                <p className="text-[10px] text-[#958da1] uppercase tracking-[0.14em] truncate">{companyProfile.subtitle}</p>
+                <p className="text-[10px] text-[#958da1] uppercase tracking-[0.14em] truncate">
+                  {companyProfile.subtitle} | {restaurantName} | {restaurantPlan.toUpperCase()} | {restaurantStatus.toUpperCase()}
+                </p>
               </div>
             </div>
 
@@ -2262,7 +2480,7 @@ export default function AdminDashboard() {
                       <button onClick={() => printOrderBill(order)} className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                         <Printer className="w-4 h-4" /> Print Bill
                       </button>
-                      {staffRole === 'manager' && order.status === 'pending' && (
+                      {canManage && order.status === 'pending' && (
                         <>
                           <button onClick={() => confirmOrder(order)} className="px-4 py-2 bg-green-500 hover:bg-green-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                             <Check className="w-4 h-4" /> Confirm
@@ -2272,7 +2490,7 @@ export default function AdminDashboard() {
                           </button>
                         </>
                       )}
-                      {staffRole === 'manager' && order.status === 'confirmed' && (
+                      {canManage && order.status === 'confirmed' && (
                         <button onClick={() => sendOrderToKitchen(order)} className="px-4 py-2 bg-purple-500 hover:bg-purple-600 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors">
                           <Printer className="w-4 h-4" /> Send to Kitchen
                         </button>
@@ -2282,7 +2500,7 @@ export default function AdminDashboard() {
                           Served
                         </button>
                       )}
-                      {staffRole === 'manager' && order.payment_status !== 'paid' && order.status !== 'pending' && (
+                      {canManage && order.payment_status !== 'paid' && order.status !== 'pending' && (
                         <button onClick={() => setShowPaymentModal(order)} className="px-4 py-2 text-black rounded-lg text-sm font-medium transition-colors" style={{ background: theme.primary }}>
                           Record Cash Payment
                         </button>
@@ -2591,7 +2809,7 @@ export default function AdminDashboard() {
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                     {tables.map(table => (
                       <div key={table.id} className="bg-white rounded-2xl p-4 text-center">
-                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${getBaseUrl()}/order?table=${table.table_number}`)}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
+                        <Image src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${getBaseUrl()}/order?table=${table.table_number}&restaurant=${restaurantId}`)}`} alt={`Table ${table.table_number}`} width={200} height={200} className="mx-auto" />
                         <p className="mt-3 font-bold text-black text-xl">Table {table.table_number}</p>
                         <p className="text-xs text-gray-500">Scan to order</p>
                       </div>
@@ -2870,7 +3088,7 @@ export default function AdminDashboard() {
                   </button>
                   <button
                     onClick={applyCheckoutGateOverride}
-                    disabled={staffRole !== 'manager'}
+                    disabled={!canManage}
                     className="flex-1 py-2.5 rounded-lg font-semibold text-black disabled:opacity-50"
                     style={{ background: theme.primary }}
                   >

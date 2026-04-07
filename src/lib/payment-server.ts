@@ -18,7 +18,49 @@ function getServerSupabase() {
   );
 }
 
+export interface TenantOrderSnapshot {
+  id: number;
+  restaurant_id: number;
+  receipt_id: string;
+  table_number: number;
+  total: number;
+  status: string;
+  payment_status: string;
+}
+
+export async function getTenantOrder(orderId: number, restaurantId: number): Promise<TenantOrderSnapshot | null> {
+  const supabase = getServerSupabase();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('orders')
+    .select('id, restaurant_id, receipt_id, table_number, total, status, payment_status')
+    .eq('id', orderId)
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+
+  return (data as TenantOrderSnapshot | null) ?? null;
+}
+
+export async function getRestaurantSubscription(restaurantId: number): Promise<{ plan: 'basic' | 'premium'; status: 'active' | 'disabled' } | null> {
+  const supabase = getServerSupabase();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('restaurants')
+    .select('plan, status')
+    .eq('id', restaurantId)
+    .maybeSingle();
+
+  if (!data) return null;
+
+  const plan = data.plan === 'premium' ? 'premium' : 'basic';
+  const status = data.status === 'disabled' ? 'disabled' : 'active';
+  return { plan, status };
+}
+
 export interface PaymentAuditLogInput {
+  restaurantId?: number;
   orderId?: number;
   receiptId?: string;
   provider?: 'stripe' | 'paypal' | 'system';
@@ -31,11 +73,32 @@ export interface PaymentAuditLogInput {
   rawPayload?: unknown;
 }
 
+async function resolveRestaurantIdForOrder(orderId: number): Promise<number | null> {
+  const supabase = getServerSupabase();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('orders')
+    .select('restaurant_id')
+    .eq('id', orderId)
+    .maybeSingle();
+
+  const candidate = (data as { restaurant_id?: number } | null)?.restaurant_id;
+  return typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0
+    ? Math.trunc(candidate)
+    : null;
+}
+
 export async function logPaymentEvent(input: PaymentAuditLogInput): Promise<void> {
   const supabase = getServerSupabase();
   if (!supabase) return;
 
+  const resolvedRestaurantId = input.restaurantId
+    || (input.orderId ? await resolveRestaurantIdForOrder(input.orderId) : null)
+    || 1;
+
   const payload = {
+    restaurant_id: resolvedRestaurantId,
     order_id: input.orderId ?? null,
     receipt_id: input.receiptId ?? null,
     provider: input.provider ?? 'system',
@@ -57,19 +120,28 @@ export async function markOrderAsPaid(
   paymentMethod: 'card' | 'online',
   paymentType: 'chatbot_payment' | 'direct_cash',
   transactionId: string,
-  source: 'verify-route' | 'stripe-webhook' | 'paypal-webhook'
+  source: 'verify-route' | 'stripe-webhook' | 'paypal-webhook',
+  restaurantId?: number,
 ): Promise<boolean> {
   const supabase = getServerSupabase();
   if (!supabase) return false;
 
-  const { data: existingOrder, error: existingError } = await supabase
+  let existingOrderQuery = supabase
     .from('orders')
-    .select('id, table_number, payment_status, receipt_id, total')
-    .eq('id', orderId)
-    .single();
+    .select('id, restaurant_id, table_number, payment_status, receipt_id, total')
+    .eq('id', orderId);
+
+  if (restaurantId) {
+    existingOrderQuery = existingOrderQuery.eq('restaurant_id', restaurantId);
+  }
+
+  const { data: existingOrder, error: existingError } = await existingOrderQuery.maybeSingle();
+
+  const resolvedRestaurantId = (existingOrder as { restaurant_id?: number } | null)?.restaurant_id || restaurantId || 1;
 
   if (existingError || !existingOrder) {
     await logPaymentEvent({
+      restaurantId: resolvedRestaurantId,
       orderId,
       provider: paymentMethod === 'card' ? 'stripe' : 'paypal',
       eventType: 'payment_mark_failed_order_lookup',
@@ -82,6 +154,7 @@ export async function markOrderAsPaid(
 
   if (existingOrder.payment_status === 'paid') {
     await logPaymentEvent({
+      restaurantId: resolvedRestaurantId,
       orderId,
       receiptId: existingOrder.receipt_id,
       provider: paymentMethod === 'card' ? 'stripe' : 'paypal',
@@ -105,10 +178,12 @@ export async function markOrderAsPaid(
       customer_note: `${source} | payment confirmed`,
       updated_at: new Date().toISOString(),
     })
-    .eq('id', orderId);
+    .eq('id', orderId)
+    .eq('restaurant_id', resolvedRestaurantId);
 
   if (orderError) {
     await logPaymentEvent({
+      restaurantId: resolvedRestaurantId,
       orderId,
       receiptId: existingOrder.receipt_id,
       provider: paymentMethod === 'card' ? 'stripe' : 'paypal',
@@ -126,10 +201,12 @@ export async function markOrderAsPaid(
     await supabase
       .from('restaurant_tables')
       .update({ status: 'available', current_order_id: null })
-      .eq('table_number', existingOrder.table_number);
+      .eq('table_number', existingOrder.table_number)
+      .eq('restaurant_id', resolvedRestaurantId);
   }
 
   await logPaymentEvent({
+    restaurantId: resolvedRestaurantId,
     orderId,
     receiptId: existingOrder.receipt_id,
     provider: paymentMethod === 'card' ? 'stripe' : 'paypal',

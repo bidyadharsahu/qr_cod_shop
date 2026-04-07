@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPayPalAccessToken, logPaymentEvent, PAYPAL_BASE } from '@/lib/payment-server';
+import { getPayPalAccessToken, getRestaurantSubscription, getTenantOrder, logPaymentEvent, PAYPAL_BASE } from '@/lib/payment-server';
+import { resolveTenantIdFromRequest } from '@/lib/tenant-server';
 
 type PaymentProvider = 'card' | 'paypal';
 
@@ -9,16 +10,18 @@ interface CheckoutRequest {
   receiptId: string;
   amount: number;
   tableNumber: string;
+  restaurantId?: number;
 }
 
 function getBaseUrl(req: NextRequest): string {
   return process.env.NEXT_PUBLIC_SITE_URL || req.nextUrl.origin;
 }
 
-async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Promise<NextResponse> {
+async function createStripeCheckout(req: NextRequest, body: CheckoutRequest, restaurantId: number): Promise<NextResponse> {
   const stripeSecret = process.env.STRIPE_SECRET_KEY;
   if (!stripeSecret) {
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'stripe',
@@ -35,8 +38,8 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Pr
 
   const payload = new URLSearchParams();
   payload.append('mode', 'payment');
-  payload.append('success_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&payment=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}&order=${body.orderId}`);
-  payload.append('cancel_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&payment=cancel&provider=stripe&order=${body.orderId}`);
+  payload.append('success_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=success&provider=stripe&session_id={CHECKOUT_SESSION_ID}&order=${body.orderId}`);
+  payload.append('cancel_url', `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=cancel&provider=stripe&order=${body.orderId}`);
   payload.append('line_items[0][quantity]', '1');
   payload.append('line_items[0][price_data][currency]', 'usd');
   payload.append('line_items[0][price_data][product_data][name]', `Order ${body.receiptId}`);
@@ -56,6 +59,7 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Pr
   if (!response.ok) {
     const errText = await response.text();
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'stripe',
@@ -71,6 +75,7 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Pr
   const data = await response.json() as { url?: string; id?: string };
   if (!data.url) {
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'stripe',
@@ -84,6 +89,7 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Pr
   }
 
   await logPaymentEvent({
+    restaurantId,
     orderId: body.orderId,
     receiptId: body.receiptId,
     provider: 'stripe',
@@ -97,10 +103,11 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest): Pr
   return NextResponse.json({ url: data.url, provider: 'stripe' });
 }
 
-async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Promise<NextResponse> {
+async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest, restaurantId: number): Promise<NextResponse> {
   const accessToken = await getPayPalAccessToken();
   if (!accessToken) {
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'paypal',
@@ -132,8 +139,8 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Pr
         },
       ],
       application_context: {
-        return_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&payment=success&provider=paypal&order=${body.orderId}`,
-        cancel_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&payment=cancel&provider=paypal&order=${body.orderId}`,
+        return_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=success&provider=paypal&order=${body.orderId}`,
+        cancel_url: `${baseUrl}/order?table=${encodeURIComponent(body.tableNumber)}&restaurant=${restaurantId}&payment=cancel&provider=paypal&order=${body.orderId}`,
         user_action: 'PAY_NOW',
       },
     }),
@@ -142,6 +149,7 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Pr
   if (!orderRes.ok) {
     const errText = await orderRes.text();
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'paypal',
@@ -159,6 +167,7 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Pr
 
   if (!approvalLink) {
     await logPaymentEvent({
+      restaurantId,
       orderId: body.orderId,
       receiptId: body.receiptId,
       provider: 'paypal',
@@ -172,6 +181,7 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Pr
   }
 
   await logPaymentEvent({
+    restaurantId,
     orderId: body.orderId,
     receiptId: body.receiptId,
     provider: 'paypal',
@@ -187,22 +197,57 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest): Pr
 
 export async function POST(req: NextRequest) {
   try {
+    const tenantId = resolveTenantIdFromRequest(req);
     const body = await req.json() as CheckoutRequest;
 
     if (!body || !body.provider || !body.orderId || !body.receiptId || !body.tableNumber) {
       return NextResponse.json({ error: 'Missing required checkout fields.' }, { status: 400 });
     }
 
+    if (body.restaurantId && body.restaurantId !== tenantId) {
+      return NextResponse.json({ error: 'Tenant mismatch in checkout request.' }, { status: 400 });
+    }
+
     if (body.amount <= 0) {
       return NextResponse.json({ error: 'Invalid amount.' }, { status: 400 });
     }
 
+    const subscription = await getRestaurantSubscription(tenantId);
+    if (!subscription) {
+      return NextResponse.json({ error: 'Restaurant not found.' }, { status: 404 });
+    }
+
+    if (subscription?.status === 'disabled') {
+      return NextResponse.json({ error: 'Restaurant account is disabled.' }, { status: 403 });
+    }
+
+    if (subscription?.plan === 'basic') {
+      return NextResponse.json({ error: 'Online payment is available on premium plan only.' }, { status: 403 });
+    }
+
+    const order = await getTenantOrder(body.orderId, tenantId);
+    if (!order) {
+      return NextResponse.json({ error: 'Order not found for this restaurant.' }, { status: 404 });
+    }
+
+    if (order.payment_status === 'paid') {
+      return NextResponse.json({ error: 'Order is already paid.' }, { status: 409 });
+    }
+
+    const canonicalBody: CheckoutRequest = {
+      ...body,
+      restaurantId: tenantId,
+      receiptId: order.receipt_id,
+      tableNumber: String(order.table_number),
+      amount: Number(order.total),
+    };
+
     if (body.provider === 'card') {
-      return createStripeCheckout(req, body);
+      return createStripeCheckout(req, canonicalBody, tenantId);
     }
 
     if (body.provider === 'paypal') {
-      return createPayPalCheckout(req, body);
+      return createPayPalCheckout(req, canonicalBody, tenantId);
     }
 
     return NextResponse.json({ error: 'Unsupported payment provider.' }, { status: 400 });
