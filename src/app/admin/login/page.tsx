@@ -28,6 +28,11 @@ interface TenantResolveResponse {
   error?: string;
 }
 
+interface TenantCatalogResponse {
+  restaurants?: Restaurant[];
+  error?: string;
+}
+
 interface TenantAuthLoginResponse {
   authenticated?: boolean;
   staffRole?: StaffRole;
@@ -38,6 +43,22 @@ interface TenantAuthLoginResponse {
 
 interface AdminLoginPageProps {
   forcedTenantSlug?: string;
+}
+
+const REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
@@ -89,7 +110,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
 
       try {
         if (tenantScopedLogin) {
-          const response = await fetch(`/api/tenant/resolve?slug=${encodeURIComponent(normalizedForcedSlug)}`, {
+          const response = await fetchWithTimeout(`/api/tenant/resolve?slug=${encodeURIComponent(normalizedForcedSlug)}`, {
             cache: 'no-store',
           });
 
@@ -106,23 +127,33 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
           return;
         }
 
-        const response = await fetch(
-          `/api/tenant/resolve?slug=${encodeURIComponent(DEFAULT_RESTAURANT_CONTEXT.restaurantSlug)}`,
-          { cache: 'no-store' },
-        );
-        const payload = await response.json() as TenantResolveResponse;
+        const response = await fetchWithTimeout('/api/tenant/catalog', { cache: 'no-store' });
+        const payload = await response.json() as TenantCatalogResponse;
 
-        if (!response.ok || !payload.restaurant || payload.restaurant.status === 'disabled') {
+        const activeRestaurants = (payload.restaurants || []).filter((restaurant) => restaurant.status === 'active');
+
+        if (!response.ok || activeRestaurants.length === 0) {
           setRestaurants([DEFAULT_RESTAURANT_OPTION]);
           setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
           setTenantLabel(DEFAULT_RESTAURANT_OPTION.name);
           return;
         }
 
-        setRestaurants([payload.restaurant]);
-        setRestaurantSlug(payload.restaurant.slug);
-        setTenantLabel(payload.restaurant.name);
-      } catch {
+        setRestaurants(activeRestaurants);
+        setRestaurantSlug((current) => {
+          const keepCurrent = activeRestaurants.some((restaurant) => restaurant.slug === current);
+          return keepCurrent ? current : activeRestaurants[0].slug;
+        });
+        setTenantLabel(activeRestaurants[0].name);
+      } catch (err) {
+        const timedOut = err instanceof DOMException && err.name === 'AbortError';
+
+        if (tenantScopedLogin) {
+          setRestaurants([]);
+          setError(timedOut ? 'Tenant check timed out. Please refresh and try again.' : 'Could not verify this tenant right now.');
+          return;
+        }
+
         setRestaurants([DEFAULT_RESTAURANT_OPTION]);
         setRestaurantSlug(DEFAULT_RESTAURANT_OPTION.slug);
         setTenantLabel(DEFAULT_RESTAURANT_OPTION.name);
@@ -133,6 +164,14 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
 
     loadRestaurants();
   }, [normalizedForcedSlug, tenantScopedLogin]);
+
+  useEffect(() => {
+    if (tenantScopedLogin) return;
+    const selected = restaurants.find((restaurant) => restaurant.slug === restaurantSlug);
+    if (selected) {
+      setTenantLabel(selected.name);
+    }
+  }, [restaurantSlug, restaurants, tenantScopedLogin]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,7 +188,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
     }
 
     try {
-      const response = await fetch('/api/tenant/auth/login', {
+      const response = await fetchWithTimeout('/api/tenant/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -188,8 +227,9 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
 
       const scopedSlug = normalizeRestaurantSlug(payload.restaurant.slug || normalizedSlug);
       router.push(scopedSlug ? `/t/${scopedSlug}/admin` : tenantAdminPath);
-    } catch {
-      setError('Could not sign in right now. Please try again.');
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      setError(timedOut ? 'Login timed out. Please try again.' : 'Could not sign in right now. Please try again.');
       return;
     } finally {
       setLoading(false);

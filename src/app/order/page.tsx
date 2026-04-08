@@ -9,7 +9,7 @@ import type { MenuItem } from '@/lib/types';
 import { processChatMessage, type ChatbotResponse, type ConversationContext } from '@/lib/chatbot';
 import { getCurrentTheme, applyTheme, type AppTheme } from '@/lib/themes';
 import { getDefaultMenuImage, withResolvedMenuImage } from '@/lib/menu-images';
-import { normalizeRestaurantSlug, persistRestaurantContext, readRestaurantContext } from '@/lib/tenant';
+import { DEFAULT_RESTAURANT_CONTEXT, normalizeRestaurantSlug, persistRestaurantContext, readRestaurantContext } from '@/lib/tenant';
 import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
@@ -175,6 +175,7 @@ const getBestMenuVoiceMatch = (items: MenuItem[], query: string): MenuItem | nul
 };
 
 const CHECKOUT_QUEUE_KEY = 'netrikxr-pending-checkout-v1';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
 
 const parsePositiveInt = (value: string | null): number | null => {
   if (!value) return null;
@@ -315,7 +316,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         const tenant = payload.restaurant;
         setRestaurantId(tenant.id);
         setRestaurantSlug(normalizeRestaurantSlug(tenant.slug || normalizedForcedTenantSlug));
-        setRestaurantName((tenant.name || 'Default Restaurant').trim() || 'Default Restaurant');
+        setRestaurantName((tenant.name || DEFAULT_RESTAURANT_CONTEXT.restaurantName).trim() || DEFAULT_RESTAURANT_CONTEXT.restaurantName);
         setRestaurantPlan(tenant.plan === 'premium' ? 'premium' : 'basic');
         setRestaurantStatus(tenant.status === 'disabled' ? 'disabled' : 'active');
 
@@ -610,14 +611,17 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       return;
     }
 
-    const nextSlug = normalizeRestaurantSlug(data.slug || 'default');
+    const nextSlugRaw = normalizeRestaurantSlug(data.slug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
+    const nextSlug = nextSlugRaw === LEGACY_DEFAULT_RESTAURANT_SLUG
+      ? DEFAULT_RESTAURANT_CONTEXT.restaurantSlug
+      : nextSlugRaw;
     if (tenantScopedOrder && nextSlug !== normalizedForcedTenantSlug) {
       setRestaurantStatus('disabled');
       setMenuLoadError('Tenant URL does not match this restaurant context.');
       return;
     }
 
-    const nextName = (data.name || 'Default Restaurant').trim() || 'Default Restaurant';
+    const nextName = (data.name || DEFAULT_RESTAURANT_CONTEXT.restaurantName).trim() || DEFAULT_RESTAURANT_CONTEXT.restaurantName;
     const nextStatus = data.status === 'disabled' ? 'disabled' : 'active';
     const nextPlan = data.plan === 'premium' ? 'premium' : 'basic';
 

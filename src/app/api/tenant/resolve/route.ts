@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleSupabase } from '@/lib/server-supabase';
 import { normalizeTenantSlug } from '@/lib/tenant-server';
 
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
+
 function buildTenantUrls(origin: string, slug: string) {
   const tenantBase = `${origin}/t/${slug}`;
   return {
@@ -27,11 +30,23 @@ export async function GET(req: NextRequest) {
     }, { status: 503 });
   }
 
-  const { data, error } = await supabase
+  const slugCandidates = slug === DEFAULT_RESTAURANT_SLUG
+    ? [DEFAULT_RESTAURANT_SLUG, LEGACY_DEFAULT_RESTAURANT_SLUG]
+    : slug === LEGACY_DEFAULT_RESTAURANT_SLUG
+      ? [LEGACY_DEFAULT_RESTAURANT_SLUG, DEFAULT_RESTAURANT_SLUG]
+      : [slug];
+
+  const { data: rows, error } = await supabase
     .from('restaurants')
-    .select('id, slug, name, plan, status')
-    .eq('slug', slug)
-    .maybeSingle();
+    .select('id, slug, name, plan, status, is_default')
+    .in('slug', slugCandidates)
+    .order('is_default', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(2);
+
+  const data = (rows || []).find((row) => row.slug === slug)
+    || (rows || [])[0]
+    || null;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -41,8 +56,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Tenant not found.' }, { status: 404 });
   }
 
+  const canonicalSlug = data.is_default ? DEFAULT_RESTAURANT_SLUG : (data.slug || slug);
+
   return NextResponse.json({
-    restaurant: data,
-    urls: buildTenantUrls(req.nextUrl.origin, data.slug || slug),
+    restaurant: {
+      ...data,
+      slug: canonicalSlug,
+    },
+    urls: buildTenantUrls(req.nextUrl.origin, canonicalSlug),
   });
 }

@@ -17,8 +17,8 @@ export interface StaffSession {
 
 export const DEFAULT_RESTAURANT_CONTEXT: RestaurantContext = {
   restaurantId: 1,
-  restaurantSlug: 'default',
-  restaurantName: 'Default Restaurant',
+  restaurantSlug: 'coasis',
+  restaurantName: 'Coasis Restaurant and Cafe',
 };
 
 export const TENANT_STORAGE_KEYS = {

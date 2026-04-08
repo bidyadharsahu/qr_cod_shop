@@ -82,7 +82,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   const [restaurantName, setRestaurantName] = useState<string>(DEFAULT_RESTAURANT_CONTEXT.restaurantName);
   const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('basic');
   const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
-  const [realtimeHealth, setRealtimeHealth] = useState<RealtimeHealth>('connecting');
+  const [, setRealtimeHealth] = useState<RealtimeHealth>('connecting');
   const [orders, setOrders] = useState<Order[]>([]);
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [tables, setTables] = useState<RestaurantTable[]>([]);
@@ -1102,51 +1102,80 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
 
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
-    await supabase
+    const { error: orderError } = await supabase
       .from('orders')
       .update({ status: 'confirmed', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
 
-    await supabase
+    if (orderError) {
+      showToast(`Could not confirm order: ${orderError.message}`, 'error');
+      return;
+    }
+
+    const { error: tableError } = await supabase
       .from('restaurant_tables')
       .update({ status: 'occupied', current_order_id: order.receipt_id })
       .eq('table_number', order.table_number)
       .eq('restaurant_id', restaurantId);
 
+    if (tableError) {
+      showToast(`Order confirmed but table status update failed: ${tableError.message}`, 'error');
+      runFullSync();
+      return;
+    }
+
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order confirmed!');
+    runFullSync();
   };
 
   const cancelOrder = async (order: Order) => {
-    await supabase
+    const { error } = await supabase
       .from('orders')
       .update({ status: 'cancelled', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
 
+    if (error) {
+      showToast(`Could not cancel order: ${error.message}`, 'error');
+      return;
+    }
+
     setNotifications(prev => prev.filter(n => n.id !== order.id));
     showToast('Order cancelled', 'error');
+    runFullSync();
   };
 
   const updateOrderStatus = async (orderId: number, status: string) => {
-    await supabase
+    const { error } = await supabase
       .from('orders')
       .update({ status, updated_at: new Date().toISOString() })
       .eq('id', orderId)
       .eq('restaurant_id', restaurantId);
 
+    if (error) {
+      showToast(`Could not update order: ${error.message}`, 'error');
+      return;
+    }
+
     showToast(`Order marked as ${status}`);
+    runFullSync();
   };
 
   const sendOrderToKitchen = async (order: Order) => {
-    await supabase
+    const { error: updateError } = await supabase
       .from('orders')
       .update({ status: 'preparing', updated_at: new Date().toISOString() })
       .eq('id', order.id)
       .eq('restaurant_id', restaurantId);
 
-    await supabase.from('payment_event_audit').insert({
+    if (updateError) {
+      showToast(`Could not send to kitchen: ${updateError.message}`, 'error');
+      return;
+    }
+
+    const { error: auditError } = await supabase.from('payment_event_audit').insert({
       restaurant_id: restaurantId,
       order_id: order.id,
       receipt_id: order.receipt_id,
@@ -1163,27 +1192,44 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
         estimated_prep_minutes: estimatePrepMinutes(order),
       },
     });
+
+    if (auditError) {
+      showToast(`Kitchen ticket logged with warning: ${auditError.message}`, 'error');
+    }
+
     printKitchenTicket(order);
     showToast('Order sent to kitchen and ticket printed');
+    runFullSync();
   };
 
   const handlePayment = async () => {
     if (!showPaymentModal) return;
 
-    await supabase.from('orders').update({
+    const { error: orderError } = await supabase.from('orders').update({
       status: 'paid', payment_status: 'paid', payment_method: 'cash',
       payment_type: 'direct_cash'
     })
       .eq('id', showPaymentModal.id)
       .eq('restaurant_id', restaurantId);
 
-    await supabase
+    if (orderError) {
+      showToast(`Could not record payment: ${orderError.message}`, 'error');
+      return;
+    }
+
+    const { error: tableError } = await supabase
       .from('restaurant_tables')
       .update({ status: 'available', current_order_id: null })
       .eq('table_number', showPaymentModal.table_number)
       .eq('restaurant_id', restaurantId);
 
-    await supabase.from('payment_event_audit').insert({
+    if (tableError) {
+      showToast(`Payment recorded but table release failed: ${tableError.message}`, 'error');
+      runFullSync();
+      return;
+    }
+
+    const { error: auditError } = await supabase.from('payment_event_audit').insert({
       restaurant_id: restaurantId,
       order_id: showPaymentModal.id,
       receipt_id: showPaymentModal.receipt_id,
@@ -1197,8 +1243,14 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
       event_time: new Date().toISOString(),
       raw_payload: { payment_type: 'direct_cash' },
     });
+
+    if (auditError) {
+      showToast(`Payment saved with audit warning: ${auditError.message}`, 'error');
+    }
+
     showToast('Payment recorded!');
     setShowPaymentModal(null);
+    runFullSync();
   };
 
   // Menu actions
@@ -1845,18 +1897,6 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                   className="w-full bg-transparent border-0 p-0 text-sm text-[#e4e1e6] placeholder-[#6b6478] focus:outline-none"
                 />
               </div>
-              <span
-                className={`hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold uppercase tracking-wide ${
-                  realtimeHealth === 'live'
-                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/35'
-                    : realtimeHealth === 'degraded'
-                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/35'
-                      : 'bg-sky-500/15 text-sky-300 border border-sky-500/35'
-                }`}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                Realtime {realtimeHealth}
-              </span>
               {waiterCalls.length > 0 && (
                 <div className="relative">
                   <PhoneCall className="w-5 h-5 text-orange-400 animate-pulse" />

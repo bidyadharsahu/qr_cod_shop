@@ -17,7 +17,8 @@ const FALLBACK_STAFF_CREDENTIALS: Record<StaffRole, { username: string; password
   restaurant_admin: { username: 'admin', password: 'admin123' },
 };
 
-const DEFAULT_RESTAURANT_SLUG = 'default';
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
 
 export async function POST(req: NextRequest) {
   const supabase = getServiceRoleSupabase();
@@ -43,11 +44,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Restaurant slug, username, and password are required.' }, { status: 400 });
   }
 
-  const { data: restaurant, error: restaurantError } = await supabase
+  const slugCandidates = restaurantSlug === DEFAULT_RESTAURANT_SLUG
+    ? [DEFAULT_RESTAURANT_SLUG, LEGACY_DEFAULT_RESTAURANT_SLUG]
+    : restaurantSlug === LEGACY_DEFAULT_RESTAURANT_SLUG
+      ? [LEGACY_DEFAULT_RESTAURANT_SLUG, DEFAULT_RESTAURANT_SLUG]
+      : [restaurantSlug];
+
+  const { data: restaurantRows, error: restaurantError } = await supabase
     .from('restaurants')
-    .select('id, slug, name, plan, status')
-    .eq('slug', restaurantSlug)
-    .maybeSingle();
+    .select('id, slug, name, plan, status, is_default')
+    .in('slug', slugCandidates)
+    .order('is_default', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(2);
+
+  const restaurant = (restaurantRows || []).find((row) => row.slug === restaurantSlug)
+    || (restaurantRows || [])[0]
+    || null;
 
   if (restaurantError) {
     return NextResponse.json({ error: restaurantError.message }, { status: 500 });
@@ -73,7 +86,7 @@ export async function POST(req: NextRequest) {
 
   const fallback = FALLBACK_STAFF_CREDENTIALS[role];
   const fallbackAllowed =
-    restaurant.slug === DEFAULT_RESTAURANT_SLUG
+    Boolean(restaurant.is_default)
     && username === fallback.username
     && password === fallback.password;
 
@@ -83,13 +96,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Invalid ${role} credentials for ${restaurant.name}` }, { status: 401 });
   }
 
+  const canonicalSlug = restaurant.is_default ? DEFAULT_RESTAURANT_SLUG : restaurant.slug;
+
   return NextResponse.json({
     authenticated: true,
     staffRole: role,
     staffUser: username,
     restaurant: {
       id: restaurant.id,
-      slug: restaurant.slug,
+      slug: canonicalSlug,
       name: restaurant.name,
       plan: restaurant.plan === 'premium' ? 'premium' : 'basic',
       status: restaurant.status === 'disabled' ? 'disabled' : 'active',

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServiceRoleSupabase } from '@/lib/server-supabase';
 
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+
 export async function GET() {
   const supabase = getServiceRoleSupabase();
   if (!supabase) {
@@ -11,8 +13,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('restaurants')
-    .select('id, slug, name, plan, status')
-    .eq('slug', 'default')
+    .select('id, slug, name, owner_email, plan, status, is_default')
     .eq('status', 'active')
     .order('name', { ascending: true });
 
@@ -20,5 +21,10 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ restaurants: data || [] });
+  return NextResponse.json({
+    restaurants: (data || []).map((restaurant) => ({
+      ...restaurant,
+      slug: restaurant.is_default ? DEFAULT_RESTAURANT_SLUG : restaurant.slug,
+    })),
+  });
 }

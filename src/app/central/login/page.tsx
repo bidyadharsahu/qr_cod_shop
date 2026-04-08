@@ -9,6 +9,22 @@ interface CentralLoginResponse {
   error?: string;
 }
 
+const REQUEST_TIMEOUT_MS = 12000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = REQUEST_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 export default function CentralAdminLoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -19,7 +35,7 @@ export default function CentralAdminLoginPage() {
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const response = await fetch('/api/central/auth/session', { cache: 'no-store' });
+        const response = await fetchWithTimeout('/api/central/auth/session', { cache: 'no-store' });
         if (response.ok) {
           router.push('/central');
         }
@@ -37,7 +53,7 @@ export default function CentralAdminLoginPage() {
     setError('');
 
     try {
-      const response = await fetch('/api/central/auth/login', {
+      const response = await fetchWithTimeout('/api/central/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,8 +81,9 @@ export default function CentralAdminLoginPage() {
       }
 
       router.push('/central');
-    } catch {
-      setError('Could not sign in right now. Please try again.');
+    } catch (err) {
+      const timedOut = err instanceof DOMException && err.name === 'AbortError';
+      setError(timedOut ? 'Login timed out. Please try again.' : 'Could not sign in right now. Please try again.');
     } finally {
       setLoading(false);
     }

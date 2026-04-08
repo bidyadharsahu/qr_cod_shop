@@ -65,6 +65,8 @@ interface CentralRestaurantPatchResponse {
   error?: string;
 }
 
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+
 const emptyMetrics = (): TenantMetrics => ({
   orders: 0,
   paidOrders: 0,
@@ -103,6 +105,24 @@ export default function CentralAdminPage() {
   const totalRestaurants = restaurants.length;
   const activeRestaurants = restaurants.filter((restaurant) => restaurant.status === 'active').length;
   const premiumRestaurants = restaurants.filter((restaurant) => restaurant.plan === 'premium').length;
+
+  const ownerDirectory = useMemo(() => {
+    const byOwner = new Map<string, { email: string; tenantCount: number; activeCount: number }>();
+
+    restaurants.forEach((restaurant) => {
+      const email = (restaurant.owner_email || '').trim().toLowerCase();
+      if (!email) return;
+
+      const existing = byOwner.get(email) || { email, tenantCount: 0, activeCount: 0 };
+      existing.tenantCount += 1;
+      if (restaurant.status === 'active') {
+        existing.activeCount += 1;
+      }
+      byOwner.set(email, existing);
+    });
+
+    return Array.from(byOwner.values()).sort((left, right) => left.email.localeCompare(right.email));
+  }, [restaurants]);
 
   const aggregatedMetrics = useMemo(() => {
     const totals = {
@@ -145,7 +165,11 @@ export default function CentralAdminPage() {
         return;
       }
 
-      const tenantRows = payload.restaurants || [];
+      const tenantRows = (payload.restaurants || []).map((restaurant) => (
+        restaurant.is_default
+          ? { ...restaurant, slug: DEFAULT_RESTAURANT_SLUG }
+          : restaurant
+      ));
       setRestaurants(tenantRows);
 
       const nextMetrics: Record<number, TenantMetrics> = {};
@@ -391,7 +415,7 @@ export default function CentralAdminPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
             <p className="text-xs uppercase tracking-wider text-zinc-500">Restaurants</p>
             <p className="text-3xl font-black mt-2">{totalRestaurants}</p>
@@ -411,6 +435,10 @@ export default function CentralAdminPage() {
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
             <p className="text-xs uppercase tracking-wider text-zinc-500">Platform Revenue</p>
             <p className="text-3xl font-black mt-2 text-amber-300">${aggregatedMetrics.revenue.toFixed(2)}</p>
+          </div>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+            <p className="text-xs uppercase tracking-wider text-zinc-500">Owner Contacts</p>
+            <p className="text-3xl font-black mt-2 text-indigo-300">{ownerDirectory.length}</p>
           </div>
         </section>
 
@@ -587,6 +615,27 @@ export default function CentralAdminPage() {
               <p className="text-xs text-zinc-400 mt-1">Disable or activate restaurants instantly to control access and workflows safely.</p>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Users className="w-4 h-4 text-indigo-300" />
+            <h2 className="font-bold text-lg">Owner Directory</h2>
+          </div>
+
+          {ownerDirectory.length === 0 ? (
+            <p className="text-sm text-zinc-400">No owner emails are set yet. Add owner email while creating/updating tenants.</p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {ownerDirectory.map((owner) => (
+                <div key={owner.email} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                  <p className="text-sm font-semibold text-zinc-100 truncate">{owner.email}</p>
+                  <p className="text-xs text-zinc-400 mt-1">Tenants: {owner.tenantCount}</p>
+                  <p className="text-xs text-zinc-500">Active: {owner.activeCount}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
     </div>

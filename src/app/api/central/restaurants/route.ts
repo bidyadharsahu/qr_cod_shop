@@ -254,6 +254,7 @@ export async function POST(req: NextRequest) {
   const { error: settingsError } = await supabase
     .from('app_settings')
     .upsert({
+      id: tenant.id,
       restaurant_id: tenant.id,
       business_name: tenant.name,
       admin_subtitle: 'Admin Panel',

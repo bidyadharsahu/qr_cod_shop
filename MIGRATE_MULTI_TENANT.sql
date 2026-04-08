@@ -43,30 +43,46 @@ CREATE TABLE IF NOT EXISTS restaurant_staff (
 CREATE INDEX IF NOT EXISTS idx_restaurants_status_plan ON restaurants(status, plan);
 CREATE INDEX IF NOT EXISTS idx_restaurant_staff_restaurant_role ON restaurant_staff(restaurant_id, role);
 
--- Make sure exactly one default tenant exists.
-INSERT INTO restaurants (slug, name, owner_email, plan, status, is_default)
-VALUES ('default', 'Default Restaurant', 'owner@default.local', 'premium', 'active', true)
-ON CONFLICT (slug) DO UPDATE
-SET
-  is_default = true,
-  updated_at = NOW();
+-- Make sure exactly one default tenant exists (coasis), while supporting legacy `default` slug.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM restaurants WHERE slug = 'default')
+     AND NOT EXISTS (SELECT 1 FROM restaurants WHERE slug = 'coasis') THEN
+    UPDATE restaurants
+    SET
+      slug = 'coasis',
+      name = CASE WHEN trim(coalesce(name, '')) = '' OR name = 'Default Restaurant' THEN 'Coasis Restaurant and Cafe' ELSE name END,
+      owner_email = COALESCE(owner_email, 'owner@coasis.local'),
+      is_default = true,
+      updated_at = NOW()
+    WHERE slug = 'default';
+  END IF;
 
--- Normalize potential multiple defaults.
-WITH picked AS (
-  SELECT id
-  FROM restaurants
-  WHERE slug = 'default'
-  ORDER BY id
-  LIMIT 1
-)
-UPDATE restaurants
-SET is_default = CASE WHEN id = (SELECT id FROM picked) THEN true ELSE false END;
+  INSERT INTO restaurants (slug, name, owner_email, plan, status, is_default)
+  VALUES ('coasis', 'Coasis Restaurant and Cafe', 'owner@coasis.local', 'premium', 'active', true)
+  ON CONFLICT (slug) DO UPDATE
+  SET
+    is_default = true,
+    updated_at = NOW();
+
+  UPDATE restaurants
+  SET is_default = CASE
+    WHEN id = (
+      SELECT id
+      FROM restaurants
+      WHERE slug = 'coasis'
+      ORDER BY id
+      LIMIT 1
+    ) THEN true
+    ELSE false
+  END;
+END $$;
 
 -- Seed backward-compatible staff credentials for default restaurant if none exist.
 INSERT INTO restaurant_staff (restaurant_id, username, password, role, is_active)
 SELECT r.id, 'hello', '789456', 'manager', true
 FROM restaurants r
-WHERE r.slug = 'default'
+WHERE r.is_default = true
   AND NOT EXISTS (
     SELECT 1 FROM restaurant_staff s
     WHERE s.restaurant_id = r.id
@@ -76,11 +92,21 @@ WHERE r.slug = 'default'
 INSERT INTO restaurant_staff (restaurant_id, username, password, role, is_active)
 SELECT r.id, 'chef', 'chef123', 'chef', true
 FROM restaurants r
-WHERE r.slug = 'default'
+WHERE r.is_default = true
   AND NOT EXISTS (
     SELECT 1 FROM restaurant_staff s
     WHERE s.restaurant_id = r.id
       AND s.username = 'chef'
+  );
+
+INSERT INTO restaurant_staff (restaurant_id, username, password, role, is_active)
+SELECT r.id, 'admin', 'admin123', 'restaurant_admin', true
+FROM restaurants r
+WHERE r.is_default = true
+  AND NOT EXISTS (
+    SELECT 1 FROM restaurant_staff s
+    WHERE s.restaurant_id = r.id
+      AND s.username = 'admin'
   );
 
 -- -----------------------------
@@ -91,6 +117,35 @@ ALTER TABLE IF EXISTS restaurant_tables ADD COLUMN IF NOT EXISTS restaurant_id B
 ALTER TABLE IF EXISTS orders ADD COLUMN IF NOT EXISTS restaurant_id BIGINT;
 ALTER TABLE IF EXISTS payment_event_audit ADD COLUMN IF NOT EXISTS restaurant_id BIGINT;
 ALTER TABLE IF EXISTS app_settings ADD COLUMN IF NOT EXISTS restaurant_id BIGINT;
+
+-- Legacy app_settings compatibility:
+-- convert old single-row schema (id=1) into multi-row-friendly schema.
+ALTER TABLE IF EXISTS app_settings DROP CONSTRAINT IF EXISTS app_settings_single_row;
+ALTER TABLE IF EXISTS app_settings DROP CONSTRAINT IF EXISTS app_settings_id_check;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'app_settings'
+      AND column_name = 'id'
+  ) THEN
+    CREATE SEQUENCE IF NOT EXISTS app_settings_id_seq;
+
+    PERFORM setval(
+      'app_settings_id_seq',
+      COALESCE((SELECT MAX(id) FROM app_settings), 0) + 1,
+      false
+    );
+
+    ALTER TABLE app_settings
+      ALTER COLUMN id SET DEFAULT nextval('app_settings_id_seq');
+
+    ALTER SEQUENCE app_settings_id_seq OWNED BY app_settings.id;
+  END IF;
+END $$;
 
 -- Backfill existing rows to default restaurant.
 WITH default_restaurant AS (
