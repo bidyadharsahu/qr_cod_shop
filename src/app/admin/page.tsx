@@ -143,6 +143,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   
   // Forms
   const [menuForm, setMenuForm] = useState({ name: '', price: '', category: '', imageUrl: '' });
+  const [menuImageColumnAvailable, setMenuImageColumnAvailable] = useState(true);
   const [tableNumberInput, setTableNumberInput] = useState('');
   
   // Toast
@@ -1096,6 +1097,11 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     router.push(tenantAdminLoginPath);
   };
 
+  const isMenuImageColumnError = (message?: string | null) => {
+    const normalized = (message || '').toLowerCase();
+    return normalized.includes('image_url') && normalized.includes('menu_items');
+  };
+
   // Order actions - NO WhatsApp redirect
   const confirmOrder = async (order: Order) => {
     const { error: orderError } = await supabase
@@ -1256,28 +1262,52 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     }
     const normalizedName = menuForm.name.trim();
     const normalizedCategory = menuForm.category.trim();
-    const data = {
+    const baseData = {
       restaurant_id: restaurantId,
       name: normalizedName,
       price: parseFloat(menuForm.price),
       category: normalizedCategory,
-      image_url: menuForm.imageUrl.trim() || getDefaultMenuImage(normalizedName, normalizedCategory),
       available: editMenuItem ? editMenuItem.available : true,
     };
-    try {
-      if (editMenuItem) {
-        const { error } = await supabase
-          .from('menu_items')
-          .update(data)
-          .eq('id', editMenuItem.id)
-          .eq('restaurant_id', restaurantId);
 
-        if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
-      } else {
-        const { error } = await supabase.from('menu_items').insert(data);
-        if (error) { showToast(`Error: ${error.message}`, 'error'); return; }
+    const imagePayload = {
+      ...baseData,
+      image_url: menuForm.imageUrl.trim() || getDefaultMenuImage(normalizedName, normalizedCategory),
+    };
+
+    try {
+      const saveWithPayload = async (payload: typeof imagePayload | typeof baseData) => {
+        if (editMenuItem) {
+          return supabase
+            .from('menu_items')
+            .update(payload)
+            .eq('id', editMenuItem.id)
+            .eq('restaurant_id', restaurantId);
+        }
+
+        return supabase.from('menu_items').insert(payload);
+      };
+
+      const initialPayload = menuImageColumnAvailable ? imagePayload : baseData;
+      let { error } = await saveWithPayload(initialPayload);
+      let savedWithoutImageColumn = false;
+
+      if (error && menuImageColumnAvailable && isMenuImageColumnError(error.message)) {
+        setMenuImageColumnAvailable(false);
+        const retry = await saveWithPayload(baseData);
+        error = retry.error;
+        savedWithoutImageColumn = !error;
       }
+
+      if (error) {
+        showToast(`Error: ${error.message}`, 'error');
+        return;
+      }
+
       showToast(editMenuItem ? 'Item updated!' : 'Item added!');
+      if (savedWithoutImageColumn) {
+        showToast('Saved without photo column. Run ADD_MENU_IMAGE_COLUMN.sql to enable menu image storage.');
+      }
       setShowMenuModal(false); setEditMenuItem(null); setMenuForm({ name: '', price: '', category: '', imageUrl: '' });
       fetchMenu(); // Refresh data
     } catch (err: any) {
@@ -2904,6 +2934,11 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                   >
                     Use Free Stock Food Photo
                   </button>
+                  {!menuImageColumnAvailable && (
+                    <p className="mt-2 text-xs text-amber-300">
+                      This database is missing menu image storage. Item save still works, but run SQL file ADD_MENU_IMAGE_COLUMN.sql to persist photo URLs.
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-xl overflow-hidden border border-zinc-700 bg-zinc-900">
                   <div className="relative h-36 w-full">

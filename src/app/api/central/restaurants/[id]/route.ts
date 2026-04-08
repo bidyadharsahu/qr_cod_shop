@@ -19,6 +19,7 @@ interface StaffCredentialRow {
 }
 
 interface AppSettingsRow {
+  id?: number | null;
   business_name: string | null;
   admin_subtitle: string | null;
   logo_url: string | null;
@@ -59,6 +60,7 @@ const DEFAULT_DELETE_PASSPHRASE = 'bidyadhar';
 const DEFAULT_ADMIN_SUBTITLE = 'Admin Panel';
 const DEFAULT_LOGO_URL = '/icons/icon-192x192.png';
 const DEFAULT_CHATBOT_NAME = 'SIA';
+const APP_SETTINGS_OPTIONAL_COLUMNS = ['business_name', 'admin_subtitle', 'logo_url', 'logo_hint'] as const;
 
 function buildTenantUrls(origin: string, slug: string) {
   const normalizedSlug = normalizeRestaurantSlug(slug);
@@ -101,6 +103,48 @@ function normalizeCredentialPatch(input: CredentialPatch | undefined): Credentia
   }
 
   return normalized;
+}
+
+function findMissingColumnFromError(message: string, candidates: readonly string[]): string | null {
+  const normalized = message.toLowerCase();
+
+  for (const candidate of candidates) {
+    if (normalized.includes(candidate.toLowerCase()) && (normalized.includes('column') || normalized.includes('could not find'))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function upsertAppSettingsCompat(
+  supabase: NonNullable<ReturnType<typeof getServiceRoleSupabase>>,
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string } | null }> {
+  const mutablePayload: Record<string, unknown> = { ...payload };
+  const removable = APP_SETTINGS_OPTIONAL_COLUMNS.filter((column) => column in mutablePayload);
+  let lastError: { message: string } | null = null;
+
+  for (let attempt = 0; attempt <= removable.length; attempt += 1) {
+    const response = await supabase
+      .from('app_settings')
+      .upsert(mutablePayload, { onConflict: 'restaurant_id' });
+
+    if (!response.error) {
+      return { error: null };
+    }
+
+    lastError = response.error;
+    const missingColumn = findMissingColumnFromError(response.error.message, removable);
+
+    if (!missingColumn || !(missingColumn in mutablePayload)) {
+      return { error: lastError };
+    }
+
+    delete mutablePayload[missingColumn];
+  }
+
+  return { error: lastError };
 }
 
 function requireCentralSession(req: NextRequest): NextResponse | null {
@@ -163,7 +207,7 @@ async function loadRestaurantBundle(supabase: NonNullable<ReturnType<typeof getS
       .in('role', ['manager', 'chef', 'restaurant_admin']),
     supabase
       .from('app_settings')
-      .select('business_name, admin_subtitle, logo_url, logo_hint')
+      .select('id, business_name, admin_subtitle, logo_url, logo_hint')
       .eq('restaurant_id', restaurantId)
       .maybeSingle(),
   ]);
@@ -411,7 +455,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
   if (body.branding !== undefined) {
     const { data: currentSettings, error: currentSettingsError } = await supabase
       .from('app_settings')
-      .select('business_name, admin_subtitle, logo_url, logo_hint')
+      .select('id, business_name, admin_subtitle, logo_url, logo_hint')
       .eq('restaurant_id', restaurantId)
       .maybeSingle();
 
@@ -420,6 +464,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
     }
 
     const settingsPayload = {
+      id: currentSettings?.id || restaurantId,
       restaurant_id: restaurantId,
       business_name: normalizeNullableText(body.branding.businessName)
         || currentSettings?.business_name
@@ -435,9 +480,7 @@ export async function PATCH(req: NextRequest, context: RouteContext) {
         || DEFAULT_CHATBOT_NAME,
     };
 
-    const { error: settingsError } = await supabase
-      .from('app_settings')
-      .upsert(settingsPayload, { onConflict: 'restaurant_id' });
+    const { error: settingsError } = await upsertAppSettingsCompat(supabase, settingsPayload);
 
     if (settingsError) {
       return NextResponse.json({ error: settingsError.message }, { status: 500 });

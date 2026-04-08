@@ -33,6 +33,19 @@ interface TenantMetrics {
   activeTables: number;
 }
 
+interface SchemaHealthCheck {
+  key: string;
+  status: 'ok' | 'missing';
+  message: string;
+}
+
+interface SchemaHealthReport {
+  ok: boolean;
+  warnings: string[];
+  checks: SchemaHealthCheck[];
+  checkedAt: string;
+}
+
 interface TenantUrls {
   base: string;
   order: string;
@@ -74,6 +87,7 @@ interface CredentialsHint {
 interface CentralRestaurantListResponse {
   restaurants?: Restaurant[];
   metricsByRestaurant?: Record<string, TenantMetrics>;
+  schemaHealth?: SchemaHealthReport;
   error?: string;
 }
 
@@ -201,6 +215,7 @@ export default function CentralAdminPage() {
   const [success, setSuccess] = useState('');
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [metricsByRestaurant, setMetricsByRestaurant] = useState<Record<number, TenantMetrics>>({});
+  const [schemaHealth, setSchemaHealth] = useState<SchemaHealthReport | null>(null);
   const [credentialsHint, setCredentialsHint] = useState<CredentialsHint | null>(null);
   const [detailsByRestaurant, setDetailsByRestaurant] = useState<Record<number, TenantDetails>>({});
   const [detailsLoadingId, setDetailsLoadingId] = useState<number | null>(null);
@@ -362,6 +377,7 @@ export default function CentralAdminPage() {
         setError(payload.error || 'Could not load central admin data.');
         setRestaurants([]);
         setMetricsByRestaurant({});
+        setSchemaHealth(payload.schemaHealth || null);
         return;
       }
 
@@ -383,8 +399,10 @@ export default function CentralAdminPage() {
       });
 
       setMetricsByRestaurant(nextMetrics);
+      setSchemaHealth(payload.schemaHealth || null);
     } catch {
       setError('Could not load central admin data.');
+      setSchemaHealth(null);
     } finally {
       setLoading(false);
     }
@@ -769,6 +787,18 @@ export default function CentralAdminPage() {
         {error && (
           <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
+          </div>
+        )}
+
+        {schemaHealth && !schemaHealth.ok && (
+          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p className="font-semibold">Database health warning</p>
+            <p className="text-amber-200/90 mt-1">Some required schema columns are missing. Fix these to avoid runtime failures:</p>
+            <ul className="list-disc list-inside mt-2 space-y-1 text-amber-100/95">
+              {schemaHealth.warnings.map((warning, index) => (
+                <li key={`${warning}-${index}`}>{warning}</li>
+              ))}
+            </ul>
           </div>
         )}
 

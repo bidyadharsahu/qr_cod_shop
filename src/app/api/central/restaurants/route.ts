@@ -24,6 +24,21 @@ interface TenantMetrics {
   activeTables: number;
 }
 
+interface SchemaHealthCheck {
+  key: string;
+  status: 'ok' | 'missing';
+  message: string;
+}
+
+interface SchemaHealthReport {
+  ok: boolean;
+  warnings: string[];
+  checks: SchemaHealthCheck[];
+  checkedAt: string;
+}
+
+const APP_SETTINGS_OPTIONAL_COLUMNS = ['business_name', 'admin_subtitle', 'logo_url', 'logo_hint'] as const;
+
 interface CreateRestaurantBody {
   name?: string;
   slug?: string;
@@ -77,6 +92,133 @@ function getRequiredServiceClient(): ReturnType<typeof getServiceRoleSupabase> {
   return getServiceRoleSupabase();
 }
 
+function findMissingColumnFromError(message: string, candidates: readonly string[]): string | null {
+  const normalized = message.toLowerCase();
+
+  for (const candidate of candidates) {
+    if (normalized.includes(candidate.toLowerCase()) && (normalized.includes('column') || normalized.includes('could not find'))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+async function upsertAppSettingsCompat(
+  supabase: NonNullable<ReturnType<typeof getServiceRoleSupabase>>,
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string } | null }> {
+  const mutablePayload: Record<string, unknown> = { ...payload };
+  const removable = APP_SETTINGS_OPTIONAL_COLUMNS.filter((column) => column in mutablePayload);
+  let lastError: { message: string } | null = null;
+
+  for (let attempt = 0; attempt <= removable.length; attempt += 1) {
+    const response = await supabase
+      .from('app_settings')
+      .upsert(mutablePayload, { onConflict: 'restaurant_id' });
+
+    if (!response.error) {
+      return { error: null };
+    }
+
+    lastError = response.error;
+    const missingColumn = findMissingColumnFromError(response.error.message, removable);
+
+    if (!missingColumn || !(missingColumn in mutablePayload)) {
+      return { error: lastError };
+    }
+
+    delete mutablePayload[missingColumn];
+  }
+
+  return { error: lastError };
+}
+
+async function checkColumn(
+  supabase: NonNullable<ReturnType<typeof getServiceRoleSupabase>>,
+  table: string,
+  column: string,
+  warningMessage: string,
+): Promise<SchemaHealthCheck> {
+  const { error } = await supabase
+    .from(table)
+    .select(column)
+    .limit(1);
+
+  if (!error) {
+    return {
+      key: `${table}.${column}`,
+      status: 'ok',
+      message: `${table}.${column} is available.`,
+    };
+  }
+
+  const normalized = error.message.toLowerCase();
+  const isMissingColumn = normalized.includes(column.toLowerCase())
+    && (normalized.includes('could not find') || normalized.includes('column') || normalized.includes('does not exist'));
+  const isMissingTable = normalized.includes(`relation "${table}"`) && normalized.includes('does not exist');
+
+  if (isMissingColumn || isMissingTable) {
+    return {
+      key: `${table}.${column}`,
+      status: 'missing',
+      message: warningMessage,
+    };
+  }
+
+  return {
+    key: `${table}.${column}`,
+    status: 'missing',
+    message: `Could not validate ${table}.${column}: ${error.message}`,
+  };
+}
+
+async function getSchemaHealth(supabase: NonNullable<ReturnType<typeof getServiceRoleSupabase>>): Promise<SchemaHealthReport> {
+  const checks = await Promise.all([
+    checkColumn(
+      supabase,
+      'menu_items',
+      'image_url',
+      'menu_items.image_url is missing. Run ADD_MENU_IMAGE_COLUMN.sql to enable menu image storage.',
+    ),
+    checkColumn(
+      supabase,
+      'restaurants',
+      'owner_phone',
+      'restaurants.owner_phone is missing. Owner phone field will not be stored until this column is added.',
+    ),
+    checkColumn(
+      supabase,
+      'app_settings',
+      'restaurant_id',
+      'app_settings.restaurant_id is missing. Run multi-tenant migration SQL before using central tenant settings.',
+    ),
+    checkColumn(
+      supabase,
+      'app_settings',
+      'logo_hint',
+      'app_settings.logo_hint is missing. Tenant chatbot name customization will be unavailable.',
+    ),
+    checkColumn(
+      supabase,
+      'app_settings',
+      'logo_url',
+      'app_settings.logo_url is missing. Tenant logo customization will be unavailable.',
+    ),
+  ]);
+
+  const warnings = checks
+    .filter((check) => check.status === 'missing')
+    .map((check) => check.message);
+
+  return {
+    ok: warnings.length === 0,
+    warnings,
+    checks,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 export async function GET(req: NextRequest) {
   const authError = requireCentralSession(req);
   if (authError) return authError;
@@ -87,6 +229,8 @@ export async function GET(req: NextRequest) {
       error: 'SUPABASE_SERVICE_ROLE_KEY is required for central admin APIs.',
     }, { status: 503 });
   }
+
+  const schemaHealth = await getSchemaHealth(supabase);
 
   const { data: restaurantData, error: restaurantError } = await supabase
     .from('restaurants')
@@ -102,6 +246,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       restaurants: [],
       metricsByRestaurant: {},
+      schemaHealth,
     });
   }
 
@@ -150,6 +295,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     restaurants,
     metricsByRestaurant,
+    schemaHealth,
   });
 }
 
@@ -262,16 +408,14 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   }
 
-  const { error: settingsError } = await supabase
-    .from('app_settings')
-    .upsert({
-      id: tenant.id,
-      restaurant_id: tenant.id,
-      business_name: tenant.name,
-      admin_subtitle: 'Admin Panel',
-      logo_url: '/icons/icon-192x192.png',
-      logo_hint: 'SIA',
-    }, { onConflict: 'restaurant_id' });
+  const { error: settingsError } = await upsertAppSettingsCompat(supabase, {
+    id: tenant.id,
+    restaurant_id: tenant.id,
+    business_name: tenant.name,
+    admin_subtitle: 'Admin Panel',
+    logo_url: '/icons/icon-192x192.png',
+    logo_hint: 'SIA',
+  });
 
   if (settingsError) {
     await rollbackRestaurant();
