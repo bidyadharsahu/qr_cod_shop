@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS restaurants (
   slug TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   owner_email TEXT,
+  owner_phone TEXT,
   plan TEXT NOT NULL DEFAULT 'basic' CHECK (plan IN ('basic', 'premium')),
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
   is_default BOOLEAN NOT NULL DEFAULT false,
@@ -42,6 +43,9 @@ CREATE TABLE IF NOT EXISTS restaurant_staff (
 
 CREATE INDEX IF NOT EXISTS idx_restaurants_status_plan ON restaurants(status, plan);
 CREATE INDEX IF NOT EXISTS idx_restaurant_staff_restaurant_role ON restaurant_staff(restaurant_id, role);
+
+ALTER TABLE IF EXISTS restaurants
+ADD COLUMN IF NOT EXISTS owner_phone TEXT;
 
 -- Make sure exactly one default tenant exists (coasis), while supporting legacy `default` slug.
 DO $$
