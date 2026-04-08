@@ -49,8 +49,8 @@ function getCentralAdminCredentials(): { username: string; password: string } | 
 
   if (process.env.NODE_ENV !== 'production') {
     return {
-      username: (process.env.NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME || 'owner').trim(),
-      password: process.env.NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD || 'owner123',
+      username: (process.env.NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME || 'hello').trim(),
+      password: process.env.NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD || '123456',
     };
   }
 

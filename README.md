@@ -64,6 +64,10 @@ Required for secure Central Admin server APIs:
 	- `CENTRAL_ADMIN_USERNAME`
 	- `CENTRAL_ADMIN_PASSWORD`
 	- `CENTRAL_ADMIN_SESSION_SECRET`
+	- Example values:
+	  - `CENTRAL_ADMIN_USERNAME=hello`
+	  - `CENTRAL_ADMIN_PASSWORD=123456`
+	  - `CENTRAL_ADMIN_SESSION_SECRET=change-this-to-a-long-random-secret`
 
 4. Start app:
 	- `npm install`
@@ -100,8 +104,8 @@ Checklist:
 
 Local development fallback only (not for production):
 
-- `NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME` (defaults to `owner`)
-- `NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD` (defaults to `owner123`)
+- `NEXT_PUBLIC_CENTRAL_ADMIN_USERNAME` (defaults to `hello`)
+- `NEXT_PUBLIC_CENTRAL_ADMIN_PASSWORD` (defaults to `123456`)
 
 If payment keys are not set, cash flow remains fully working and online buttons show a graceful unavailable message.
 
