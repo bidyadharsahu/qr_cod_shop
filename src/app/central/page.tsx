@@ -191,6 +191,10 @@ const emptyDetailForm = (): TenantDetailForm => ({
   logoUrl: DEFAULT_LOGO_URL,
 });
 
+const panelClass = 'rounded-3xl border border-zinc-800/80 bg-zinc-900/80 backdrop-blur-sm shadow-[0_1px_0_rgba(255,255,255,0.03)_inset,0_24px_48px_rgba(0,0,0,0.35)]';
+const inputClass = 'w-full rounded-xl border border-zinc-700/80 bg-zinc-950/90 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-emerald-400/80 focus:ring-2 focus:ring-emerald-500/20 transition';
+const subtleButtonClass = 'inline-flex items-center gap-2 rounded-xl border border-zinc-700/80 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 hover:bg-zinc-800 transition';
+
 export default function CentralAdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -731,16 +735,18 @@ export default function CentralAdminPage() {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div className="relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_40%),radial-gradient(circle_at_85%_20%,rgba(14,165,233,0.12),transparent_35%)]" />
+      <div className="relative px-4 py-6 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className={`${panelClass} p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4`}>
           <div>
-            <Link href="/" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-sm mb-3">
+            <Link href="/" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-sm mb-4 transition">
               <ArrowLeft className="w-4 h-4" />
               Back to home
             </Link>
             <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <div className="w-11 h-11 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
                 <ShieldCheck className="w-5 h-5 text-emerald-300" />
               </div>
               <div>
@@ -753,13 +759,13 @@ export default function CentralAdminPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={loadCentralData}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 text-sm"
+              className={subtleButtonClass}
             >
               <RefreshCcw className="w-4 h-4" /> Refresh
             </button>
             <button
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-rose-500/35 bg-rose-500/10 text-rose-200 hover:bg-rose-500/20 text-sm"
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-500/35 bg-rose-500/10 px-3 py-2 text-sm text-rose-200 hover:bg-rose-500/20 transition"
             >
               <LogOut className="w-4 h-4" /> Logout
             </button>
@@ -767,19 +773,19 @@ export default function CentralAdminPage() {
         </div>
 
         {error && (
-          <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+          <div className="rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
             {success}
           </div>
         )}
 
         {credentialsHint && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-4 text-sm text-amber-100 space-y-1">
+          <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-4 text-sm text-amber-100 space-y-1">
             <p className="font-semibold">New tenant ready: {credentialsHint.restaurantName} ({credentialsHint.restaurantSlug})</p>
             <p>Manager: {credentialsHint.manager.username} / {credentialsHint.manager.password}</p>
             <p>Chef: {credentialsHint.chef.username} / {credentialsHint.chef.password}</p>
@@ -790,34 +796,34 @@ export default function CentralAdminPage() {
         )}
 
         <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Restaurants</p>
-            <p className="text-3xl font-black mt-2">{totalRestaurants}</p>
+            <p className="text-3xl font-black mt-2 leading-none">{totalRestaurants}</p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Active</p>
-            <p className="text-3xl font-black mt-2 text-emerald-300">{activeRestaurants}</p>
+            <p className="text-3xl font-black mt-2 leading-none text-emerald-300">{activeRestaurants}</p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Premium</p>
-            <p className="text-3xl font-black mt-2 text-sky-300">{premiumRestaurants}</p>
+            <p className="text-3xl font-black mt-2 leading-none text-sky-300">{premiumRestaurants}</p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Platform Orders</p>
-            <p className="text-3xl font-black mt-2">{aggregatedMetrics.orders}</p>
+            <p className="text-3xl font-black mt-2 leading-none">{aggregatedMetrics.orders}</p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Platform Revenue</p>
-            <p className="text-3xl font-black mt-2 text-amber-300">${aggregatedMetrics.revenue.toFixed(2)}</p>
+            <p className="text-3xl font-black mt-2 leading-none text-amber-300">${aggregatedMetrics.revenue.toFixed(2)}</p>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Owner Contacts</p>
-            <p className="text-3xl font-black mt-2 text-indigo-300">{ownerDirectory.length}</p>
+            <p className="text-3xl font-black mt-2 leading-none text-indigo-300">{ownerDirectory.length}</p>
           </div>
         </section>
 
         <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className="xl:col-span-1 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className={`xl:col-span-1 ${panelClass} p-5`}>
             <div className="flex items-center gap-2 mb-4">
               <Plus className="w-4 h-4 text-emerald-300" />
               <h2 className="font-bold text-lg">Add Restaurant</h2>
@@ -833,7 +839,7 @@ export default function CentralAdminPage() {
                     setRestaurantName(nextName);
                     if (!restaurantSlug.trim()) setRestaurantSlug(normalizeRestaurantSlug(nextName));
                   }}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  className={inputClass}
                   placeholder="Tenant Name (example: Green Bowl Downtown)"
                   required
                 />
@@ -844,7 +850,7 @@ export default function CentralAdminPage() {
                 <input
                   value={restaurantSlug}
                   onChange={(event) => setRestaurantSlug(normalizeRestaurantSlug(event.target.value))}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  className={inputClass}
                   placeholder="tenant-slug (example: green-bowl-downtown)"
                   required
                 />
@@ -855,7 +861,7 @@ export default function CentralAdminPage() {
                 <input
                   value={ownerEmail}
                   onChange={(event) => setOwnerEmail(event.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  className={inputClass}
                   placeholder="owner@example.com"
                   type="email"
                 />
@@ -866,7 +872,7 @@ export default function CentralAdminPage() {
                 <input
                   value={ownerPhone}
                   onChange={(event) => setOwnerPhone(event.target.value)}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  className={inputClass}
                   placeholder="+1 000 000 0000"
                 />
               </div>
@@ -876,7 +882,7 @@ export default function CentralAdminPage() {
                 <select
                   value={plan}
                   onChange={(event) => setPlan(event.target.value === 'premium' ? 'premium' : 'basic')}
-                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  className={inputClass}
                 >
                   <option value="basic">Basic</option>
                   <option value="premium">Premium</option>
@@ -886,7 +892,7 @@ export default function CentralAdminPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="w-full mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold py-2.5 disabled:opacity-60"
+                className="w-full mt-2 inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-zinc-950 font-semibold hover:bg-emerald-400 transition disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Plus className="w-4 h-4" />
                 {saving ? 'Creating...' : 'Create Restaurant'}
@@ -894,7 +900,7 @@ export default function CentralAdminPage() {
             </form>
           </div>
 
-          <div className="xl:col-span-2 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+          <div className={`xl:col-span-2 ${panelClass} p-5`}>
             <div className="flex items-center gap-2 mb-4">
               <Building2 className="w-4 h-4 text-sky-300" />
               <h2 className="font-bold text-lg">Tenant List</h2>
@@ -915,14 +921,14 @@ export default function CentralAdminPage() {
                     : buildTenantPublicQrPayload(restaurant, tenantUrls);
 
                   return (
-                    <div key={restaurant.id} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+                    <div key={restaurant.id} className="rounded-2xl border border-zinc-800/90 bg-zinc-950/70 p-4 shadow-[0_12px_28px_rgba(0,0,0,0.25)]">
                       <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                         <div>
                           <div className="flex items-center gap-2">
-                            <p className="text-base font-semibold text-zinc-100">{restaurant.name}</p>
+                            <p className="text-base font-semibold text-zinc-100 leading-tight">{restaurant.name}</p>
                             <button
                               onClick={() => openTenantDetails(restaurant)}
-                              className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                              className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-[11px] text-zinc-200 hover:bg-zinc-800 transition"
                             >
                               <Eye className="w-3.5 h-3.5" />
                               {detailsLoadingId === restaurant.id ? 'Loading...' : 'View'}
@@ -949,7 +955,7 @@ export default function CentralAdminPage() {
                             <select
                               value={restaurant.plan}
                               onChange={(event) => updateRestaurantPlan(restaurant.id, event.target.value === 'premium' ? 'premium' : 'basic')}
-                              className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                              className="rounded-lg border border-zinc-700/80 bg-zinc-900 px-2.5 py-1.5 text-xs"
                             >
                               <option value="basic">Basic</option>
                               <option value="premium">Premium</option>
@@ -957,13 +963,13 @@ export default function CentralAdminPage() {
 
                             <button
                               onClick={() => toggleRestaurantStatus(restaurant)}
-                              className={`px-2.5 py-1 rounded-md text-xs font-semibold ${restaurant.status === 'active' ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
+                              className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition ${restaurant.status === 'active' ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
                             >
                               {restaurant.status === 'active' ? 'Disable' : 'Activate'}
                             </button>
                           </div>
 
-                          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 w-[94px] h-[118px] flex flex-col items-center justify-between">
+                          <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-2.5 w-[98px] h-[122px] flex flex-col items-center justify-between">
                             <div className="text-[10px] text-zinc-500 uppercase tracking-wide inline-flex items-center gap-1">
                               <QrCode className="w-3 h-3" />
                               QR
@@ -980,23 +986,23 @@ export default function CentralAdminPage() {
                       </div>
 
                       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mt-3 text-xs">
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/90 px-2 py-2">
                           <div className="text-zinc-500">Orders</div>
                           <div className="font-semibold">{metrics.orders}</div>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/90 px-2 py-2">
                           <div className="text-zinc-500">Paid</div>
                           <div className="font-semibold">{metrics.paidOrders}</div>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/90 px-2 py-2">
                           <div className="text-zinc-500">Revenue</div>
                           <div className="font-semibold">${metrics.revenue.toFixed(2)}</div>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/90 px-2 py-2">
                           <div className="text-zinc-500">Tables</div>
                           <div className="font-semibold">{metrics.totalTables}</div>
                         </div>
-                        <div className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-2">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-900/90 px-2 py-2">
                           <div className="text-zinc-500">Active Tables</div>
                           <div className="font-semibold">{metrics.activeTables}</div>
                         </div>
@@ -1010,21 +1016,21 @@ export default function CentralAdminPage() {
         </section>
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex items-start gap-3">
+          <div className={`${panelClass} p-4 flex items-start gap-3`}>
             <BarChart3 className="w-5 h-5 text-amber-300 mt-0.5" />
             <div>
               <p className="font-semibold">Usage Monitoring</p>
               <p className="text-xs text-zinc-400 mt-1">Live totals aggregate orders, paid orders, revenue, and active tables across all tenants.</p>
             </div>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex items-start gap-3">
+          <div className={`${panelClass} p-4 flex items-start gap-3`}>
             <CreditCard className="w-5 h-5 text-sky-300 mt-0.5" />
             <div>
               <p className="font-semibold">Subscription Control</p>
               <p className="text-xs text-zinc-400 mt-1">Switch plan per restaurant and gate premium features like online payments by plan.</p>
             </div>
           </div>
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 flex items-start gap-3">
+          <div className={`${panelClass} p-4 flex items-start gap-3`}>
             <Users className="w-5 h-5 text-emerald-300 mt-0.5" />
             <div>
               <p className="font-semibold">Tenant Activation</p>
@@ -1033,7 +1039,7 @@ export default function CentralAdminPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+        <section className={`${panelClass} p-5`}>
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-4 h-4 text-indigo-300" />
             <h2 className="font-bold text-lg">Owner Directory</h2>
@@ -1044,7 +1050,7 @@ export default function CentralAdminPage() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {ownerDirectory.map((owner) => (
-                <div key={owner.email} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
+                <div key={owner.email} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3 shadow-[0_10px_24px_rgba(0,0,0,0.2)]">
                   <p className="text-sm font-semibold text-zinc-100 truncate">{owner.email}</p>
                   <p className="text-xs text-zinc-400 mt-1">Tenants: {owner.tenantCount}</p>
                   <p className="text-xs text-zinc-500">Active: {owner.activeCount}</p>
@@ -1055,16 +1061,16 @@ export default function CentralAdminPage() {
         </section>
 
         {activeRestaurant && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl border border-zinc-700 bg-zinc-950">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10">
+          <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
+            <div className="w-full max-w-6xl max-h-[92vh] overflow-auto rounded-3xl border border-zinc-700 bg-zinc-950 shadow-[0_30px_80px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-950/95 z-10 backdrop-blur-sm">
                 <div>
                   <p className="text-sm text-zinc-400">Tenant Details</p>
                   <h3 className="text-xl font-bold text-zinc-100">{activeRestaurant.name}</h3>
                 </div>
                 <button
                   onClick={closeDetailsModal}
-                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 hover:bg-zinc-900"
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-xl border border-zinc-700 hover:bg-zinc-900 transition"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1072,7 +1078,7 @@ export default function CentralAdminPage() {
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 p-5">
                 <div className="lg:col-span-2 space-y-5">
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                     <p className="text-sm font-semibold text-zinc-100 mb-3">Restaurant Profile</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
@@ -1080,7 +1086,7 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.name}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, name: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                          className={inputClass}
                         />
                       </div>
                       <div>
@@ -1088,7 +1094,7 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.slug}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, slug: normalizeRestaurantSlug(event.target.value) }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                          className={inputClass}
                         />
                       </div>
                       <div>
@@ -1096,7 +1102,7 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.ownerEmail}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, ownerEmail: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                          className={inputClass}
                         />
                       </div>
                       <div>
@@ -1104,43 +1110,43 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.ownerPhone}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, ownerPhone: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                          className={inputClass}
                         />
                       </div>
                     </div>
                   </section>
 
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                     <p className="text-sm font-semibold text-zinc-100 mb-3">Staff Credentials</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
                         <p className="text-xs uppercase tracking-wide text-zinc-400">Manager</p>
                         <input
                           value={detailForm.managerUsername}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, managerUsername: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="Username"
                         />
                         <input
                           value={detailForm.managerPassword}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, managerPassword: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="Password"
                         />
                       </div>
 
-                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 space-y-2">
                         <p className="text-xs uppercase tracking-wide text-zinc-400">Chef</p>
                         <input
                           value={detailForm.chefUsername}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, chefUsername: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="Username"
                         />
                         <input
                           value={detailForm.chefPassword}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, chefPassword: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="Password"
                         />
                       </div>
@@ -1153,7 +1159,7 @@ export default function CentralAdminPage() {
                     )}
                   </section>
 
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                     <p className="text-sm font-semibold text-zinc-100 mb-3">Chatbot + Branding</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
@@ -1161,7 +1167,7 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.chatbotName}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, chatbotName: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="SIA"
                         />
                       </div>
@@ -1170,7 +1176,7 @@ export default function CentralAdminPage() {
                         <input
                           value={detailForm.logoUrl}
                           onChange={(event) => setDetailForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                          className={inputClass}
                           placeholder="https://..."
                         />
                       </div>
@@ -1188,7 +1194,7 @@ export default function CentralAdminPage() {
                     <button
                       onClick={handleSaveTenantDetails}
                       disabled={savingDetails || Boolean(detailsLoadingId)}
-                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold px-4 py-2.5 disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-4 py-2.5 text-zinc-950 font-semibold hover:bg-emerald-400 transition disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <Save className="w-4 h-4" />
                       {savingDetails ? 'Saving...' : 'Save Updates'}
@@ -1196,14 +1202,14 @@ export default function CentralAdminPage() {
                     <button
                       onClick={() => openTenantDetails(activeRestaurant)}
                       disabled={Boolean(detailsLoadingId)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm disabled:opacity-60"
+                      className={`${subtleButtonClass} px-4 py-2.5 disabled:opacity-60 disabled:cursor-not-allowed`}
                     >
                       <RefreshCcw className="w-4 h-4" />
                       Reload Details
                     </button>
                   </div>
 
-                  <section className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
+                  <section className="rounded-2xl border border-rose-500/40 bg-rose-500/10 p-4">
                     <p className="text-sm font-semibold text-rose-200 mb-2 inline-flex items-center gap-2">
                       <Trash2 className="w-4 h-4" />
                       Delete Tenant
@@ -1218,14 +1224,14 @@ export default function CentralAdminPage() {
                           type="password"
                           value={deletePasscode}
                           onChange={(event) => setDeletePasscode(event.target.value)}
-                          className="w-full rounded-lg border border-rose-500/40 bg-zinc-950 px-3 py-2 text-sm"
+                          className="w-full rounded-xl border border-rose-500/40 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:border-rose-400 focus:ring-2 focus:ring-rose-500/20"
                           placeholder="Enter delete passcode"
                         />
                       </div>
                       <button
                         onClick={handleDeleteRestaurant}
                         disabled={deletingTenantId === activeRestaurant.id}
-                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 py-2.5 mt-5 md:mt-6 disabled:opacity-60"
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-rose-600 px-4 py-2.5 mt-5 md:mt-6 text-white font-semibold hover:bg-rose-500 transition disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         <KeyRound className="w-4 h-4" />
                         {deletingTenantId === activeRestaurant.id ? 'Deleting...' : 'Delete Restaurant'}
@@ -1235,7 +1241,7 @@ export default function CentralAdminPage() {
                 </div>
 
                 <div className="space-y-4">
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4">
                     <p className="text-sm font-semibold text-zinc-100 mb-3 inline-flex items-center gap-2">
                       <QrCode className="w-4 h-4 text-emerald-300" />
                       Credential QR
@@ -1259,7 +1265,7 @@ export default function CentralAdminPage() {
                     <p className="text-xs text-zinc-500 mt-3">Scan this QR to view encoded tenant info, credentials, and URLs.</p>
                   </section>
 
-                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm">
+                  <section className="rounded-2xl border border-zinc-800 bg-zinc-900/90 p-4 text-sm">
                     <p className="font-semibold text-zinc-100 mb-2">Quick Access</p>
                     <div className="space-y-1 text-zinc-300">
                       <p>ID: {activeRestaurant.id}</p>
@@ -1283,6 +1289,7 @@ export default function CentralAdminPage() {
             </div>
           </div>
         )}
+        </div>
       </div>
     </div>
   );
