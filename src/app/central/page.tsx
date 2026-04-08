@@ -5,9 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft,
-  BarChart3,
   Building2,
-  CreditCard,
   Eye,
   KeyRound,
   LogOut,
@@ -737,9 +735,9 @@ export default function CentralAdminPage() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-zinc-950 text-zinc-100">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.12),transparent_40%),radial-gradient(circle_at_85%_20%,rgba(14,165,233,0.12),transparent_35%)]" />
-      <div className="relative px-4 py-6 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className={`${panelClass} p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4`}>
+      <div className="relative px-4 py-6 sm:px-6 lg:px-8 xl:px-10 2xl:px-12">
+        <div className="mx-auto w-full max-w-[1320px] space-y-5 lg:space-y-6 xl:space-y-7">
+          <div className={`${panelClass} p-5 sm:p-6 lg:p-7 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4`}>
           <div>
             <Link href="/" className="inline-flex items-center gap-2 text-zinc-300 hover:text-white text-sm mb-4 transition">
               <ArrowLeft className="w-4 h-4" />
@@ -795,7 +793,7 @@ export default function CentralAdminPage() {
           </div>
         )}
 
-        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4">
+        <section className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-4 xl:gap-5">
           <div className={`${panelClass} p-4`}>
             <p className="text-xs uppercase tracking-wider text-zinc-500">Restaurants</p>
             <p className="text-3xl font-black mt-2 leading-none">{totalRestaurants}</p>
@@ -822,14 +820,14 @@ export default function CentralAdminPage() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-          <div className={`xl:col-span-1 ${panelClass} p-5`}>
+        <section className="grid grid-cols-1 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[400px_minmax(0,1fr)] gap-4 xl:gap-6 items-start">
+          <div className={`${panelClass} p-5`}>
             <div className="flex items-center gap-2 mb-4">
               <Plus className="w-4 h-4 text-emerald-300" />
               <h2 className="font-bold text-lg">Add Restaurant</h2>
             </div>
 
-            <form className="space-y-3" onSubmit={handleCreateRestaurant}>
+            <form className="space-y-3.5" onSubmit={handleCreateRestaurant}>
               <div>
                 <label className="block text-xs text-zinc-400 mb-1">Restaurant Name</label>
                 <input
@@ -900,7 +898,7 @@ export default function CentralAdminPage() {
             </form>
           </div>
 
-          <div className={`xl:col-span-2 ${panelClass} p-5`}>
+          <div className={`${panelClass} p-5 min-w-0`}>
             <div className="flex items-center gap-2 mb-4">
               <Building2 className="w-4 h-4 text-sky-300" />
               <h2 className="font-bold text-lg">Tenant List</h2>
@@ -911,7 +909,7 @@ export default function CentralAdminPage() {
             ) : restaurants.length === 0 ? (
               <div className="py-10 text-center text-zinc-500">No restaurants found. Create your first tenant.</div>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {restaurants.map((restaurant) => {
                   const metrics = metricsByRestaurant[restaurant.id] || emptyMetrics();
                   const tenantUrls = buildTenantUrls(restaurant.slug, origin);
@@ -1015,31 +1013,7 @@ export default function CentralAdminPage() {
           </div>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className={`${panelClass} p-4 flex items-start gap-3`}>
-            <BarChart3 className="w-5 h-5 text-amber-300 mt-0.5" />
-            <div>
-              <p className="font-semibold">Usage Monitoring</p>
-              <p className="text-xs text-zinc-400 mt-1">Live totals aggregate orders, paid orders, revenue, and active tables across all tenants.</p>
-            </div>
-          </div>
-          <div className={`${panelClass} p-4 flex items-start gap-3`}>
-            <CreditCard className="w-5 h-5 text-sky-300 mt-0.5" />
-            <div>
-              <p className="font-semibold">Subscription Control</p>
-              <p className="text-xs text-zinc-400 mt-1">Switch plan per restaurant and gate premium features like online payments by plan.</p>
-            </div>
-          </div>
-          <div className={`${panelClass} p-4 flex items-start gap-3`}>
-            <Users className="w-5 h-5 text-emerald-300 mt-0.5" />
-            <div>
-              <p className="font-semibold">Tenant Activation</p>
-              <p className="text-xs text-zinc-400 mt-1">Disable or activate restaurants instantly to control access and workflows safely.</p>
-            </div>
-          </div>
-        </section>
-
-        <section className={`${panelClass} p-5`}>
+        <section className={`${panelClass} p-5 w-full`}>
           <div className="flex items-center gap-2 mb-3">
             <Users className="w-4 h-4 text-indigo-300" />
             <h2 className="font-bold text-lg">Owner Directory</h2>
