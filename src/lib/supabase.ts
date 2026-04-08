@@ -16,8 +16,17 @@ const tenantAwareFetch: typeof fetch = async (input, init) => {
     || window.sessionStorage.getItem(TENANT_STORAGE_KEYS.restaurantId)
     || window.localStorage.getItem(TENANT_STORAGE_KEYS.restaurantId);
 
+  const tenantSlug =
+    window.sessionStorage.getItem(ADMIN_SESSION_KEYS.restaurantSlug)
+    || window.sessionStorage.getItem(TENANT_STORAGE_KEYS.restaurantSlug)
+    || window.localStorage.getItem(TENANT_STORAGE_KEYS.restaurantSlug);
+
   if (tenantId) {
     headers.set('x-restaurant-id', tenantId);
+  }
+
+  if (tenantSlug) {
+    headers.set('x-restaurant-slug', tenantSlug);
   }
 
   return fetch(input, {

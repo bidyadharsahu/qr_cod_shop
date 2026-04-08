@@ -83,8 +83,13 @@ Required for secure Central Admin server APIs:
 	- Default tenant fallback staff (dev/backward compatibility):
 	  - manager: `hello / 789456`
 	  - chef: `chef / chef123`
-	  - restaurant_admin: `admin / admin123`
-	- Newly created tenant credentials are generated in Central Admin and shown once after tenant creation.
+	  - legacy manager alias: `admin / admin123` (works as manager on default tenant)
+	- Newly created tenant credentials are generated for `manager` and `chef`.
+	- Central Admin tenant cards support credential view/edit with QR export via the View button.
+
+Optional secure delete passcode for Central Admin tenant removal:
+
+- `CENTRAL_DELETE_PASSPHRASE` (defaults to `bidyadhar` if not set)
 
 ## If Login Gets Stuck
 
@@ -166,7 +171,6 @@ Restaurant staff login (`/admin/login`) is tenant-aware and supports:
 
 - manager
 - chef
-- restaurant_admin
 
 QR links now include `restaurant` in the query string so chatbot/menu/order/payment flow resolves the correct tenant context.
 

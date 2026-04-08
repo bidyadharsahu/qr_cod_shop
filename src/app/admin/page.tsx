@@ -33,7 +33,7 @@ interface PaymentGatewayStatus {
 }
 
 type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
-type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
+type StaffRole = 'manager' | 'chef';
 type RealtimeHealth = 'connecting' | 'live' | 'degraded';
 
 interface AdminDashboardProps {
@@ -148,7 +148,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   // Toast
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  const canManageOrders = staffRole === 'manager' || staffRole === 'restaurant_admin';
+  const canManageOrders = staffRole === 'manager';
 
   const tenantAdminLoginPath = tenantScopedDashboard
     ? `/t/${normalizedForcedTenantSlug}/admin/login`
@@ -752,11 +752,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
         ? normalizedForcedTenantSlug
         : (sessionSlug || DEFAULT_RESTAURANT_CONTEXT.restaurantSlug);
 
-      const role: StaffRole = session.staffRole === 'chef'
-        ? 'chef'
-        : session.staffRole === 'restaurant_admin'
-          ? 'restaurant_admin'
-          : 'manager';
+      const role: StaffRole = session.staffRole === 'chef' ? 'chef' : 'manager';
 
       setStaffRole(role);
       setStaffUser(session.staffUser || '');

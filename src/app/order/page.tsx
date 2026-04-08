@@ -20,6 +20,8 @@ import { calculateOrderTotal } from '@/lib/calculations';
 
 const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
+const DEFAULT_CHATBOT_NAME = 'SIA';
+const DEFAULT_LOGO_URL = '/icons/icon-96x96.png';
 
 interface CartItem extends MenuItem {
   quantity: number;
@@ -244,6 +246,8 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   const [restaurantName, setRestaurantName] = useState<string>(() => readRestaurantContext().restaurantName);
   const [restaurantStatus, setRestaurantStatus] = useState<'active' | 'disabled'>('active');
   const [restaurantPlan, setRestaurantPlan] = useState<'basic' | 'premium'>('premium');
+  const [chatbotName, setChatbotName] = useState(DEFAULT_CHATBOT_NAME);
+  const [tenantLogoUrl, setTenantLogoUrl] = useState(DEFAULT_LOGO_URL);
   const [tenantResolving, setTenantResolving] = useState<boolean>(tenantScopedOrder);
 
   // Helper: read table from cookie (synchronous, works in all browsers)
@@ -824,13 +828,63 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       });
       addBotMessage('🔔 Waiter has been notified! Someone will be at your table shortly.', [
         { label: '🍹 See Menu', value: 'menu' },
-        { label: '💬 Chat with SIA', value: 'recommend' }
+        { label: `💬 Chat with ${chatbotName}`, value: 'recommend' }
       ]);
     } catch { 
       addBotMessage('❌ Could not call waiter. Please try again.', []);
     }
     setTimeout(() => setCallingWaiter(false), 10000); // Cooldown
   };
+
+  // Pull tenant chatbot/logo branding from app_settings and keep it realtime.
+  useEffect(() => {
+    if (!restaurantId || tenantResolving) return;
+
+    let cancelled = false;
+
+    const loadTenantBranding = async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('logo_hint, logo_url')
+        .eq('restaurant_id', restaurantId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      const nextChatbotName = (data?.logo_hint || '').trim() || DEFAULT_CHATBOT_NAME;
+      const nextLogoUrl = (data?.logo_url || '').trim() || DEFAULT_LOGO_URL;
+
+      setChatbotName(nextChatbotName);
+      setTenantLogoUrl(nextLogoUrl);
+    };
+
+    loadTenantBranding();
+
+    const brandingSub = supabase
+      .channel(`order-branding-${restaurantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'app_settings',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        () => {
+          loadTenantBranding();
+        },
+      )
+      .subscribe((status) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED' || status === 'SUBSCRIBED') {
+          loadTenantBranding();
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(brandingSub);
+    };
+  }, [restaurantId, tenantResolving]);
 
   // Initial fetch + real-time menu sync
   useEffect(() => {
@@ -1045,7 +1099,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       const displayRestaurantName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
 
       addBotMessage(
-        `Welcome to ${displayRestaurantName}! ${theme.emoji}\n\nI'm SIA, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\nBefore we place your order, I can note allergies, ingredient exclusions, and spice level for the kitchen.\n\nPopular tonight:\n- Marinated Lambchops\n- Seafood Trio\n- Strip Steak\n\nWhat would you like to try?`,
+        `Welcome to ${displayRestaurantName}! ${theme.emoji}\n\nI'm ${chatbotName}, your ordering assistant at Table ${tableNumber}.${loyaltyMsg}\n\n${getSmartDayGreeting(theme.name)}\n\nBefore we place your order, I can note allergies, ingredient exclusions, and spice level for the kitchen.\n\nPopular tonight:\n- Marinated Lambchops\n- Seafood Trio\n- Strip Steak\n\nWhat would you like to try?`,
         [
           { label: '🍽️ See Menu', value: 'menu' },
           { label: '🔥 Popular', value: 'popular' },
@@ -1057,7 +1111,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         ]
       );
     }
-  }, [menuItems, tableNumber, chatMessages.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [chatMessages.length, chatbotName, menuItems, tableNumber, theme.emoji, theme.name]);
 
   // Auto scroll
   useEffect(() => {
@@ -1126,11 +1180,13 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
 
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const tenantDisplayName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
+    const assistantName = (chatbotName || DEFAULT_CHATBOT_NAME).trim() || DEFAULT_CHATBOT_NAME;
     const normalizedContent = content
       .replace(/Coasis Restaurant Bar & Suites/gi, tenantDisplayName)
       .replace(/Welcome to Coasis/gi, `Welcome to ${tenantDisplayName}`)
       .replace(/Coasis's\s+AI/gi, `${tenantDisplayName}'s AI`)
-      .replace(/Coasis has/gi, 'this restaurant has');
+      .replace(/Coasis has/gi, 'this restaurant has')
+      .replace(/\bSIA\b/g, assistantName);
 
     const msg: ChatMessage = {
       id: Date.now().toString(),
@@ -1287,7 +1343,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           `No worries, I got you! Here's how it works:\n\n1?? Browse menu or tell me what you want\n2?? Add items to cart\n3?? Place your order\n4?? Wait for confirmation\n5?? Add tip & get your bill\n\nEasy! What would you like?`,
           [
             { label: '?? Show Menu', value: 'menu' },
-            { label: '?? Talk to SIA', value: 'recommend' }
+            { label: `?? Talk to ${chatbotName}`, value: 'recommend' }
           ]
         );
         break;
@@ -2304,11 +2360,11 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, boxShadow: `0 4px 15px ${theme.primary}33` }}>
-              <Image src="/icons/icon-96x96.png" alt="N" width={28} height={28} className="rounded-md" />
+              <img src={tenantLogoUrl || DEFAULT_LOGO_URL} alt="Tenant Logo" className="w-7 h-7 rounded-md object-cover" />
             </div>
             <div>
               <p className="font-semibold text-[15px] leading-tight" style={{ color: theme.primary }}>{restaurantName}</p>
-              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • SIA Assistant • {restaurantPlan.toUpperCase()}</p>
+              <p className="text-[11px] text-gray-500 leading-tight">Table {tableNumber} • {chatbotName} Assistant • {restaurantPlan.toUpperCase()}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -2374,7 +2430,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                       <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` }}>
                         <MessageCircle className="w-3 h-3 text-black" />
                       </div>
-                      <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>SIA</span>
+                      <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>{chatbotName}</span>
                     </div>
                   )}
                   
@@ -2544,7 +2600,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                               className="py-2.5 rounded-xl font-medium text-[13px] active:scale-[0.98] transition-transform"
                               style={{ border: `1px solid ${theme.primary}55`, color: theme.primary }}
                             >
-                              Ask SIA Picks
+                              Ask {chatbotName} Picks
                             </button>
                           </div>
                         </div>
@@ -2906,10 +2962,10 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                     <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` }}>
                       <MessageCircle className="w-3 h-3 text-black" />
                     </div>
-                    <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>SIA</span>
+                    <span className="text-[11px] font-medium" style={{ color: `${theme.primary}cc` }}>{chatbotName}</span>
                   </div>
                   <div className="message-bubble rounded-2xl rounded-bl-sm px-4 py-3" style={{ background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }}>
-                    <div className="typing-dots" aria-label="SIA is typing">
+                    <div className="typing-dots" aria-label={`${chatbotName} is typing`}>
                       <span></span><span></span><span></span>
                     </div>
                   </div>
@@ -3013,7 +3069,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
             type="text"
             value={userInput}
             onChange={(e) => setUserInput(e.target.value)}
-            placeholder="Ask SIA anything..."
+            placeholder={`Ask ${chatbotName} anything...`}
             className="flex-1 px-3.5 py-2.5 sm:px-4 sm:py-3 bg-zinc-900 border border-zinc-700 rounded-2xl focus:outline-none text-[15px] sm:text-[16px] placeholder-gray-500"
             style={{ '--tw-ring-color': theme.primary } as React.CSSProperties}
             enterKeyHint="send"

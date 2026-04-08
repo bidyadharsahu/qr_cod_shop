@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPayPalAccessToken, getRestaurantSubscription, getTenantOrder, logPaymentEvent, PAYPAL_BASE } from '@/lib/payment-server';
-import { getTenantIdFromRequest, normalizeTenantSlug, parseTenantId } from '@/lib/tenant-server';
+import { getPayPalAccessToken, getTenantOrder, logPaymentEvent, PAYPAL_BASE, resolveRestaurantIdentity } from '@/lib/payment-server';
+import { getTenantIdFromRequest, getTenantSlugFromRequest, normalizeTenantSlug, parseTenantId } from '@/lib/tenant-server';
 
 type PaymentProvider = 'card' | 'paypal';
 
@@ -12,6 +12,18 @@ interface CheckoutRequest {
   tableNumber: string;
   restaurantId?: number;
   restaurantSlug?: string;
+}
+
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
+
+function tenantSlugsMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+
+  const leftIsDefault = left === DEFAULT_RESTAURANT_SLUG || left === LEGACY_DEFAULT_RESTAURANT_SLUG;
+  const rightIsDefault = right === DEFAULT_RESTAURANT_SLUG || right === LEGACY_DEFAULT_RESTAURANT_SLUG;
+
+  return leftIsDefault && rightIsDefault;
 }
 
 function getBaseUrl(req: NextRequest): string {
@@ -56,6 +68,7 @@ async function createStripeCheckout(req: NextRequest, body: CheckoutRequest, res
   payload.append('line_items[0][price_data][unit_amount]', amountCents.toString());
   payload.append('metadata[order_id]', body.orderId.toString());
   payload.append('metadata[receipt_id]', body.receiptId);
+  payload.append('metadata[restaurant_id]', restaurantId.toString());
 
   const response = await fetch('https://api.stripe.com/v1/checkout/sessions', {
     method: 'POST',
@@ -142,7 +155,7 @@ async function createPayPalCheckout(req: NextRequest, body: CheckoutRequest, res
       purchase_units: [
         {
           reference_id: body.receiptId,
-          custom_id: String(body.orderId),
+          custom_id: `${body.orderId}:${restaurantId}`,
           amount: {
             currency_code: 'USD',
             value: body.amount.toFixed(2),
@@ -211,7 +224,10 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as CheckoutRequest;
     const headerTenantId = getTenantIdFromRequest(req);
     const bodyTenantId = parseTenantId(body?.restaurantId);
+    const headerTenantSlug = getTenantSlugFromRequest(req);
+    const bodyTenantSlug = normalizeTenantSlug(body?.restaurantSlug || '');
     const tenantId = headerTenantId || bodyTenantId;
+    const tenantSlug = headerTenantSlug || bodyTenantSlug || null;
 
     if (!tenantId) {
       return NextResponse.json({ error: 'Tenant id is required for checkout.' }, { status: 400 });
@@ -219,6 +235,10 @@ export async function POST(req: NextRequest) {
 
     if (headerTenantId && bodyTenantId && headerTenantId !== bodyTenantId) {
       return NextResponse.json({ error: 'Tenant mismatch between header and request body.' }, { status: 400 });
+    }
+
+    if (headerTenantSlug && bodyTenantSlug && !tenantSlugsMatch(headerTenantSlug, bodyTenantSlug)) {
+      return NextResponse.json({ error: 'Tenant slug mismatch between header and request body.' }, { status: 400 });
     }
 
     if (!body || !body.provider || !body.orderId || !body.receiptId || !body.tableNumber) {
@@ -233,20 +253,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid amount.' }, { status: 400 });
     }
 
-    const subscription = await getRestaurantSubscription(tenantId);
-    if (!subscription) {
-      return NextResponse.json({ error: 'Restaurant not found.' }, { status: 404 });
+    const tenant = await resolveRestaurantIdentity(tenantId, tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ error: 'Tenant not found or slug does not match.' }, { status: 404 });
     }
 
-    if (subscription?.status === 'disabled') {
+    if (tenant.status === 'disabled') {
       return NextResponse.json({ error: 'Restaurant account is disabled.' }, { status: 403 });
     }
 
-    if (subscription?.plan === 'basic') {
+    if (tenant.plan === 'basic') {
       return NextResponse.json({ error: 'Online payment is available on premium plan only.' }, { status: 403 });
     }
 
-    const order = await getTenantOrder(body.orderId, tenantId);
+    const order = await getTenantOrder(body.orderId, tenant.id);
     if (!order) {
       return NextResponse.json({ error: 'Order not found for this restaurant.' }, { status: 404 });
     }
@@ -257,18 +277,19 @@ export async function POST(req: NextRequest) {
 
     const canonicalBody: CheckoutRequest = {
       ...body,
-      restaurantId: tenantId,
+      restaurantId: tenant.id,
+      restaurantSlug: tenant.slug,
       receiptId: order.receipt_id,
       tableNumber: String(order.table_number),
       amount: Number(order.total),
     };
 
     if (body.provider === 'card') {
-      return createStripeCheckout(req, canonicalBody, tenantId);
+      return createStripeCheckout(req, canonicalBody, tenant.id);
     }
 
     if (body.provider === 'paypal') {
-      return createPayPalCheckout(req, canonicalBody, tenantId);
+      return createPayPalCheckout(req, canonicalBody, tenant.id);
     }
 
     return NextResponse.json({ error: 'Unsupported payment provider.' }, { status: 400 });

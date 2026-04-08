@@ -4,7 +4,7 @@
 -- Run this after MIGRATE_MULTI_TENANT.sql.
 --
 -- Security goals:
--- 1) Every tenant query is scoped by x-restaurant-id
+-- 1) Every tenant query is scoped by x-restaurant-id + x-restaurant-slug
 -- 2) Legacy permissive policies are removed
 -- 3) Disabled tenants are blocked from business tables
 -- 4) Central admin access is handled server-side via service role key
@@ -17,7 +17,19 @@ RETURNS BIGINT
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT NULLIF((current_setting('request.headers', true)::json ->> 'x-restaurant-id'), '')::bigint
+  SELECT CASE
+    WHEN COALESCE((current_setting('request.headers', true)::json ->> 'x-restaurant-id'), '') ~ '^[0-9]+$'
+      THEN ((current_setting('request.headers', true)::json ->> 'x-restaurant-id'))::bigint
+    ELSE NULL
+  END
+$$;
+
+CREATE OR REPLACE FUNCTION public.request_restaurant_slug()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT NULLIF(lower((current_setting('request.headers', true)::json ->> 'x-restaurant-slug')), '')
 $$;
 
 DROP FUNCTION IF EXISTS public.is_central_admin_request();
@@ -27,8 +39,28 @@ RETURNS BOOLEAN
 LANGUAGE sql
 STABLE
 AS $$
-  SELECT public.request_restaurant_id() IS NOT NULL
-    AND target_restaurant_id = public.request_restaurant_id()
+  WITH request_ctx AS (
+    SELECT
+      public.request_restaurant_id() AS request_id,
+      public.request_restaurant_slug() AS request_slug
+  )
+  SELECT EXISTS (
+    SELECT 1
+    FROM public.restaurants r
+    CROSS JOIN request_ctx req
+    WHERE req.request_id IS NOT NULL
+      AND req.request_slug IS NOT NULL
+      AND r.id = target_restaurant_id
+      AND r.id = req.request_id
+      AND (
+        lower(r.slug) = req.request_slug
+        OR (
+          r.is_default = true
+          AND req.request_slug IN ('coasis', 'default')
+          AND lower(r.slug) IN ('coasis', 'default')
+        )
+      )
+  )
 $$;
 
 CREATE OR REPLACE FUNCTION public.tenant_is_active(target_restaurant_id BIGINT)

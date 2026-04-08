@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPayPalAccessToken, logPaymentEvent, markOrderAsPaid, PAYPAL_BASE } from '@/lib/payment-server';
+import { parseTenantId } from '@/lib/tenant-server';
 
 export const runtime = 'nodejs';
 
@@ -18,6 +19,11 @@ interface PayPalWebhookEvent {
       custom_id?: string;
     }>;
   };
+}
+
+interface TenantWebhookReference {
+  orderId: number;
+  restaurantId: number | null;
 }
 
 async function verifyPayPalWebhookSignature(req: NextRequest, event: PayPalWebhookEvent): Promise<boolean> {
@@ -60,16 +66,38 @@ async function verifyPayPalWebhookSignature(req: NextRequest, event: PayPalWebho
   return verifyData.verification_status === 'SUCCESS';
 }
 
-function getOrderIdFromEvent(event: PayPalWebhookEvent): number {
-  const idRaw = event.resource?.custom_id
+function getTenantReferenceFromEvent(event: PayPalWebhookEvent): TenantWebhookReference {
+  const customIdRaw = event.resource?.custom_id
     || event.resource?.purchase_units?.[0]?.custom_id
-    || event.resource?.supplementary_data?.related_ids?.order_id
     || '';
 
-  const parsed = Number(idRaw);
-  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+  const normalized = String(customIdRaw || '').trim();
+  if (normalized) {
+    const [orderPart, restaurantPart] = normalized.split(':', 2);
+    const orderId = Number(orderPart);
+    const restaurantId = parseTenantId(restaurantPart);
 
-  return 0;
+    if (Number.isFinite(orderId) && orderId > 0) {
+      return {
+        orderId: Math.trunc(orderId),
+        restaurantId,
+      };
+    }
+  }
+
+  const fallbackRaw = event.resource?.supplementary_data?.related_ids?.order_id || '';
+  const fallbackOrderId = Number(fallbackRaw);
+  if (Number.isFinite(fallbackOrderId) && fallbackOrderId > 0) {
+    return {
+      orderId: Math.trunc(fallbackOrderId),
+      restaurantId: null,
+    };
+  }
+
+  return {
+    orderId: 0,
+    restaurantId: null,
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -99,9 +127,12 @@ export async function POST(req: NextRequest) {
   }
 
   const eventType = event.event_type || '';
-  const orderId = getOrderIdFromEvent(event);
+  const tenantRef = getTenantReferenceFromEvent(event);
+  const orderId = tenantRef.orderId;
+  const restaurantId = tenantRef.restaurantId;
 
   await logPaymentEvent({
+    restaurantId: restaurantId || undefined,
     orderId: orderId || undefined,
     provider: 'paypal',
     eventType,
@@ -117,6 +148,7 @@ export async function POST(req: NextRequest) {
 
   if (!orderId) {
     await logPaymentEvent({
+      restaurantId: restaurantId || undefined,
       provider: 'paypal',
       eventType: 'webhook_missing_order_id',
       status: 'skipped',
@@ -128,9 +160,10 @@ export async function POST(req: NextRequest) {
   }
 
   const transactionId = event.resource?.id || event.id || `paypal-${Date.now()}`;
-  const success = await markOrderAsPaid(orderId, 'online', 'chatbot_payment', transactionId, 'paypal-webhook');
+  const success = await markOrderAsPaid(orderId, 'online', 'chatbot_payment', transactionId, 'paypal-webhook', restaurantId || undefined);
 
   await logPaymentEvent({
+    restaurantId: restaurantId || undefined,
     orderId,
     provider: 'paypal',
     eventType: 'webhook_processed',

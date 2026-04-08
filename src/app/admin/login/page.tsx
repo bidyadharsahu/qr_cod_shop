@@ -13,7 +13,7 @@ import {
   readAdminSession,
 } from '@/lib/tenant';
 
-type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
+type StaffRole = 'manager' | 'chef';
 
 const DEFAULT_RESTAURANT_OPTION: Restaurant = {
   id: DEFAULT_RESTAURANT_CONTEXT.restaurantId,
@@ -255,7 +255,7 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
               <h1 className="text-3xl font-bold text-amber-400 mb-2">{tenantScopedLogin ? 'Tenant Staff Portal' : 'Staff Portal'}</h1>
               <p className="text-gray-400 text-sm">
                 {tenantScopedLogin
-                  ? (tenantLabel ? `${tenantLabel} • Manager/Chef/Admin Login` : 'Manager/Chef/Admin Login')
+                  ? (tenantLabel ? `${tenantLabel} • Manager/Chef Login` : 'Manager/Chef Login')
                   : `${tenantLabel || DEFAULT_RESTAURANT_OPTION.name} • Staff Login`}
               </p>
             </div>
@@ -301,7 +301,6 @@ function LoginContent({ forcedTenantSlug }: AdminLoginPageProps) {
                 >
                   <option value="manager">Manager</option>
                   <option value="chef">Chef</option>
-                  <option value="restaurant_admin">Restaurant Admin</option>
                 </select>
               </div>
 

@@ -1,8 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
+import { normalizeTenantSlug } from '@/lib/tenant-server';
 
 export const PAYPAL_BASE = process.env.PAYPAL_MODE === 'live'
   ? 'https://api-m.paypal.com'
   : 'https://api-m.sandbox.paypal.com';
+
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
 
 function getServerSupabase() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -16,6 +20,78 @@ function getServerSupabase() {
     serviceRole || anon || '',
     { auth: { autoRefreshToken: false, persistSession: false } }
   );
+}
+
+interface RestaurantIdentityRow {
+  id: number;
+  slug: string;
+  plan: string | null;
+  status: string | null;
+  is_default: boolean | null;
+}
+
+export interface ResolvedRestaurantIdentity {
+  id: number;
+  slug: string;
+  plan: 'basic' | 'premium';
+  status: 'active' | 'disabled';
+  isDefault: boolean;
+}
+
+const normalizeTenantAliasSlug = (value: string): string => {
+  return normalizeTenantSlug(value || '');
+};
+
+function isDefaultSlug(slug: string): boolean {
+  return slug === DEFAULT_RESTAURANT_SLUG || slug === LEGACY_DEFAULT_RESTAURANT_SLUG;
+}
+
+export async function resolveRestaurantIdentity(
+  restaurantId: number,
+  tenantSlug?: string | null,
+): Promise<ResolvedRestaurantIdentity | null> {
+  if (!Number.isFinite(restaurantId) || restaurantId <= 0) {
+    return null;
+  }
+
+  const supabase = getServerSupabase();
+  if (!supabase) return null;
+
+  const { data } = await supabase
+    .from('restaurants')
+    .select('id, slug, plan, status, is_default')
+    .eq('id', Math.trunc(restaurantId))
+    .maybeSingle();
+
+  if (!data) return null;
+
+  const row = data as RestaurantIdentityRow;
+  const isDefault = Boolean(row.is_default);
+  const canonicalDbSlug = normalizeTenantAliasSlug(row.slug || '');
+  const canonicalSlug = isDefault ? DEFAULT_RESTAURANT_SLUG : canonicalDbSlug;
+
+  if (!canonicalSlug) {
+    return null;
+  }
+
+  const requestedSlug = normalizeTenantAliasSlug(tenantSlug || '');
+  if (requestedSlug) {
+    const slugMatches = isDefault
+      ? isDefaultSlug(requestedSlug) && isDefaultSlug(canonicalSlug)
+      : requestedSlug === canonicalSlug;
+
+    if (!slugMatches) {
+      return null;
+    }
+  }
+
+  return {
+    id: row.id,
+    slug: canonicalSlug,
+    plan: row.plan === 'premium' ? 'premium' : 'basic',
+    status: row.status === 'disabled' ? 'disabled' : 'active',
+    isDefault,
+  };
 }
 
 export interface TenantOrderSnapshot {

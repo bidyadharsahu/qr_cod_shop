@@ -1,6 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPayPalAccessToken, logPaymentEvent, markOrderAsPaid, PAYPAL_BASE } from '@/lib/payment-server';
-import { getTenantIdFromRequest, parseTenantId } from '@/lib/tenant-server';
+import { getPayPalAccessToken, logPaymentEvent, markOrderAsPaid, PAYPAL_BASE, resolveRestaurantIdentity } from '@/lib/payment-server';
+import { getTenantIdFromRequest, getTenantSlugFromRequest, normalizeTenantSlug, parseTenantId } from '@/lib/tenant-server';
+
+const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const LEGACY_DEFAULT_RESTAURANT_SLUG = 'default';
+
+function tenantSlugsMatch(left: string, right: string): boolean {
+  if (left === right) return true;
+
+  const leftIsDefault = left === DEFAULT_RESTAURANT_SLUG || left === LEGACY_DEFAULT_RESTAURANT_SLUG;
+  const rightIsDefault = right === DEFAULT_RESTAURANT_SLUG || right === LEGACY_DEFAULT_RESTAURANT_SLUG;
+
+  return leftIsDefault && rightIsDefault;
+}
 
 async function verifyStripePayment(orderId: number, sessionId: string, restaurantId: number): Promise<boolean> {
   await logPaymentEvent({
@@ -156,13 +168,17 @@ export async function POST(req: NextRequest) {
       provider?: 'stripe' | 'paypal';
       orderId?: number;
       restaurantId?: number;
+      restaurantSlug?: string;
       sessionId?: string;
       paypalToken?: string;
     };
 
     const headerTenantId = getTenantIdFromRequest(req);
     const bodyTenantId = parseTenantId(body?.restaurantId);
+    const headerTenantSlug = getTenantSlugFromRequest(req);
+    const bodyTenantSlug = normalizeTenantSlug(body?.restaurantSlug || '');
     const tenantId = headerTenantId || bodyTenantId;
+    const tenantSlug = headerTenantSlug || bodyTenantSlug || null;
 
     if (!tenantId) {
       return NextResponse.json({ success: false, error: 'Tenant id is required for verification.' }, { status: 400 });
@@ -170,6 +186,10 @@ export async function POST(req: NextRequest) {
 
     if (headerTenantId && bodyTenantId && headerTenantId !== bodyTenantId) {
       return NextResponse.json({ success: false, error: 'Tenant mismatch between header and request body.' }, { status: 400 });
+    }
+
+    if (headerTenantSlug && bodyTenantSlug && !tenantSlugsMatch(headerTenantSlug, bodyTenantSlug)) {
+      return NextResponse.json({ success: false, error: 'Tenant slug mismatch between header and request body.' }, { status: 400 });
     }
 
     if (!body.provider || !body.orderId) {
@@ -180,11 +200,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Tenant mismatch in verification request.' }, { status: 400 });
     }
 
+    const tenant = await resolveRestaurantIdentity(tenantId, tenantSlug);
+    if (!tenant) {
+      return NextResponse.json({ success: false, error: 'Tenant not found or slug does not match.' }, { status: 404 });
+    }
+
+    if (tenant.status === 'disabled') {
+      return NextResponse.json({ success: false, error: 'Restaurant account is disabled.' }, { status: 403 });
+    }
+
     if (body.provider === 'stripe') {
       if (!body.sessionId) {
         return NextResponse.json({ success: false, error: 'Missing Stripe session id.' }, { status: 400 });
       }
-      const success = await verifyStripePayment(body.orderId, body.sessionId, tenantId);
+      const success = await verifyStripePayment(body.orderId, body.sessionId, tenant.id);
       return NextResponse.json({ success });
     }
 
@@ -192,7 +221,7 @@ export async function POST(req: NextRequest) {
       if (!body.paypalToken) {
         return NextResponse.json({ success: false, error: 'Missing PayPal token.' }, { status: 400 });
       }
-      const success = await verifyPayPalPayment(body.orderId, body.paypalToken, tenantId);
+      const success = await verifyPayPalPayment(body.orderId, body.paypalToken, tenant.id);
       return NextResponse.json({ success });
     }
 

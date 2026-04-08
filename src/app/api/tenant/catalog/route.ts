@@ -15,7 +15,9 @@ export async function GET() {
     .from('restaurants')
     .select('id, slug, name, owner_email, plan, status, is_default')
     .eq('status', 'active')
-    .order('name', { ascending: true });
+    .order('is_default', { ascending: false })
+    .order('id', { ascending: true })
+    .limit(1);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -8,13 +8,19 @@ import {
   BarChart3,
   Building2,
   CreditCard,
+  Eye,
+  KeyRound,
   LogOut,
   Plus,
+  QrCode,
   RefreshCcw,
+  Save,
   ShieldCheck,
   ToggleLeft,
   ToggleRight,
+  Trash2,
   Users,
+  X,
 } from 'lucide-react';
 import type { Restaurant } from '@/lib/types';
 import { normalizeRestaurantSlug } from '@/lib/tenant';
@@ -34,12 +40,34 @@ interface TenantUrls {
   adminDashboard: string;
 }
 
+interface StaffCredential {
+  username: string;
+  password: string;
+}
+
+interface TenantBranding {
+  businessName: string;
+  adminSubtitle: string;
+  logoUrl: string;
+  chatbotName: string;
+}
+
+interface TenantDetails {
+  restaurant: Restaurant & { owner_phone?: string | null };
+  credentials: {
+    manager: StaffCredential | null;
+    chef: StaffCredential | null;
+    legacyAdmin?: StaffCredential | null;
+  };
+  branding: TenantBranding;
+  urls: TenantUrls;
+}
+
 interface CredentialsHint {
   restaurantName: string;
   restaurantSlug: string;
-  manager: { username: string; password: string };
-  chef: { username: string; password: string };
-  admin: { username: string; password: string };
+  manager: StaffCredential;
+  chef: StaffCredential;
   urls: TenantUrls;
 }
 
@@ -52,20 +80,30 @@ interface CentralRestaurantListResponse {
 interface CentralRestaurantCreateResponse {
   restaurant?: Restaurant;
   credentials?: {
-    manager: { username: string; password: string };
-    chef: { username: string; password: string };
-    admin: { username: string; password: string };
+    manager: StaffCredential;
+    chef: StaffCredential;
   };
   urls?: TenantUrls;
   error?: string;
 }
 
 interface CentralRestaurantPatchResponse {
-  restaurant?: Restaurant;
+  restaurant?: Restaurant & { owner_phone?: string | null };
+  credentials?: {
+    manager: StaffCredential | null;
+    chef: StaffCredential | null;
+    legacyAdmin?: StaffCredential | null;
+  };
+  branding?: TenantBranding;
+  urls?: TenantUrls;
+  message?: string;
+  deleted?: boolean;
   error?: string;
 }
 
 const DEFAULT_RESTAURANT_SLUG = 'coasis';
+const DEFAULT_CHATBOT_NAME = 'SIA';
+const DEFAULT_LOGO_URL = '/icons/icon-192x192.png';
 
 const emptyMetrics = (): TenantMetrics => ({
   orders: 0,
@@ -75,9 +113,10 @@ const emptyMetrics = (): TenantMetrics => ({
   activeTables: 0,
 });
 
-const buildTenantUrls = (slug: string): TenantUrls => {
+const buildTenantUrls = (slug: string, origin = ''): TenantUrls => {
   const normalized = normalizeRestaurantSlug(slug);
-  const base = `/t/${normalized}`;
+  const basePath = `/t/${normalized}`;
+  const base = origin ? `${origin}${basePath}` : basePath;
 
   return {
     base,
@@ -87,19 +126,93 @@ const buildTenantUrls = (slug: string): TenantUrls => {
   };
 };
 
+const buildQrImageUrl = (payload: string, size = 180): string => {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=8&data=${encodeURIComponent(payload)}`;
+};
+
+const buildTenantPublicQrPayload = (restaurant: Restaurant, urls: TenantUrls): string => {
+  return [
+    `Restaurant: ${restaurant.name}`,
+    `ID: ${restaurant.id}`,
+    `Slug: ${restaurant.slug}`,
+    `Owner Email: ${restaurant.owner_email || 'n/a'}`,
+    `Status: ${restaurant.status}`,
+    `Plan: ${restaurant.plan}`,
+    `Tenant URL: ${urls.base}`,
+    `Admin Login: ${urls.adminLogin}`,
+    `Order URL: ${urls.order}`,
+  ].join('\n');
+};
+
+const buildTenantPrivateQrPayload = (details: TenantDetails): string => {
+  return [
+    `Restaurant: ${details.restaurant.name}`,
+    `ID: ${details.restaurant.id}`,
+    `Slug: ${details.restaurant.slug}`,
+    `Owner Email: ${details.restaurant.owner_email || 'n/a'}`,
+    `Owner Phone: ${details.restaurant.owner_phone || 'n/a'}`,
+    `Status: ${details.restaurant.status}`,
+    `Plan: ${details.restaurant.plan}`,
+    `Manager Username: ${details.credentials.manager?.username || 'n/a'}`,
+    `Manager Password: ${details.credentials.manager?.password || 'n/a'}`,
+    `Chef Username: ${details.credentials.chef?.username || 'n/a'}`,
+    `Chef Password: ${details.credentials.chef?.password || 'n/a'}`,
+    `Chatbot Name: ${details.branding.chatbotName || DEFAULT_CHATBOT_NAME}`,
+    `Logo URL: ${details.branding.logoUrl || DEFAULT_LOGO_URL}`,
+    `Tenant URL: ${details.urls.base}`,
+    `Admin Login: ${details.urls.adminLogin}`,
+    `Order URL: ${details.urls.order}`,
+  ].join('\n');
+};
+
+interface TenantDetailForm {
+  name: string;
+  slug: string;
+  ownerEmail: string;
+  ownerPhone: string;
+  managerUsername: string;
+  managerPassword: string;
+  chefUsername: string;
+  chefPassword: string;
+  chatbotName: string;
+  logoUrl: string;
+}
+
+const emptyDetailForm = (): TenantDetailForm => ({
+  name: '',
+  slug: '',
+  ownerEmail: '',
+  ownerPhone: '',
+  managerUsername: 'manager',
+  managerPassword: '',
+  chefUsername: 'chef',
+  chefPassword: '',
+  chatbotName: DEFAULT_CHATBOT_NAME,
+  logoUrl: DEFAULT_LOGO_URL,
+});
+
 export default function CentralAdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [deletingTenantId, setDeletingTenantId] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [metricsByRestaurant, setMetricsByRestaurant] = useState<Record<number, TenantMetrics>>({});
   const [credentialsHint, setCredentialsHint] = useState<CredentialsHint | null>(null);
+  const [detailsByRestaurant, setDetailsByRestaurant] = useState<Record<number, TenantDetails>>({});
+  const [detailsLoadingId, setDetailsLoadingId] = useState<number | null>(null);
+  const [activeRestaurantId, setActiveRestaurantId] = useState<number | null>(null);
+  const [deletePasscode, setDeletePasscode] = useState('');
+  const [origin, setOrigin] = useState('');
+  const [detailForm, setDetailForm] = useState<TenantDetailForm>(emptyDetailForm());
 
   const [restaurantName, setRestaurantName] = useState('');
   const [restaurantSlug, setRestaurantSlug] = useState('');
   const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
   const [plan, setPlan] = useState<'basic' | 'premium'>('basic');
 
   const totalRestaurants = restaurants.length;
@@ -143,6 +256,93 @@ export default function CentralAdminPage() {
 
     return totals;
   }, [metricsByRestaurant]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setOrigin(window.location.origin);
+  }, []);
+
+  const activeRestaurant = useMemo(
+    () => restaurants.find((restaurant) => restaurant.id === activeRestaurantId) || null,
+    [activeRestaurantId, restaurants],
+  );
+
+  const activeDetails = useMemo(() => {
+    if (!activeRestaurantId) return null;
+    return detailsByRestaurant[activeRestaurantId] || null;
+  }, [activeRestaurantId, detailsByRestaurant]);
+
+  const setDetailFormFromData = useCallback((restaurant: Restaurant, details: TenantDetails | null) => {
+    const sourceRestaurant = details?.restaurant || restaurant;
+
+    setDetailForm({
+      name: sourceRestaurant.name || '',
+      slug: sourceRestaurant.slug || '',
+      ownerEmail: sourceRestaurant.owner_email || '',
+      ownerPhone: details?.restaurant.owner_phone || '',
+      managerUsername: details?.credentials.manager?.username || 'manager',
+      managerPassword: details?.credentials.manager?.password || '',
+      chefUsername: details?.credentials.chef?.username || 'chef',
+      chefPassword: details?.credentials.chef?.password || '',
+      chatbotName: details?.branding.chatbotName || DEFAULT_CHATBOT_NAME,
+      logoUrl: details?.branding.logoUrl || DEFAULT_LOGO_URL,
+    });
+  }, []);
+
+  const fetchRestaurantDetails = useCallback(async (restaurantId: number, silent = false): Promise<TenantDetails | null> => {
+    if (!silent) {
+      setDetailsLoadingId(restaurantId);
+      setError('');
+    }
+
+    try {
+      const response = await fetch(`/api/central/restaurants/${restaurantId}`, { cache: 'no-store' });
+
+      if (response.status === 401) {
+        router.push('/central/login');
+        return null;
+      }
+
+      const payload = await response.json() as CentralRestaurantPatchResponse;
+      if (!response.ok || !payload.restaurant || !payload.credentials || !payload.branding || !payload.urls) {
+        if (!silent) {
+          setError(payload.error || 'Could not load tenant details.');
+        }
+        return null;
+      }
+
+      const normalizedRestaurant = payload.restaurant.is_default
+        ? { ...payload.restaurant, slug: DEFAULT_RESTAURANT_SLUG }
+        : payload.restaurant;
+
+      const details: TenantDetails = {
+        restaurant: normalizedRestaurant,
+        credentials: {
+          manager: payload.credentials.manager,
+          chef: payload.credentials.chef,
+          legacyAdmin: payload.credentials.legacyAdmin,
+        },
+        branding: payload.branding,
+        urls: payload.urls,
+      };
+
+      setDetailsByRestaurant((prev) => ({
+        ...prev,
+        [restaurantId]: details,
+      }));
+
+      return details;
+    } catch {
+      if (!silent) {
+        setError('Could not load tenant details.');
+      }
+      return null;
+    } finally {
+      if (!silent) {
+        setDetailsLoadingId((current) => (current === restaurantId ? null : current));
+      }
+    }
+  }, [router]);
 
   const loadCentralData = useCallback(async () => {
     setLoading(true);
@@ -249,6 +449,7 @@ export default function CentralAdminPage() {
           name: trimmedName,
           slug: normalizedSlug,
           ownerEmail: ownerEmail.trim() || null,
+          ownerPhone: ownerPhone.trim() || null,
           plan,
         }),
       });
@@ -268,22 +469,42 @@ export default function CentralAdminPage() {
       const tenant = payload.restaurant;
       const managerCreds = payload.credentials.manager;
       const chefCreds = payload.credentials.chef;
-      const adminCreds = payload.credentials.admin;
 
       setCredentialsHint({
         restaurantName: tenant.name,
         restaurantSlug: tenant.slug,
         manager: managerCreds,
         chef: chefCreds,
-        admin: adminCreds,
-        urls: payload.urls || buildTenantUrls(tenant.slug),
+        urls: payload.urls || buildTenantUrls(tenant.slug, origin),
       });
 
       setRestaurantName('');
       setRestaurantSlug('');
       setOwnerEmail('');
+      setOwnerPhone('');
       setPlan('basic');
       setSuccess('Restaurant created and provisioned successfully.');
+
+      const details: TenantDetails = {
+        restaurant: tenant,
+        credentials: {
+          manager: managerCreds,
+          chef: chefCreds,
+          legacyAdmin: null,
+        },
+        branding: {
+          businessName: tenant.name,
+          adminSubtitle: 'Admin Panel',
+          logoUrl: DEFAULT_LOGO_URL,
+          chatbotName: DEFAULT_CHATBOT_NAME,
+        },
+        urls: payload.urls || buildTenantUrls(tenant.slug, origin),
+      };
+
+      setDetailsByRestaurant((prev) => ({
+        ...prev,
+        [tenant.id]: details,
+      }));
 
       loadCentralData();
     } catch {
@@ -355,6 +576,160 @@ export default function CentralAdminPage() {
     loadCentralData();
   };
 
+  const openTenantDetails = async (restaurant: Restaurant) => {
+    setActiveRestaurantId(restaurant.id);
+    setDeletePasscode('');
+    setError('');
+
+    const cached = detailsByRestaurant[restaurant.id] || null;
+    setDetailFormFromData(restaurant, cached);
+
+    const details = await fetchRestaurantDetails(restaurant.id);
+    if (details) {
+      setDetailFormFromData(restaurant, details);
+    }
+  };
+
+  const handleSaveTenantDetails = async () => {
+    if (!activeRestaurant) return;
+
+    setSavingDetails(true);
+    setError('');
+    setSuccess('');
+
+    const normalizedSlug = normalizeRestaurantSlug(detailForm.slug || detailForm.name);
+    if (!normalizedSlug) {
+      setSavingDetails(false);
+      setError('Tenant slug is invalid.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/central/restaurants/${activeRestaurant.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: detailForm.name.trim(),
+          slug: normalizedSlug,
+          ownerEmail: detailForm.ownerEmail.trim() || null,
+          ownerPhone: detailForm.ownerPhone.trim() || null,
+          credentials: {
+            manager: {
+              username: detailForm.managerUsername.trim(),
+              password: detailForm.managerPassword,
+            },
+            chef: {
+              username: detailForm.chefUsername.trim(),
+              password: detailForm.chefPassword,
+            },
+          },
+          branding: {
+            businessName: detailForm.name.trim(),
+            adminSubtitle: 'Admin Panel',
+            logoUrl: detailForm.logoUrl.trim() || DEFAULT_LOGO_URL,
+            chatbotName: detailForm.chatbotName.trim() || DEFAULT_CHATBOT_NAME,
+          },
+        }),
+      });
+
+      if (response.status === 401) {
+        router.push('/central/login');
+        return;
+      }
+
+      const payload = await response.json() as CentralRestaurantPatchResponse;
+      if (!response.ok || !payload.restaurant || !payload.credentials || !payload.branding || !payload.urls) {
+        setError(payload.error || 'Could not update tenant details.');
+        return;
+      }
+
+      setSuccess('Tenant credentials and settings updated.');
+
+      const normalizedRestaurant = payload.restaurant.is_default
+        ? { ...payload.restaurant, slug: DEFAULT_RESTAURANT_SLUG }
+        : payload.restaurant;
+
+      const nextDetails: TenantDetails = {
+        restaurant: normalizedRestaurant,
+        credentials: {
+          manager: payload.credentials.manager,
+          chef: payload.credentials.chef,
+          legacyAdmin: payload.credentials.legacyAdmin,
+        },
+        branding: payload.branding,
+        urls: payload.urls,
+      };
+
+      setDetailsByRestaurant((prev) => ({
+        ...prev,
+        [activeRestaurant.id]: nextDetails,
+      }));
+
+      setDetailFormFromData(nextDetails.restaurant, nextDetails);
+      await loadCentralData();
+    } catch {
+      setError('Could not update tenant details.');
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const handleDeleteRestaurant = async () => {
+    if (!activeRestaurant) return;
+
+    const passcode = deletePasscode.trim();
+    if (!passcode) {
+      setError('Delete passcode is required.');
+      return;
+    }
+
+    setDeletingTenantId(activeRestaurant.id);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`/api/central/restaurants/${activeRestaurant.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ passcode }),
+      });
+
+      if (response.status === 401) {
+        router.push('/central/login');
+        return;
+      }
+
+      const payload = await response.json() as CentralRestaurantPatchResponse;
+      if (!response.ok || !payload.deleted) {
+        setError(payload.error || 'Could not delete restaurant.');
+        return;
+      }
+
+      setSuccess(payload.message || 'Restaurant deleted successfully.');
+      setActiveRestaurantId(null);
+      setDeletePasscode('');
+      setDetailsByRestaurant((prev) => {
+        const next = { ...prev };
+        delete next[activeRestaurant.id];
+        return next;
+      });
+      await loadCentralData();
+    } catch {
+      setError('Could not delete restaurant.');
+    } finally {
+      setDeletingTenantId(null);
+    }
+  };
+
+  const closeDetailsModal = () => {
+    setActiveRestaurantId(null);
+    setDeletePasscode('');
+  };
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 px-4 py-6 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -408,7 +783,6 @@ export default function CentralAdminPage() {
             <p className="font-semibold">New tenant ready: {credentialsHint.restaurantName} ({credentialsHint.restaurantSlug})</p>
             <p>Manager: {credentialsHint.manager.username} / {credentialsHint.manager.password}</p>
             <p>Chef: {credentialsHint.chef.username} / {credentialsHint.chef.password}</p>
-            <p>Restaurant Admin: {credentialsHint.admin.username} / {credentialsHint.admin.password}</p>
             <p className="pt-1">Tenant URL: <Link href={credentialsHint.urls.base} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.base}</Link></p>
             <p>Order URL: <Link href={credentialsHint.urls.order} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.order}</Link></p>
             <p>Tenant Admin Login: <Link href={credentialsHint.urls.adminLogin} className="underline text-amber-200 hover:text-amber-100">{credentialsHint.urls.adminLogin}</Link></p>
@@ -488,6 +862,16 @@ export default function CentralAdminPage() {
               </div>
 
               <div>
+                <label className="block text-xs text-zinc-400 mb-1">Owner Phone</label>
+                <input
+                  value={ownerPhone}
+                  onChange={(event) => setOwnerPhone(event.target.value)}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                  placeholder="+1 000 000 0000"
+                />
+              </div>
+
+              <div>
                 <label className="block text-xs text-zinc-400 mb-1">Subscription Plan</label>
                 <select
                   value={plan}
@@ -524,14 +908,30 @@ export default function CentralAdminPage() {
               <div className="space-y-3">
                 {restaurants.map((restaurant) => {
                   const metrics = metricsByRestaurant[restaurant.id] || emptyMetrics();
-                  const tenantUrls = buildTenantUrls(restaurant.slug);
+                  const tenantUrls = buildTenantUrls(restaurant.slug, origin);
+                  const details = detailsByRestaurant[restaurant.id] || null;
+                  const cardQrPayload = details
+                    ? buildTenantPrivateQrPayload(details)
+                    : buildTenantPublicQrPayload(restaurant, tenantUrls);
 
                   return (
                     <div key={restaurant.id} className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
                         <div>
-                          <p className="text-base font-semibold text-zinc-100">{restaurant.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-base font-semibold text-zinc-100">{restaurant.name}</p>
+                            <button
+                              onClick={() => openTenantDetails(restaurant)}
+                              className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 hover:bg-zinc-800"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              {detailsLoadingId === restaurant.id ? 'Loading...' : 'View'}
+                            </button>
+                          </div>
                           <p className="text-xs text-zinc-400">slug: {restaurant.slug} • owner: {restaurant.owner_email || 'n/a'}</p>
+                          {details?.restaurant.owner_phone && (
+                            <p className="text-[11px] text-zinc-500">phone: {details.restaurant.owner_phone}</p>
+                          )}
                           <p className="text-[11px] text-zinc-500 mt-1">
                             tenant: <Link href={tenantUrls.base} className="underline hover:text-zinc-300">{tenantUrls.base}</Link>
                             {' • '}
@@ -539,27 +939,43 @@ export default function CentralAdminPage() {
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] border ${restaurant.status === 'active' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}`}>
-                            {restaurant.status === 'active' ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
-                            {restaurant.status}
-                          </span>
+                        <div className="flex items-start gap-3">
+                          <div className="flex flex-col items-end gap-2">
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] border ${restaurant.status === 'active' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-rose-400/30 bg-rose-500/10 text-rose-300'}`}>
+                              {restaurant.status === 'active' ? <ToggleRight className="w-3.5 h-3.5" /> : <ToggleLeft className="w-3.5 h-3.5" />}
+                              {restaurant.status}
+                            </span>
 
-                          <select
-                            value={restaurant.plan}
-                            onChange={(event) => updateRestaurantPlan(restaurant.id, event.target.value === 'premium' ? 'premium' : 'basic')}
-                            className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
-                          >
-                            <option value="basic">Basic</option>
-                            <option value="premium">Premium</option>
-                          </select>
+                            <select
+                              value={restaurant.plan}
+                              onChange={(event) => updateRestaurantPlan(restaurant.id, event.target.value === 'premium' ? 'premium' : 'basic')}
+                              className="rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
+                            >
+                              <option value="basic">Basic</option>
+                              <option value="premium">Premium</option>
+                            </select>
 
-                          <button
-                            onClick={() => toggleRestaurantStatus(restaurant)}
-                            className={`px-2.5 py-1 rounded-md text-xs font-semibold ${restaurant.status === 'active' ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
-                          >
-                            {restaurant.status === 'active' ? 'Disable' : 'Activate'}
-                          </button>
+                            <button
+                              onClick={() => toggleRestaurantStatus(restaurant)}
+                              className={`px-2.5 py-1 rounded-md text-xs font-semibold ${restaurant.status === 'active' ? 'bg-rose-500/15 text-rose-300 hover:bg-rose-500/25' : 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'}`}
+                            >
+                              {restaurant.status === 'active' ? 'Disable' : 'Activate'}
+                            </button>
+                          </div>
+
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 w-[94px] h-[118px] flex flex-col items-center justify-between">
+                            <div className="text-[10px] text-zinc-500 uppercase tracking-wide inline-flex items-center gap-1">
+                              <QrCode className="w-3 h-3" />
+                              QR
+                            </div>
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={buildQrImageUrl(cardQrPayload, 82)}
+                              alt={`QR for ${restaurant.name}`}
+                              className="w-[82px] h-[82px] rounded bg-white"
+                            />
+                            <div className="text-[10px] text-zinc-500">{details ? 'full' : 'public'}</div>
+                          </div>
                         </div>
                       </div>
 
@@ -637,6 +1053,236 @@ export default function CentralAdminPage() {
             </div>
           )}
         </section>
+
+        {activeRestaurant && (
+          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="w-full max-w-6xl max-h-[90vh] overflow-auto rounded-2xl border border-zinc-700 bg-zinc-950">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 sticky top-0 bg-zinc-950 z-10">
+                <div>
+                  <p className="text-sm text-zinc-400">Tenant Details</p>
+                  <h3 className="text-xl font-bold text-zinc-100">{activeRestaurant.name}</h3>
+                </div>
+                <button
+                  onClick={closeDetailsModal}
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border border-zinc-700 hover:bg-zinc-900"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 p-5">
+                <div className="lg:col-span-2 space-y-5">
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                    <p className="text-sm font-semibold text-zinc-100 mb-3">Restaurant Profile</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Name</label>
+                        <input
+                          value={detailForm.name}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, name: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Slug</label>
+                        <input
+                          value={detailForm.slug}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, slug: normalizeRestaurantSlug(event.target.value) }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Owner Email</label>
+                        <input
+                          value={detailForm.ownerEmail}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, ownerEmail: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Owner Phone</label>
+                        <input
+                          value={detailForm.ownerPhone}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, ownerPhone: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm focus:outline-none focus:border-emerald-400"
+                        />
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                    <p className="text-sm font-semibold text-zinc-100 mb-3">Staff Credentials</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+                        <p className="text-xs uppercase tracking-wide text-zinc-400">Manager</p>
+                        <input
+                          value={detailForm.managerUsername}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, managerUsername: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          placeholder="Username"
+                        />
+                        <input
+                          value={detailForm.managerPassword}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, managerPassword: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          placeholder="Password"
+                        />
+                      </div>
+
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3 space-y-2">
+                        <p className="text-xs uppercase tracking-wide text-zinc-400">Chef</p>
+                        <input
+                          value={detailForm.chefUsername}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, chefUsername: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          placeholder="Username"
+                        />
+                        <input
+                          value={detailForm.chefPassword}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, chefPassword: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                          placeholder="Password"
+                        />
+                      </div>
+                    </div>
+
+                    {activeDetails?.credentials.legacyAdmin && (
+                      <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                        Legacy Restaurant Admin still exists for backward compatibility: {activeDetails.credentials.legacyAdmin.username} / {activeDetails.credentials.legacyAdmin.password}
+                      </div>
+                    )}
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                    <p className="text-sm font-semibold text-zinc-100 mb-3">Chatbot + Branding</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Chatbot Name</label>
+                        <input
+                          value={detailForm.chatbotName}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, chatbotName: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                          placeholder="SIA"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-zinc-400 mb-1">Logo URL</label>
+                        <input
+                          value={detailForm.logoUrl}
+                          onChange={(event) => setDetailForm((prev) => ({ ...prev, logoUrl: event.target.value }))}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                          placeholder="https://..."
+                        />
+                      </div>
+                    </div>
+                    <div className="mt-3 flex items-center gap-3">
+                      <div className="w-14 h-14 rounded-lg border border-zinc-700 bg-zinc-950 p-1 flex items-center justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={detailForm.logoUrl || DEFAULT_LOGO_URL} alt="Tenant logo" className="max-h-full max-w-full rounded" />
+                      </div>
+                      <p className="text-xs text-zinc-500">This logo and chatbot name will be used by the tenant-facing UI.</p>
+                    </div>
+                  </section>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={handleSaveTenantDetails}
+                      disabled={savingDetails || Boolean(detailsLoadingId)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-semibold px-4 py-2.5 disabled:opacity-60"
+                    >
+                      <Save className="w-4 h-4" />
+                      {savingDetails ? 'Saving...' : 'Save Updates'}
+                    </button>
+                    <button
+                      onClick={() => openTenantDetails(activeRestaurant)}
+                      disabled={Boolean(detailsLoadingId)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-4 py-2.5 text-sm disabled:opacity-60"
+                    >
+                      <RefreshCcw className="w-4 h-4" />
+                      Reload Details
+                    </button>
+                  </div>
+
+                  <section className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-4">
+                    <p className="text-sm font-semibold text-rose-200 mb-2 inline-flex items-center gap-2">
+                      <Trash2 className="w-4 h-4" />
+                      Delete Tenant
+                    </p>
+                    <p className="text-xs text-rose-200/80 mb-3">
+                      Deleting will permanently remove this restaurant and all related tenant data. Use your passcode to confirm.
+                    </p>
+                    <div className="flex flex-col md:flex-row md:items-center gap-2">
+                      <div className="flex-1">
+                        <label className="block text-xs text-rose-200/80 mb-1">Delete passcode</label>
+                        <input
+                          type="password"
+                          value={deletePasscode}
+                          onChange={(event) => setDeletePasscode(event.target.value)}
+                          className="w-full rounded-lg border border-rose-500/40 bg-zinc-950 px-3 py-2 text-sm"
+                          placeholder="Enter delete passcode"
+                        />
+                      </div>
+                      <button
+                        onClick={handleDeleteRestaurant}
+                        disabled={deletingTenantId === activeRestaurant.id}
+                        className="inline-flex items-center justify-center gap-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold px-4 py-2.5 mt-5 md:mt-6 disabled:opacity-60"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                        {deletingTenantId === activeRestaurant.id ? 'Deleting...' : 'Delete Restaurant'}
+                      </button>
+                    </div>
+                  </section>
+                </div>
+
+                <div className="space-y-4">
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+                    <p className="text-sm font-semibold text-zinc-100 mb-3 inline-flex items-center gap-2">
+                      <QrCode className="w-4 h-4 text-emerald-300" />
+                      Credential QR
+                    </p>
+
+                    {activeDetails ? (
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={buildQrImageUrl(buildTenantPrivateQrPayload(activeDetails), 260)}
+                          alt={`Credential QR for ${activeRestaurant.name}`}
+                          className="w-full rounded bg-white"
+                        />
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-6 text-sm text-zinc-500 text-center">
+                        Load tenant details to generate credential QR.
+                      </div>
+                    )}
+
+                    <p className="text-xs text-zinc-500 mt-3">Scan this QR to view encoded tenant info, credentials, and URLs.</p>
+                  </section>
+
+                  <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 text-sm">
+                    <p className="font-semibold text-zinc-100 mb-2">Quick Access</p>
+                    <div className="space-y-1 text-zinc-300">
+                      <p>ID: {activeRestaurant.id}</p>
+                      <p>Slug: {activeRestaurant.slug}</p>
+                      <p>
+                        Tenant URL:{' '}
+                        <Link href={buildTenantUrls(activeRestaurant.slug, origin).base} className="underline hover:text-white">
+                          {buildTenantUrls(activeRestaurant.slug, origin).base}
+                        </Link>
+                      </p>
+                      <p>
+                        Admin Login:{' '}
+                        <Link href={buildTenantUrls(activeRestaurant.slug, origin).adminLogin} className="underline hover:text-white">
+                          {buildTenantUrls(activeRestaurant.slug, origin).adminLogin}
+                        </Link>
+                      </p>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

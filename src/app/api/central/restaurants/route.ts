@@ -28,6 +28,7 @@ interface CreateRestaurantBody {
   name?: string;
   slug?: string;
   ownerEmail?: string | null;
+  ownerPhone?: string | null;
   plan?: 'basic' | 'premium';
 }
 
@@ -173,6 +174,7 @@ export async function POST(req: NextRequest) {
   const name = (body.name || '').trim();
   const normalizedSlug = normalizeRestaurantSlug((body.slug || name || '').trim());
   const ownerEmail = typeof body.ownerEmail === 'string' ? body.ownerEmail.trim() : '';
+  const ownerPhone = typeof body.ownerPhone === 'string' ? body.ownerPhone.trim() : '';
   const plan: 'basic' | 'premium' = body.plan === 'premium' ? 'premium' : 'basic';
 
   if (!name) {
@@ -183,18 +185,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Restaurant slug is invalid.' }, { status: 400 });
   }
 
-  const { data: insertedRestaurant, error: insertError } = await supabase
+  const restaurantInsertPayload: Record<string, unknown> = {
+    name,
+    slug: normalizedSlug,
+    owner_email: ownerEmail || null,
+    plan,
+    status: 'active',
+    is_default: false,
+  };
+
+  if (ownerPhone) {
+    restaurantInsertPayload.owner_phone = ownerPhone;
+  }
+
+  let insertResponse = await supabase
     .from('restaurants')
-    .insert({
-      name,
-      slug: normalizedSlug,
-      owner_email: ownerEmail || null,
-      plan,
-      status: 'active',
-      is_default: false,
-    })
+    .insert(restaurantInsertPayload)
     .select('id, slug, name, owner_email, plan, status, is_default, created_at, updated_at')
     .single();
+
+  if (insertResponse.error && ownerPhone && insertResponse.error.message.toLowerCase().includes('owner_phone')) {
+    delete restaurantInsertPayload.owner_phone;
+    insertResponse = await supabase
+      .from('restaurants')
+      .insert(restaurantInsertPayload)
+      .select('id, slug, name, owner_email, plan, status, is_default, created_at, updated_at')
+      .single();
+  }
+
+  const { data: insertedRestaurant, error: insertError } = insertResponse;
 
   if (insertError || !insertedRestaurant) {
     const maybeDuplicate = insertError?.code === '23505';
@@ -209,7 +228,6 @@ export async function POST(req: NextRequest) {
 
   const managerCreds = { username: 'manager', password: generateTenantPassword(tenant.slug) };
   const chefCreds = { username: 'chef', password: generateTenantPassword(tenant.slug) };
-  const adminCreds = { username: 'admin', password: generateTenantPassword(tenant.slug) };
 
   const rollbackRestaurant = async () => {
     await supabase
@@ -235,13 +253,6 @@ export async function POST(req: NextRequest) {
         role: 'chef',
         is_active: true,
       },
-      {
-        restaurant_id: tenant.id,
-        username: adminCreds.username,
-        password: adminCreds.password,
-        role: 'restaurant_admin',
-        is_active: true,
-      },
     ]);
 
   if (staffError) {
@@ -259,7 +270,7 @@ export async function POST(req: NextRequest) {
       business_name: tenant.name,
       admin_subtitle: 'Admin Panel',
       logo_url: '/icons/icon-192x192.png',
-      logo_hint: 'Logo Placeholder',
+      logo_hint: 'SIA',
     }, { onConflict: 'restaurant_id' });
 
   if (settingsError) {
@@ -291,7 +302,6 @@ export async function POST(req: NextRequest) {
     credentials: {
       manager: managerCreds,
       chef: chefCreds,
-      admin: adminCreds,
     },
     urls: buildTenantUrls(req.nextUrl.origin, tenant.slug),
   }, { status: 201 });

@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { logPaymentEvent, markOrderAsPaid } from '@/lib/payment-server';
+import { parseTenantId } from '@/lib/tenant-server';
 
 export const runtime = 'nodejs';
 
@@ -13,6 +14,7 @@ interface StripeEvent {
       payment_status?: string;
       metadata?: {
         order_id?: string;
+        restaurant_id?: string;
       };
       client_reference_id?: string;
     };
@@ -86,8 +88,10 @@ export async function POST(req: NextRequest) {
   const session = event.data?.object;
   const orderIdRaw = session?.metadata?.order_id || session?.client_reference_id;
   const orderId = Number(orderIdRaw || 0);
+  const restaurantId = parseTenantId(session?.metadata?.restaurant_id);
 
   await logPaymentEvent({
+    restaurantId: restaurantId || undefined,
     orderId: Number.isFinite(orderId) && orderId > 0 ? orderId : undefined,
     provider: 'stripe',
     eventType,
@@ -103,6 +107,7 @@ export async function POST(req: NextRequest) {
 
   if (!Number.isFinite(orderId) || orderId <= 0) {
     await logPaymentEvent({
+      restaurantId: restaurantId || undefined,
       provider: 'stripe',
       eventType: 'webhook_missing_order_id',
       status: 'skipped',
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
 
   if (session?.payment_status && session.payment_status !== 'paid') {
     await logPaymentEvent({
+      restaurantId: restaurantId || undefined,
       orderId,
       provider: 'stripe',
       eventType: 'webhook_payment_not_settled',
@@ -127,9 +133,10 @@ export async function POST(req: NextRequest) {
   }
 
   const transactionId = session?.payment_intent || session?.id || `stripe-${Date.now()}`;
-  const success = await markOrderAsPaid(orderId, 'card', 'chatbot_payment', transactionId, 'stripe-webhook');
+  const success = await markOrderAsPaid(orderId, 'card', 'chatbot_payment', transactionId, 'stripe-webhook', restaurantId || undefined);
 
   await logPaymentEvent({
+    restaurantId: restaurantId || undefined,
     orderId,
     provider: 'stripe',
     eventType: 'webhook_processed',

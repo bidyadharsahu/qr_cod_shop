@@ -2,19 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServiceRoleSupabase } from '@/lib/server-supabase';
 import { normalizeTenantSlug } from '@/lib/tenant-server';
 
-type StaffRole = 'manager' | 'chef' | 'restaurant_admin';
+type StaffRole = 'manager' | 'chef';
 
 interface TenantLoginBody {
   restaurantSlug?: string;
   username?: string;
   password?: string;
-  role?: StaffRole;
+  role?: StaffRole | 'restaurant_admin';
 }
 
 const FALLBACK_STAFF_CREDENTIALS: Record<StaffRole, { username: string; password: string }> = {
   manager: { username: 'hello', password: '789456' },
   chef: { username: 'chef', password: 'chef123' },
-  restaurant_admin: { username: 'admin', password: 'admin123' },
 };
 
 const DEFAULT_RESTAURANT_SLUG = 'coasis';
@@ -38,7 +37,7 @@ export async function POST(req: NextRequest) {
   const restaurantSlug = normalizeTenantSlug(body.restaurantSlug || '');
   const username = (body.username || '').trim();
   const password = body.password || '';
-  const role: StaffRole = body.role === 'chef' || body.role === 'restaurant_admin' ? body.role : 'manager';
+  const role: StaffRole = body.role === 'chef' ? 'chef' : 'manager';
 
   if (!restaurantSlug || !username || !password) {
     return NextResponse.json({ error: 'Restaurant slug, username, and password are required.' }, { status: 400 });
@@ -74,21 +73,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Restaurant account is disabled. Contact support.' }, { status: 403 });
   }
 
+  const roleCandidates = role === 'manager' ? ['manager', 'restaurant_admin'] : ['chef'];
+
   const { data: staffMatch, error: staffError } = await supabase
     .from('restaurant_staff')
     .select('id')
     .eq('restaurant_id', restaurant.id)
-    .eq('role', role)
+    .in('role', roleCandidates)
     .eq('username', username)
     .eq('password', password)
     .eq('is_active', true)
     .maybeSingle();
 
-  const fallback = FALLBACK_STAFF_CREDENTIALS[role];
+  const fallbackCandidates = role === 'manager'
+    ? [
+      FALLBACK_STAFF_CREDENTIALS.manager,
+      { username: 'admin', password: 'admin123' },
+    ]
+    : [FALLBACK_STAFF_CREDENTIALS.chef];
+
   const fallbackAllowed =
     Boolean(restaurant.is_default)
-    && username === fallback.username
-    && password === fallback.password;
+    && fallbackCandidates.some((credential) => (
+      username === credential.username
+      && password === credential.password
+    ));
 
   const isAuthenticated = Boolean(staffMatch) || (!staffError && fallbackAllowed) || (staffError && fallbackAllowed);
 
