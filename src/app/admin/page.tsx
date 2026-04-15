@@ -173,7 +173,10 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   const playOrderNotificationSound = useCallback(() => {
     if (typeof window === 'undefined') return;
 
-    const audioWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
+    const audioWindow = window as Window & {
+      AudioContext?: typeof AudioContext;
+      webkitAudioContext?: typeof AudioContext;
+    };
     const AudioContextCtor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
     if (!AudioContextCtor) return;
 
