@@ -535,8 +535,8 @@ const RESPONSES = {
     "Totally get it! 🌱 Here's what works great for vegetarians:\n\n🥗 **Coasis House Salad** — $14\n🥗 **Grilled Caesar Salad** — $16\n🍫 **Brownie Bites** — $10\n\nWant to add any of these? Just type the name!",
   ],
   SYSTEM_QUESTION: [
-    "I'm SIA, your table-side chat assistant. I hang with you through the whole order, explain dishes clearly, and send your choices straight to staff in real time.\n\nYou can talk to me naturally, and I will keep things quick and easy.\n\nWant recommendations, spicy picks, seafood, or the full menu?",
-    "Great question. I'm SIA, and my job is to make ordering feel smooth and personal.\n\nI can help you compare dishes, capture kitchen notes, and place your order without the back-and-forth.\n\nTell me your vibe and I will suggest a great match.",
+    "I'm SIA from the Coasis team. Think of me like your table host in chat.\n\nI can explain dishes, capture kitchen notes, and send your choices to staff in real time.\n\nWant a quick recommendation, spicy picks, seafood, or the full menu?",
+    "Great question. I'm SIA, here to make ordering feel smooth and personal.\n\nYou can talk naturally, and I will keep it simple, clear, and fast while your order goes to the team.\n\nTell me your mood and I will suggest a solid pick.",
   ],
   VAGUE_MESSAGE: [
     "No worries, I'll help you decide! 🤔\n\nHere's what I'd go with tonight:\n• 🔥 **Marinated Lambchops** — our number one seller\n• 🦞 **Seafood Trio** — if you love the ocean\n• 🍗 **Southern Fried Chicken** — comfort food done right\n\nJust type a dish name and I'll tell you everything about it!",
@@ -544,9 +544,9 @@ const RESPONSES = {
     "Surprise you? I thought you'd never ask! 🎉\n\nIf I were sitting at your table, I'd go with the **Marinated Lambchops** ($42) — they're unreal. Pair them with **Chargrilled Oysters** to start and you're golden.\n\nWant me to tell you more about either one?",
   ],
   CASUAL_CHAT: [
-    "I'm good and I'm with you. If you want, we can chat and pick something perfect together.\n\nAre you in the mood for spicy, seafood, or something comforting?",
-    "Love the energy. I can be your chill dinner buddy while we build your order.\n\nWant a quick recommendation based on your mood right now?",
-    "I got you. We can keep this fun and easy.\n\nTell me what sounds good and I will narrow it down fast.",
+    "I'm right here with you. We can keep this easy and still pick something really good.\n\nWhat are you feeling right now: spicy, seafood, or comfort food?",
+    "Love the vibe. Give me your mood and I will narrow this down in two quick picks.\n\nWant bold flavor, something light, or a crowd favorite?",
+    "We can absolutely chat while we build your order.\n\nTell me what sounds good and I'll make this quick and fun.",
   ],
 };
 
@@ -1659,7 +1659,31 @@ export function processChatMessage(
     case 'CASUAL_CHAT': {
       if (/\b(girlfriend|boyfriend|date\s+me|love\s+you|romantic|sexy)\b/i.test(message)) {
         return {
-          message: "I can absolutely keep you company as your friendly dinner buddy. I am here to make this feel easy, fun, and personal while we get your order right.\n\nTell me what mood you're in and I will pick a great dish for you.",
+          message: "I can't do romantic roleplay, but I can absolutely keep this warm and personal while helping with your order.\n\nTell me your mood and I will suggest a great dish right away.",
+          intent,
+          entities,
+        };
+      }
+
+      if (/\b(sad|lonely|low|bored|upset|tired)\b/i.test(message)) {
+        return {
+          message: "I hear you. Let's keep this light and make your meal easy.\n\nDo you want comfort food, seafood, or something spicy tonight?",
+          intent,
+          entities,
+        };
+      }
+
+      if (context?.lastDishAsked) {
+        return {
+          message: `Still thinking about ${context.lastDishAsked}? I can add it now, or show two similar options so you can choose fast.`,
+          intent,
+          entities,
+        };
+      }
+
+      if (cart.length > 0) {
+        return {
+          message: "Your cart is looking good so far. Want one more item, or should we place the order now?",
           intent,
           entities,
         };

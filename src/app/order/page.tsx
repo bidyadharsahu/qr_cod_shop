@@ -14,7 +14,7 @@ import jsPDF from 'jspdf';
 import { 
   Send, ShoppingCart, Plus, Minus, Trash2, Star,
   FileText, Check, MessageCircle, Download, 
-  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard, Mic, MicOff
+  Heart, PhoneCall, Clock, Sparkles, Flame, CreditCard, Mic, MicOff, Smile
 } from 'lucide-react';
 import { calculateOrderTotal } from '@/lib/calculations';
 
@@ -22,6 +22,8 @@ const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
 const DEFAULT_CHATBOT_NAME = 'SIA';
 const DEFAULT_LOGO_URL = '/icons/icon-96x96.png';
+const CHAT_EMOJI_OPTIONS = ['😀', '😄', '😋', '😎', '🤩', '🤔', '🙏', '👍', '❤️', '🔥', '✨', '🎉', '🍽️', '🛒', '🥗', '🍤', '🍰', '☕', '🥤', '🌶️', '🦞', '🐟', '😅', '😂'];
+const EMOJI_DETECT_REGEX = /\p{Extended_Pictographic}/u;
 
 interface CartItem extends MenuItem {
   quantity: number;
@@ -353,6 +355,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [receiptId, setReceiptId] = useState('');
   const [selectedTip, setSelectedTip] = useState(0);
@@ -415,6 +418,8 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   
   const chatEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const emojiToggleRef = useRef<HTMLButtonElement>(null);
   const confirmationFlashTimerRef = useRef<number | null>(null);
   const voiceRecognitionRef = useRef<VoiceRecognitionInstance | null>(null);
   const voiceStatusTimerRef = useRef<number | null>(null);
@@ -483,6 +488,63 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       typing: { duration: 0.3, ease: smoothEase },
       badge: { delay: 0.26, type: 'spring' as const, stiffness: 170, damping: 16 },
     };
+  }, []);
+
+  const addExpressiveEmojiToBotReply = useCallback((message: string) => {
+    const trimmed = message.trim();
+    if (!trimmed || EMOJI_DETECT_REGEX.test(trimmed)) return trimmed;
+
+    const lower = trimmed.toLowerCase();
+    if (/(thank|thanks|appreciate|welcome)/.test(lower)) return `${trimmed} 😊`;
+    if (/(menu|browse|show)/.test(lower)) return `${trimmed} 🍽️`;
+    if (/(order|checkout|cart|bill|receipt)/.test(lower)) return `${trimmed} 🛒`;
+    if (/(spicy|hot)/.test(lower)) return `${trimmed} 🌶️`;
+    if (/(seafood|fish|shrimp|lobster|oyster)/.test(lower)) return `${trimmed} 🦞`;
+    if (/(sorry|could not|can't|cannot|unavailable)/.test(lower)) return `${trimmed} 🙏`;
+    if (/(great|awesome|perfect|excellent|nice)/.test(lower)) return `${trimmed} 🎉`;
+    return `${trimmed} 🙂`;
+  }, []);
+
+  const handleEmojiSelect = useCallback((emoji: string) => {
+    setUserInput(prev => {
+      if (!prev) return emoji;
+      const hasTrailingSpace = /\s$/.test(prev);
+      return `${prev}${hasTrailingSpace ? '' : ' '}${emoji}`;
+    });
+
+    window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+    });
+  }, []);
+
+  const renderMessageContent = useCallback((content: string) => {
+    let emojiCounter = 0;
+
+    return content.split('\n').map((line, lineIndex, lines) => (
+      <span key={`line-${lineIndex}`}>
+        {line
+          .split(/(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/gu)
+          .map((part, partIndex) => {
+            if (!part) return null;
+
+            if (EMOJI_DETECT_REGEX.test(part)) {
+              emojiCounter += 1;
+              return (
+                <span
+                  key={`emoji-${lineIndex}-${partIndex}`}
+                  className="chat-emoji"
+                  style={{ animationDelay: `${(emojiCounter % 6) * 90}ms` }}
+                >
+                  {part}
+                </span>
+              );
+            }
+
+            return <span key={`text-${lineIndex}-${partIndex}`}>{part}</span>;
+          })}
+        {lineIndex < lines.length - 1 ? <br /> : null}
+      </span>
+    ));
   }, []);
 
   const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
@@ -1121,6 +1183,34 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   }, [chatMessages, isBotTyping]);
 
   useEffect(() => {
+    if (!showEmojiPicker) return;
+
+    const closeOnOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (emojiPickerRef.current?.contains(target)) return;
+      if (emojiToggleRef.current?.contains(target)) return;
+      setShowEmojiPicker(false);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    document.addEventListener('mousedown', closeOnOutside);
+    document.addEventListener('touchstart', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutside);
+      document.removeEventListener('touchstart', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [showEmojiPicker]);
+
+  useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const SpeechRecognitionCtor = ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) as VoiceRecognitionFactory | undefined;
@@ -1191,7 +1281,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
     const msg: ChatMessage = {
       id: Date.now().toString(),
       role: 'bot',
-      content: normalizedContent,
+      content: addExpressiveEmojiToBotReply(normalizedContent),
       createdAt: Date.now(),
       options,
       ...extra
@@ -1439,6 +1529,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
     const input = userInput.trim();
     addUserMessage(input);
     setUserInput('');
+    setShowEmojiPicker(false);
     setIsBotTyping(true);
 
     try {
@@ -2442,7 +2533,9 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                       : { background: theme.botBubbleBg, border: `1px solid ${theme.botBubbleBorder}` }
                     }
                   >
-                    <p className={`message-copy whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium text-black/95' : 'text-[15px] text-zinc-100'}`}>{msg.content}</p>
+                    <p className={`message-copy whitespace-pre-wrap ${msg.role === 'user' ? 'text-[14px] font-medium text-black/95' : 'text-[15px] text-zinc-100'}`}>
+                      {renderMessageContent(msg.content)}
+                    </p>
                   </div>
                   <div className={`chat-time-row mt-1.5 text-[10px] ${msg.role === 'user' ? 'text-right' : 'text-left'} flex items-center gap-1.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <span className="chat-time-pill">{new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -3051,6 +3144,32 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
             {interimVoiceTranscript}
           </div>
         )}
+        <AnimatePresence initial={false}>
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ opacity: 0, y: 8, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.98 }}
+              transition={motionProfile.panel}
+              className="max-w-lg mx-auto mb-2"
+              ref={emojiPickerRef}
+            >
+              <div className="emoji-picker-panel">
+                {CHAT_EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="emoji-picker-btn"
+                    onClick={() => handleEmojiSelect(emoji)}
+                    aria-label={`Insert ${emoji}`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <form onSubmit={handleSendMessage} className="flex gap-2.5 sm:gap-3 max-w-lg mx-auto">
           <button
             type="button"
@@ -3063,6 +3182,18 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
             title={voiceSupported ? (isListening ? 'Stop voice input' : 'Start voice input') : 'Voice input not supported'}
           >
             {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+          </button>
+          <button
+            ref={emojiToggleRef}
+            type="button"
+            onClick={() => setShowEmojiPicker(prev => !prev)}
+            className="w-11 h-11 sm:w-12 sm:h-12 rounded-2xl flex items-center justify-center border transition-all active:scale-95"
+            style={showEmojiPicker
+              ? { background: `${theme.primary}22`, borderColor: theme.primary, color: theme.primary }
+              : { background: '#18181b', borderColor: '#3f3f46', color: '#a1a1aa' }}
+            title={showEmojiPicker ? 'Close emoji picker' : 'Open emoji picker'}
+          >
+            <Smile className="w-5 h-5" />
           </button>
           <input
             ref={inputRef}
@@ -3117,6 +3248,41 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           line-height: 1.56;
           letter-spacing: 0.012em;
           text-wrap: pretty;
+        }
+        .chat-emoji {
+          display: inline-block;
+          line-height: 1;
+          margin-inline: 0.02em;
+          transform-origin: center 76%;
+          animation: emojiFloatPulse 1.7s ease-in-out infinite;
+          filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.2));
+        }
+        .emoji-picker-panel {
+          display: grid;
+          grid-template-columns: repeat(8, minmax(0, 1fr));
+          gap: 6px;
+          padding: 8px;
+          border-radius: 14px;
+          background: rgba(24, 24, 27, 0.95);
+          border: 1px solid rgba(113, 113, 122, 0.45);
+          box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
+        }
+        .emoji-picker-btn {
+          height: 34px;
+          border-radius: 10px;
+          font-size: 21px;
+          line-height: 1;
+          background: rgba(39, 39, 42, 0.9);
+          border: 1px solid rgba(113, 113, 122, 0.35);
+          transition: transform 0.14s ease, background 0.2s ease, border-color 0.2s ease;
+        }
+        .emoji-picker-btn:hover {
+          transform: translateY(-1px) scale(1.05);
+          background: rgba(63, 63, 70, 0.95);
+          border-color: rgba(161, 161, 170, 0.5);
+        }
+        .emoji-picker-btn:active {
+          transform: scale(0.94);
         }
         .chat-time-row {
           color: #a1a1aa;
@@ -3231,6 +3397,11 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
           40% { transform: translateY(-2px); opacity: 1; }
         }
+        @keyframes emojiFloatPulse {
+          0%, 100% { transform: translateY(0) scale(1) rotate(0deg); }
+          35% { transform: translateY(-2px) scale(1.09) rotate(-2deg); }
+          70% { transform: translateY(0px) scale(1.02) rotate(1deg); }
+        }
         @keyframes dockPulse {
           0%, 100% { transform: scale(1); opacity: 0.75; }
           50% { transform: scale(1.2); opacity: 1; }
@@ -3251,6 +3422,18 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         .scrollbar-hide {
           -ms-overflow-style: none;
           scrollbar-width: none;
+        }
+        @media (max-width: 420px) {
+          .emoji-picker-panel {
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .chat-emoji,
+          .emoji-picker-btn {
+            animation: none !important;
+            transition: none !important;
+          }
         }
       `}</style>
     </div>

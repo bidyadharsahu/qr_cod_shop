@@ -23,6 +23,8 @@ function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' |
     'Rewrite the assistant reply to sound like a real human chatting live in a restaurant app.',
     'Style goals:',
     '- Conversational, emotionally aware, and naturally warm.',
+    '- Sound like a real person at the table: attentive, clear, and calm.',
+    '- Mirror the guest tone lightly (friendly, excited, confused, tired) without copying slang excessively.',
     '- Keep short, mobile-friendly lines and avoid robotic wording.',
     '- Use light friend-like energy when suitable (not formal, not stiff).',
     '- If the user makes small talk, answer briefly and then guide back to ordering.',
@@ -33,6 +35,7 @@ function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' |
     '- Keep all factual details from the original response.',
     '- Keep all item names and numbers exactly the same as in the original response.',
     '- Do not add extra recommendations unless already present.',
+    '- Do not claim to be an AI, bot, or non-human unless explicitly asked.',
     '- Be clear, short sentences, easy to scan on a phone screen.',
     '- If the user sounds confused, add one short clarifying line.',
     '- Keep it concise (max 120 words).',
@@ -82,7 +85,7 @@ export async function POST(request: NextRequest) {
         messages: [
           {
             role: 'system',
-            content: 'You rewrite a restaurant assistant response so it feels human, warm, and natural while preserving exact facts and actions. Never add romantic/sexual roleplay. Keep responses concise and easy to read on mobile.',
+            content: 'You rewrite a restaurant assistant response so it feels like a real person chatting naturally while preserving exact facts and actions. Keep empathy high, wording simple, and responses concise for mobile. Never add romantic or sexual roleplay.',
           },
           {
             role: 'user',

@@ -66,6 +66,8 @@ const formatIsoDayLabel = (isoDay: string) => {
   });
 };
 
+const isLiveKitchenStatus = (status: string) => ['pending', 'confirmed', 'preparing'].includes(status);
+
 export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps = {}) {
   const router = useRouter();
   const normalizedForcedTenantSlug = normalizeRestaurantSlug(forcedTenantSlug || '');
@@ -209,7 +211,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     if (!order || !order.id) return;
     if (order.restaurant_id !== restaurantId) return;
     if (order.receipt_id?.startsWith('CALL-')) return;
-    if (order.status !== 'pending') return;
+    if (!isLiveKitchenStatus(order.status)) return;
     if (seenOrderNotificationIdsRef.current.has(order.id)) return;
 
     seenOrderNotificationIdsRef.current.add(order.id);
@@ -961,20 +963,22 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
       if (!order?.id) continue;
       if (order.receipt_id?.startsWith('CALL-')) continue;
 
-      if (order.status !== 'pending') {
-        seenOrderNotificationIdsRef.current.add(order.id);
-        continue;
-      }
-
       if (seenOrderNotificationIdsRef.current.has(order.id)) continue;
 
+      const createdAtMs = new Date(order.created_at).getTime();
+      const isRecent = Number.isFinite(createdAtMs) && nowMs - createdAtMs <= 1000 * 60 * 30;
+      const isLiveOrder = isLiveKitchenStatus(order.status);
+
       if (initialSync) {
-        const createdAtMs = new Date(order.created_at).getTime();
-        const isRecent = Number.isFinite(createdAtMs) && nowMs - createdAtMs <= 1000 * 60 * 20;
         if (!isRecent) {
           seenOrderNotificationIdsRef.current.add(order.id);
           continue;
         }
+      }
+
+      if (!isLiveOrder) {
+        seenOrderNotificationIdsRef.current.add(order.id);
+        continue;
       }
 
       enqueueOrderNotification(order);
@@ -1065,7 +1069,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
         if (payload.eventType === 'UPDATE') {
           const updatedOrder = payload.new as Order;
           if (updatedOrder.restaurant_id !== restaurantId) return;
-          if (updatedOrder.status !== 'pending') {
+          if (!isLiveKitchenStatus(updatedOrder.status)) {
             setNotifications(prev => prev.filter(n => n.id !== updatedOrder.id));
           }
         }
