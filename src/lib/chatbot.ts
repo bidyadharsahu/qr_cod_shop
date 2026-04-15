@@ -395,7 +395,7 @@ const INTENT_PATTERNS: Record<IntentType, string[]> = {
   SYSTEM_QUESTION: ['how do you work', 'what are you', 'who are you', 'who made you', 'are you real', 'are you ai', 'are you a bot', 'are you human', 'your name', 'what is sia', 'who is sia', 'what company', 'who built you', 'who created you'],
   ALLERGY_OR_INSTRUCTION: ['allergy', 'allergies', 'allergic', 'intolerance', 'no onion', 'no garlic', 'no tomato', 'no potato', 'spice level', 'mild spice', 'extra spicy', 'on the side'],
   VAGUE_MESSAGE: ['im hungry', 'hungry', 'i dont know', 'whatever', 'surprise me', 'dealers choice', 'not sure', 'idk', 'feed me', 'hmm', 'hmmm', 'umm', 'ummm', 'dunno', 'no idea', 'you pick', 'you choose', 'just something'],
-  CASUAL_CHAT: ['how are you', 'whats up', 'wassup', 'sup', 'hows it going', 'good morning', 'good evening', 'good afternoon', 'good night', 'hey there', 'yo', 'heya'],
+  CASUAL_CHAT: ['how are you', 'whats up', 'wassup', 'sup', 'hows it going', 'good morning', 'good evening', 'good afternoon', 'good night', 'hey there', 'yo', 'heya', 'you there', 'are you there', 'talk to me', 'chat with me', 'im bored', 'i am bored', 'bored', 'keep me company', 'i feel sad', 'feeling low', 'i feel lonely', 'girlfriend', 'boyfriend', 'date me', 'love you'],
   UNKNOWN: [],
 };
 
@@ -535,8 +535,8 @@ const RESPONSES = {
     "Totally get it! 🌱 Here's what works great for vegetarians:\n\n🥗 **Coasis House Salad** — $14\n🥗 **Grilled Caesar Salad** — $16\n🍫 **Brownie Bites** — $10\n\nWant to add any of these? Just type the name!",
   ],
   SYSTEM_QUESTION: [
-    "I'm SIA — your Smart Interactive Assistant! 🤖 I work right here with the restaurant team.\n\nI know the entire menu, can describe any dish, take your order, and get it straight to the kitchen. Think of me as your digital waiter! 🍽️\n\nSo... what are you hungry for?",
-    "Hey! I'm SIA, your AI ordering assistant. 🤖\n\nI'm built to make your dining experience smooth — ask me about any dish, I'll tell you what's in it, what pairs well, and add it to your order when you're ready.\n\nReady to explore the menu?",
+    "I'm SIA, your table-side chat assistant. I hang with you through the whole order, explain dishes clearly, and send your choices straight to staff in real time.\n\nYou can talk to me naturally, and I will keep things quick and easy.\n\nWant recommendations, spicy picks, seafood, or the full menu?",
+    "Great question. I'm SIA, and my job is to make ordering feel smooth and personal.\n\nI can help you compare dishes, capture kitchen notes, and place your order without the back-and-forth.\n\nTell me your vibe and I will suggest a great match.",
   ],
   VAGUE_MESSAGE: [
     "No worries, I'll help you decide! 🤔\n\nHere's what I'd go with tonight:\n• 🔥 **Marinated Lambchops** — our number one seller\n• 🦞 **Seafood Trio** — if you love the ocean\n• 🍗 **Southern Fried Chicken** — comfort food done right\n\nJust type a dish name and I'll tell you everything about it!",
@@ -544,8 +544,9 @@ const RESPONSES = {
     "Surprise you? I thought you'd never ask! 🎉\n\nIf I were sitting at your table, I'd go with the **Marinated Lambchops** ($42) — they're unreal. Pair them with **Chargrilled Oysters** to start and you're golden.\n\nWant me to tell you more about either one?",
   ],
   CASUAL_CHAT: [
-    "I'm doing great, thanks for asking! 😊 Ready to help you have an amazing meal.\n\nSo, what are you in the mood for tonight? Anything catch your eye yet?",
-    "Hey hey! 👋 I'm always good when there's good food around!\n\nLet's get you something delicious. Want to see the menu or hear my recommendations?",
+    "I'm good and I'm with you. If you want, we can chat and pick something perfect together.\n\nAre you in the mood for spicy, seafood, or something comforting?",
+    "Love the energy. I can be your chill dinner buddy while we build your order.\n\nWant a quick recommendation based on your mood right now?",
+    "I got you. We can keep this fun and easy.\n\nTell me what sounds good and I will narrow it down fast.",
   ],
 };
 
@@ -1656,6 +1657,14 @@ export function processChatMessage(
 
     // ---- CASUAL CHAT ----
     case 'CASUAL_CHAT': {
+      if (/\b(girlfriend|boyfriend|date\s+me|love\s+you|romantic|sexy)\b/i.test(message)) {
+        return {
+          message: "I can absolutely keep you company as your friendly dinner buddy. I am here to make this feel easy, fun, and personal while we get your order right.\n\nTell me what mood you're in and I will pick a great dish for you.",
+          intent,
+          entities,
+        };
+      }
+
       return {
         message: getRandomResponse('CASUAL_CHAT'),
         intent,

@@ -20,7 +20,13 @@ const DEFAULT_MODEL = 'meta-llama/llama-3.3-8b-instruct:free';
 
 function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' | 'baseMessage' | 'intent'>>): string {
   return [
-    'Rewrite the assistant reply to sound natural, warm, and premium-casual (mobile app style).',
+    'Rewrite the assistant reply to sound like a real human chatting live in a restaurant app.',
+    'Style goals:',
+    '- Conversational, emotionally aware, and naturally warm.',
+    '- Keep short, mobile-friendly lines and avoid robotic wording.',
+    '- Use light friend-like energy when suitable (not formal, not stiff).',
+    '- If the user makes small talk, answer briefly and then guide back to ordering.',
+    '- Do not roleplay romance or intimacy; keep it respectful and service-focused.',
     'Hard rules:',
     '- Preserve ordering intent exactly. Do not change action meaning.',
     '- Do not invent dishes, prices, quantities, or policy.',
@@ -29,7 +35,7 @@ function buildPrompt(payload: Required<Pick<ChatHumanizeRequest, 'userMessage' |
     '- Do not add extra recommendations unless already present.',
     '- Be clear, short sentences, easy to scan on a phone screen.',
     '- If the user sounds confused, add one short clarifying line.',
-    '- Keep it concise (max 110 words).',
+    '- Keep it concise (max 120 words).',
     '- Return plain text only (no markdown, no JSON).',
     `User message: ${payload.userMessage}`,
     `Detected intent: ${payload.intent}`,
@@ -71,12 +77,12 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.4,
+        temperature: 0.62,
         max_tokens: 220,
         messages: [
           {
             role: 'system',
-            content: 'You are a restaurant ordering assistant response rewriter. Keep all facts and constraints exactly unchanged while improving clarity, confidence, and conversational warmth.',
+            content: 'You rewrite a restaurant assistant response so it feels human, warm, and natural while preserving exact facts and actions. Never add romantic/sexual roleplay. Keep responses concise and easy to read on mobile.',
           },
           {
             role: 'user',

@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
@@ -89,6 +89,8 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   const [paymentEvents, setPaymentEvents] = useState<PaymentEventAudit[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'kitchen' | 'menu' | 'tables'>('dashboard');
   const [notifications, setNotifications] = useState<Order[]>([]);
+  const seenOrderNotificationIdsRef = useRef<Set<number>>(new Set());
+  const notificationsBootstrappedRef = useRef(false);
   
   // Tampa timezone clock
   const [currentTime, setCurrentTime] = useState<string>('');
@@ -168,8 +170,57 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     setTimeout(() => setToast(null), 4000);
   };
 
+  const playOrderNotificationSound = useCallback(() => {
+    if (typeof window === 'undefined') return;
+
+    const audioWindow = window as Window & { webkitAudioContext?: typeof AudioContext };
+    const AudioContextCtor = audioWindow.AudioContext || audioWindow.webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const context = new AudioContextCtor();
+    const oscillator = context.createOscillator();
+    const gainNode = context.createGain();
+
+    oscillator.type = 'triangle';
+    oscillator.frequency.setValueAtTime(880, context.currentTime);
+    gainNode.gain.setValueAtTime(0.0001, context.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.12, context.currentTime + 0.02);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.24);
+
+    oscillator.connect(gainNode);
+    gainNode.connect(context.destination);
+
+    void context.resume().catch(() => {});
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.25);
+
+    window.setTimeout(() => {
+      void context.close().catch(() => {});
+    }, 320);
+  }, []);
+
   const isAddOnOrder = (order: Order) => (order.customer_note || '').includes('ADD_ON_ORDER');
   const isNewOrder = (order: Order) => (order.customer_note || '').includes('NEW_ORDER');
+
+  const enqueueOrderNotification = useCallback((order: Order) => {
+    if (!order || !order.id) return;
+    if (order.restaurant_id !== restaurantId) return;
+    if (order.receipt_id?.startsWith('CALL-')) return;
+    if (order.status !== 'pending') return;
+    if (seenOrderNotificationIdsRef.current.has(order.id)) return;
+
+    seenOrderNotificationIdsRef.current.add(order.id);
+
+    setNotifications(prev => {
+      const withoutDup = prev.filter(n => n.id !== order.id);
+      return [order, ...withoutDup].slice(0, 6);
+    });
+
+    playOrderNotificationSound();
+    window.setTimeout(() => {
+      setNotifications(prev => prev.filter(n => n.id !== order.id));
+    }, 30000);
+  }, [playOrderNotificationSound, restaurantId]);
 
   const extractGlobalKitchenNotes = useCallback((customerNote?: string | null) => {
     const note = customerNote || '';
@@ -846,6 +897,12 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   }, [fetchRestaurantMeta, isAuthenticated]);
 
   useEffect(() => {
+    seenOrderNotificationIdsRef.current = new Set();
+    notificationsBootstrappedRef.current = false;
+    setNotifications([]);
+  }, [isAuthenticated, restaurantId]);
+
+  useEffect(() => {
     if (!isAuthenticated || !restaurantId) return;
 
     const restaurantSub = supabase
@@ -889,8 +946,39 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
       .eq('restaurant_id', restaurantId)
       .order('created_at', { ascending: false });
 
-    if (data) setOrders(data as Order[]);
-  }, [restaurantId]);
+    if (!data) return;
+
+    const nextOrders = data as Order[];
+    setOrders(nextOrders);
+
+    const initialSync = !notificationsBootstrappedRef.current;
+    const nowMs = Date.now();
+
+    for (const order of nextOrders) {
+      if (!order?.id) continue;
+      if (order.receipt_id?.startsWith('CALL-')) continue;
+
+      if (order.status !== 'pending') {
+        seenOrderNotificationIdsRef.current.add(order.id);
+        continue;
+      }
+
+      if (seenOrderNotificationIdsRef.current.has(order.id)) continue;
+
+      if (initialSync) {
+        const createdAtMs = new Date(order.created_at).getTime();
+        const isRecent = Number.isFinite(createdAtMs) && nowMs - createdAtMs <= 1000 * 60 * 20;
+        if (!isRecent) {
+          seenOrderNotificationIdsRef.current.add(order.id);
+          continue;
+        }
+      }
+
+      enqueueOrderNotification(order);
+    }
+
+    notificationsBootstrappedRef.current = true;
+  }, [enqueueOrderNotification, restaurantId]);
 
   const fetchMenu = useCallback(async () => {
     if (!restaurantId) return;
@@ -967,14 +1055,16 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
 
         if (payload.eventType === 'INSERT') {
           const newOrder = payload.new as Order;
-          if (newOrder.restaurant_id !== restaurantId) return;
+          enqueueOrderNotification(newOrder);
+          return;
+        }
 
-          setNotifications(prev => [newOrder, ...prev]);
-
-          // Play notification sound
-          const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleQsffK3O5cR1Gga9zvPwm1IAAKrJ7fSxZgkAlbTY5rF6IwB4o9Lss3okAHGb0vK9gSwAYJHQ87WHLgBVitLyuYYsAFGF0fXAhhYAAI/W//bPZQAAoNz/+M1WAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA');
-          audio.play().catch(() => {});
-          setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== newOrder.id)), 30000);
+        if (payload.eventType === 'UPDATE') {
+          const updatedOrder = payload.new as Order;
+          if (updatedOrder.restaurant_id !== restaurantId) return;
+          if (updatedOrder.status !== 'pending') {
+            setNotifications(prev => prev.filter(n => n.id !== updatedOrder.id));
+          }
         }
       })
       .subscribe(handleChannelStatus);
@@ -1049,6 +1139,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     fetchOrders,
     fetchPaymentEvents,
     fetchTables,
+    enqueueOrderNotification,
     isAuthenticated,
     restaurantId,
     runFullSync,
