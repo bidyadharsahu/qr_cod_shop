@@ -981,7 +981,7 @@ button {
   --admin-panel-glow: 0 16px 42px rgba(180, 83, 9, 0.2);
 }
 
-.admin-tone-fintech {
+.admin-tone-default {
   --admin-bg-a: rgba(20, 184, 166, 0.08);
   --admin-bg-b: rgba(59, 130, 246, 0.08);
   --admin-panel-bg: rgba(24, 24, 27, 0.72);
@@ -1022,15 +1022,15 @@ button {
   color: #d2bea2;
 }
 
-.admin-tone-fintech .admin-panel {
+.admin-tone-default .admin-panel {
   border-color: rgba(56, 189, 248, 0.28);
 }
 
-.admin-tone-fintech .admin-panel .grid {
+.admin-tone-default .admin-panel .grid {
   font-variant-numeric: tabular-nums;
 }
 
-.admin-tone-fintech .admin-panel .text-xs.uppercase {
+.admin-tone-default .admin-panel .text-xs.uppercase {
   color: #93c5fd;
 }
 
@@ -1053,7 +1053,7 @@ button {
     --admin-label-size: 0.7rem;
   }
 
-  .admin-tone-fintech {
+  .admin-tone-default {
     --admin-body-size: 0.86rem;
     --admin-heading-size: 0.95rem;
     --admin-kpi-xl-size: 1.6rem;
@@ -1082,7 +1082,7 @@ button {
     --admin-label-size: 0.76rem;
   }
 
-  .admin-tone-fintech {
+  .admin-tone-default {
     --admin-body-size: 0.92rem;
     --admin-heading-size: 1.02rem;
     --admin-kpi-xl-size: 1.95rem;

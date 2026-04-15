@@ -22,7 +22,6 @@ const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
 const DEFAULT_CHATBOT_NAME = 'SIA';
 const DEFAULT_LOGO_URL = '/icons/icon-96x96.png';
-const CHAT_MODE_STORAGE_KEY = 'netrikxr-chat-mode';
 const CHAT_EMOJI_OPTIONS = ['😀', '😄', '😋', '😎', '🤩', '🤔', '🙏', '👍', '❤️', '🔥', '✨', '🎉', '🍽️', '🛒', '🥗', '🍤', '🍰', '☕', '🥤', '🌶️', '🦞', '🐟', '😅', '😂'];
 const EMOJI_DETECT_REGEX = /\p{Extended_Pictographic}/u;
 
@@ -118,8 +117,6 @@ interface VoiceRecognitionFactory {
 interface OrderPageProps {
   forcedTenantSlug?: string;
 }
-
-type ChatMode = 'friendly' | 'order';
 
 const VOICE_NUMBERS: Record<string, number> = {
   one: 1,
@@ -358,11 +355,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [userInput, setUserInput] = useState('');
-  const [chatMode, setChatMode] = useState<ChatMode>(() => {
-    if (typeof window === 'undefined') return 'friendly';
-    const stored = localStorage.getItem(CHAT_MODE_STORAGE_KEY);
-    return stored === 'order' ? 'order' : 'friendly';
-  });
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [receiptId, setReceiptId] = useState('');
@@ -502,11 +494,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
     const trimmed = message.trim();
     if (!trimmed || EMOJI_DETECT_REGEX.test(trimmed)) return trimmed;
 
-    if (chatMode === 'order') {
-      if (/(sorry|could not|can't|cannot|unavailable)/i.test(trimmed)) return `${trimmed} 🙏`;
-      return trimmed;
-    }
-
     const lower = trimmed.toLowerCase();
     if (/(thank|thanks|appreciate|welcome)/.test(lower)) return `${trimmed} 😊`;
     if (/(menu|browse|show)/.test(lower)) return `${trimmed} 🍽️`;
@@ -516,7 +503,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
     if (/(sorry|could not|can't|cannot|unavailable)/.test(lower)) return `${trimmed} 🙏`;
     if (/(great|awesome|perfect|excellent|nice)/.test(lower)) return `${trimmed} 🎉`;
     return `${trimmed} 🙂`;
-  }, [chatMode]);
+  }, []);
 
   const handleEmojiSelect = useCallback((emoji: string) => {
     setUserInput(prev => {
@@ -664,11 +651,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   useEffect(() => {
     try { localStorage.setItem('netrikxr-favorites', JSON.stringify(favorites)); } catch (_) {}
   }, [favorites]);
-
-  // Persist chat mode
-  useEffect(() => {
-    try { localStorage.setItem(CHAT_MODE_STORAGE_KEY, chatMode); } catch (_) {}
-  }, [chatMode]);
 
   const fetchRestaurantMeta = useCallback(async (cancelState?: { cancelled: boolean }) => {
     if (!restaurantId) return;
@@ -1289,7 +1271,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const tenantDisplayName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
     const assistantName = (chatbotName || DEFAULT_CHATBOT_NAME).trim() || DEFAULT_CHATBOT_NAME;
-    const effectiveOptions = chatMode === 'order' ? options : undefined;
     const normalizedContent = content
       .replace(/Coasis Restaurant Bar & Suites/gi, tenantDisplayName)
       .replace(/Welcome to Coasis/gi, `Welcome to ${tenantDisplayName}`)
@@ -1302,7 +1283,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       role: 'bot',
       content: addExpressiveEmojiToBotReply(normalizedContent),
       createdAt: Date.now(),
-      options: effectiveOptions,
+      options: undefined,
       ...extra
     };
     setChatMessages(prev => [...prev, msg]);
@@ -1345,7 +1326,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           baseMessage: baseResponse.message,
           intent: baseResponse.intent,
           entities: baseResponse.entities,
-          chatMode,
           history: recentHistory,
           restaurantName: displayRestaurantName,
           assistantName,
@@ -2489,32 +2469,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
             <p className="text-[12px] font-semibold text-cyan-200">🌴 Sunday Miami Vibe • Tampa Weekend Mode</p>
           </div>
         )}
-        <div className="max-w-lg mx-auto mb-2">
-          <div className="chat-mode-toggle">
-            <button
-              type="button"
-              onClick={() => setChatMode('friendly')}
-              className={`chat-mode-btn ${chatMode === 'friendly' ? 'is-active' : ''}`}
-              style={chatMode === 'friendly'
-                ? { background: `${theme.primary}26`, borderColor: `${theme.primary}80`, color: theme.primary }
-                : { background: '#18181b', borderColor: '#3f3f46', color: '#a1a1aa' }}
-              title="Conversational friend-like style"
-            >
-              ✨ Friendly Chat
-            </button>
-            <button
-              type="button"
-              onClick={() => setChatMode('order')}
-              className={`chat-mode-btn ${chatMode === 'order' ? 'is-active' : ''}`}
-              style={chatMode === 'order'
-                ? { background: `${theme.primary}26`, borderColor: `${theme.primary}80`, color: theme.primary }
-                : { background: '#18181b', borderColor: '#3f3f46', color: '#a1a1aa' }}
-              title="Short order-focused responses"
-            >
-              ⚡ Order Fast
-            </button>
-          </div>
-        </div>
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, boxShadow: `0 4px 15px ${theme.primary}33` }}>
@@ -2615,7 +2569,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                   </div>
 
                   {/* Quick Options */}
-                  {chatMode === 'order' && isLatestMessage && msg.options && msg.options.length > 0 && (
+                  {isLatestMessage && msg.options && msg.options.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
                       {msg.options.map((opt, optIndex) => (
                         <button
@@ -3316,26 +3270,6 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           line-height: 1.56;
           letter-spacing: 0.012em;
           text-wrap: pretty;
-        }
-        .chat-mode-toggle {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 6px;
-        }
-        .chat-mode-btn {
-          border: 1px solid;
-          border-radius: 11px;
-          padding: 6px 10px;
-          font-size: 12px;
-          font-weight: 600;
-          transition: transform 0.14s ease, box-shadow 0.2s ease;
-          white-space: nowrap;
-        }
-        .chat-mode-btn:active {
-          transform: scale(0.97);
-        }
-        .chat-mode-btn.is-active {
-          box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 8px 20px rgba(0, 0, 0, 0.26);
         }
         .chat-emoji {
           display: inline-block;

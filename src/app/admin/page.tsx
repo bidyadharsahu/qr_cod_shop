@@ -32,7 +32,6 @@ interface PaymentGatewayStatus {
   plan?: 'basic' | 'premium';
 }
 
-type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
 type StaffRole = 'manager' | 'chef';
 type RealtimeHealth = 'connecting' | 'live' | 'degraded';
 type KitchenLanguage = 'en' | 'es';
@@ -197,7 +196,6 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   
   // Theme
   const [theme, setTheme] = useState<AppTheme>(getCurrentTheme());
-  const [uiTone, setUiTone] = useState<AdminUiTone>('fintech');
   
   // Waiter calls
   const [waiterCalls, setWaiterCalls] = useState<Order[]>([]);
@@ -1904,19 +1902,6 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   }, []);
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const stored = window.localStorage.getItem('admin_ui_tone') as AdminUiTone | null;
-    if (stored === 'corporate' || stored === 'luxury' || stored === 'fintech') {
-      setUiTone(stored);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('admin_ui_tone', uiTone);
-  }, [uiTone]);
-
-  useEffect(() => {
     if (!isAuthenticated || !restaurantId) {
       setPaymentGatewayLoading(false);
       return;
@@ -1975,14 +1960,8 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
       { id: 'tables', label: 'Tables' },
     ];
 
-  const toneOptions: Array<{ id: AdminUiTone; label: string }> = [
-    { id: 'corporate', label: 'Corporate' },
-    { id: 'luxury', label: 'Luxury' },
-    { id: 'fintech', label: 'Fintech' },
-  ];
-
   return (
-    <div className={`admin-shell vanguard-slate admin-tone-${uiTone} min-h-screen text-white relative overflow-x-clip`}>
+    <div className="admin-shell vanguard-slate admin-tone-default min-h-screen text-white relative overflow-x-clip">
       {/* Toast */}
       <AnimatePresence>
         {toast && (
@@ -2104,21 +2083,6 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                 </button>
               ))}
             </nav>
-
-            <div className="hidden xl:flex items-center gap-3 border-l border-[#2a2a33] pl-3">
-              {toneOptions.map((tone) => (
-                <button
-                  key={tone.id}
-                  onClick={() => setUiTone(tone.id)}
-                  className={`tone-chip admin-nav-link px-2 py-2 text-xs font-semibold uppercase tracking-[0.12em] border-b-2 ${
-                    uiTone === tone.id ? 'is-active text-white border-current' : 'text-gray-500 border-transparent hover:text-white'
-                  }`}
-                  style={uiTone === tone.id ? { color: theme.primary } : {}}
-                >
-                  {tone.label}
-                </button>
-              ))}
-            </div>
 
             {/* Right side actions */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
