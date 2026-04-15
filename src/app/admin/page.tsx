@@ -35,6 +35,7 @@ interface PaymentGatewayStatus {
 type AdminUiTone = 'corporate' | 'luxury' | 'fintech';
 type StaffRole = 'manager' | 'chef';
 type RealtimeHealth = 'connecting' | 'live' | 'degraded';
+type KitchenLanguage = 'en' | 'es';
 
 interface AdminDashboardProps {
   forcedTenantSlug?: string;
@@ -68,6 +69,94 @@ const formatIsoDayLabel = (isoDay: string) => {
 
 const isLiveKitchenStatus = (status: string) => ['pending', 'confirmed', 'preparing'].includes(status);
 
+const KITCHEN_TRANSLATIONS: Record<KitchenLanguage, {
+  queueTitle: string;
+  queueSubtitle: string;
+  allergyAlerts: string;
+  spiceNotes: string;
+  activeTickets: string;
+  noKitchenOrders: string;
+  table: string;
+  queuedAgo: string;
+  eta: string;
+  minAgo: string;
+  min: string;
+  allergyAlertBadge: string;
+  spiceNoteBadge: string;
+  chefNoteBadge: string;
+  allergyAlertCardTitle: string;
+  startPrep: string;
+  markReadyServed: string;
+  printTicket: string;
+  languageLabel: string;
+  english: string;
+  spanish: string;
+}> = {
+  en: {
+    queueTitle: 'Kitchen Queue',
+    queueSubtitle: 'Chef-focused view with only live kitchen orders.',
+    allergyAlerts: 'Allergy Alerts',
+    spiceNotes: 'Spice Notes',
+    activeTickets: 'Active tickets',
+    noKitchenOrders: 'No kitchen orders right now',
+    table: 'Table',
+    queuedAgo: 'Queued',
+    eta: 'ETA',
+    minAgo: 'min ago',
+    min: 'min',
+    allergyAlertBadge: 'ALLERGY ALERT',
+    spiceNoteBadge: 'SPICE NOTE',
+    chefNoteBadge: 'CHEF NOTE',
+    allergyAlertCardTitle: 'Allergy Alert',
+    startPrep: 'Start Prep',
+    markReadyServed: 'Mark Ready / Served',
+    printTicket: 'Print Ticket',
+    languageLabel: 'Language',
+    english: 'English',
+    spanish: 'Spanish',
+  },
+  es: {
+    queueTitle: 'Cola de Cocina',
+    queueSubtitle: 'Vista para chef con solo pedidos activos de cocina.',
+    allergyAlerts: 'Alertas de Alergia',
+    spiceNotes: 'Notas de Picante',
+    activeTickets: 'Tickets activos',
+    noKitchenOrders: 'No hay pedidos de cocina ahora',
+    table: 'Mesa',
+    queuedAgo: 'En cola',
+    eta: 'ETA',
+    minAgo: 'min atrás',
+    min: 'min',
+    allergyAlertBadge: 'ALERTA DE ALERGIA',
+    spiceNoteBadge: 'NOTA DE PICANTE',
+    chefNoteBadge: 'NOTA DEL CHEF',
+    allergyAlertCardTitle: 'Alerta de Alergia',
+    startPrep: 'Iniciar Preparación',
+    markReadyServed: 'Marcar Listo / Servido',
+    printTicket: 'Imprimir Ticket',
+    languageLabel: 'Idioma',
+    english: 'Inglés',
+    spanish: 'Español',
+  },
+};
+
+const KITCHEN_STATUS_LABELS: Record<KitchenLanguage, Record<string, string>> = {
+  en: {
+    pending: 'PENDING',
+    confirmed: 'CONFIRMED',
+    preparing: 'PREPARING',
+    served: 'SERVED',
+    cancelled: 'CANCELLED',
+  },
+  es: {
+    pending: 'PENDIENTE',
+    confirmed: 'CONFIRMADO',
+    preparing: 'PREPARANDO',
+    served: 'SERVIDO',
+    cancelled: 'CANCELADO',
+  },
+};
+
 export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps = {}) {
   const router = useRouter();
   const normalizedForcedTenantSlug = normalizeRestaurantSlug(forcedTenantSlug || '');
@@ -90,6 +179,14 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
   const [tables, setTables] = useState<RestaurantTable[]>([]);
   const [paymentEvents, setPaymentEvents] = useState<PaymentEventAudit[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'kitchen' | 'menu' | 'tables'>('dashboard');
+  const [kitchenLanguage, setKitchenLanguage] = useState<KitchenLanguage>(() => {
+    if (typeof window === 'undefined') return 'en';
+    try {
+      return localStorage.getItem('netrikxr-kitchen-language') === 'es' ? 'es' : 'en';
+    } catch {
+      return 'en';
+    }
+  });
   const [notifications, setNotifications] = useState<Order[]>([]);
   const seenOrderNotificationIdsRef = useRef<Set<number>>(new Set());
   const notificationsBootstrappedRef = useRef(false);
@@ -171,6 +268,20 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
     setToast({ message, type });
     setTimeout(() => setToast(null), 4000);
   };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('netrikxr-kitchen-language', kitchenLanguage);
+    } catch {
+      // Ignore storage errors and keep runtime state.
+    }
+  }, [kitchenLanguage]);
+
+  const kitchenText = KITCHEN_TRANSLATIONS[kitchenLanguage];
+  const getKitchenStatusLabel = useCallback((status: string) => {
+    const labels = KITCHEN_STATUS_LABELS[kitchenLanguage];
+    return labels[status] || status.toUpperCase();
+  }, [kitchenLanguage]);
 
   const playOrderNotificationSound = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -2681,15 +2792,34 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div className="admin-panel rounded-2xl p-4 sm:p-5 flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold">Kitchen Queue</h1>
-                <p className="text-xs text-gray-400 mt-1">Chef-focused view with only live kitchen orders.</p>
+                <h1 className="text-xl font-bold">{kitchenText.queueTitle}</h1>
+                <p className="text-xs text-gray-400 mt-1">{kitchenText.queueSubtitle}</p>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-400/60 bg-rose-500/20 text-rose-100">Allergy Alerts: {kitchenQueueRiskSummary.allergyAlertOrders}</span>
-                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">Spice Notes: {kitchenQueueRiskSummary.spiceNoteOrders}</span>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-400/60 bg-rose-500/20 text-rose-100">{kitchenText.allergyAlerts}: {kitchenQueueRiskSummary.allergyAlertOrders}</span>
+                  <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">{kitchenText.spiceNotes}: {kitchenQueueRiskSummary.spiceNoteOrders}</span>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-xs text-gray-400">Active tickets</p>
+                <div className="mb-2 flex items-center justify-end gap-1.5">
+                  <span className="text-[11px] text-gray-400">{kitchenText.languageLabel}</span>
+                  <button
+                    type="button"
+                    onClick={() => setKitchenLanguage('en')}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${kitchenLanguage === 'en' ? 'text-black' : 'text-gray-300 border-zinc-600 bg-zinc-900'}`}
+                    style={kitchenLanguage === 'en' ? { background: theme.primary, borderColor: theme.primary } : {}}
+                  >
+                    EN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setKitchenLanguage('es')}
+                    className={`px-2 py-0.5 rounded text-[11px] font-semibold border transition-colors ${kitchenLanguage === 'es' ? 'text-black' : 'text-gray-300 border-zinc-600 bg-zinc-900'}`}
+                    style={kitchenLanguage === 'es' ? { background: theme.primary, borderColor: theme.primary } : {}}
+                  >
+                    ES
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400">{kitchenText.activeTickets}</p>
                 <p className="text-2xl font-bold" style={{ color: theme.primary }}>{kitchenOrders.length}</p>
               </div>
             </div>
@@ -2697,7 +2827,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
             {kitchenOrders.length === 0 ? (
               <div className="admin-panel rounded-2xl p-10 text-center">
                 <ChefHat className="w-10 h-10 text-gray-600 mx-auto mb-3" />
-                <p className="text-gray-400">No kitchen orders right now</p>
+                <p className="text-gray-400">{kitchenText.noKitchenOrders}</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -2709,19 +2839,19 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                       <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
                         <div>
                           <p className="text-lg font-bold" style={{ color: theme.primary }}>{order.receipt_id}</p>
-                          <p className="text-sm text-gray-300">Table {order.table_number} | {order.status.toUpperCase()}</p>
-                          <p className="text-xs text-gray-500 mt-1">Queued {ageMin} min ago | ETA {estimatePrepMinutes(order)} min</p>
+                          <p className="text-sm text-gray-300">{kitchenText.table} {order.table_number} | {getKitchenStatusLabel(order.status)}</p>
+                          <p className="text-xs text-gray-500 mt-1">{kitchenText.queuedAgo} {ageMin} {kitchenText.minAgo} | {kitchenText.eta} {estimatePrepMinutes(order)} {kitchenText.min}</p>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {kitchenRisk.hasAllergy && (
                               <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-rose-400/70 bg-rose-500/20 text-rose-100 flex items-center gap-1">
-                                <AlertTriangle className="w-3.5 h-3.5" /> ALLERGY ALERT
+                                <AlertTriangle className="w-3.5 h-3.5" /> {kitchenText.allergyAlertBadge}
                               </span>
                             )}
                             {kitchenRisk.hasSpiceNote && (
-                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">SPICE NOTE</span>
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-orange-400/50 bg-orange-500/20 text-orange-100">{kitchenText.spiceNoteBadge}</span>
                             )}
                             {kitchenRisk.hasChefNote && (
-                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-sky-400/40 bg-sky-500/15 text-sky-100">CHEF NOTE</span>
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold border border-sky-400/40 bg-sky-500/15 text-sky-100">{kitchenText.chefNoteBadge}</span>
                             )}
                           </div>
                         </div>
@@ -2730,7 +2860,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                           order.status === 'preparing' ? 'bg-purple-500/20 text-purple-300' :
                           'bg-cyan-500/20 text-cyan-300'
                         }`}>
-                          {order.status}
+                          {getKitchenStatusLabel(order.status)}
                         </span>
                       </div>
 
@@ -2748,7 +2878,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
 
                       {kitchenRisk.global.allergies && (
                         <div className="mb-3 rounded-lg border border-rose-500/60 bg-rose-500/20 px-3 py-2">
-                          <p className="text-xs uppercase font-semibold tracking-wide text-rose-100">Allergy Alert</p>
+                          <p className="text-xs uppercase font-semibold tracking-wide text-rose-100">{kitchenText.allergyAlertCardTitle}</p>
                           <p className="text-sm text-rose-50 mt-0.5">{kitchenRisk.global.allergies}</p>
                         </div>
                       )}
@@ -2759,7 +2889,7 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                             onClick={() => updateOrderStatus(order.id, 'preparing')}
                             className="px-4 py-2 rounded-lg text-sm font-semibold bg-purple-500 hover:bg-purple-600"
                           >
-                            Start Prep
+                            {kitchenText.startPrep}
                           </button>
                         )}
                         {order.status === 'preparing' && (
@@ -2767,14 +2897,14 @@ export default function AdminDashboard({ forcedTenantSlug }: AdminDashboardProps
                             onClick={() => updateOrderStatus(order.id, 'served')}
                             className="px-4 py-2 rounded-lg text-sm font-semibold bg-cyan-500 hover:bg-cyan-600"
                           >
-                            Mark Ready / Served
+                            {kitchenText.markReadyServed}
                           </button>
                         )}
                         <button
                           onClick={() => printKitchenTicket(order)}
                           className="px-4 py-2 rounded-lg text-sm font-semibold bg-zinc-700 hover:bg-zinc-600 flex items-center gap-2"
                         >
-                          <Printer className="w-4 h-4" /> Print Ticket
+                          <Printer className="w-4 h-4" /> {kitchenText.printTicket}
                         </button>
                       </div>
                     </div>

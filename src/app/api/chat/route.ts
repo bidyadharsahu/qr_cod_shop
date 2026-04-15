@@ -82,6 +82,7 @@ function buildConversationalPrompt(payload: {
     '- Keep it natural, friendly, and emotionally aware.',
     '- You can do small talk like a good friend, then smoothly guide back to food when appropriate.',
     '- Use 1-3 emojis naturally when it fits the mood.',
+    '- Do not rely on button/tap language; use natural conversational prompts and open-ended questions.',
     '- Never do romantic/sexual roleplay or intimacy.',
     '- Keep it concise and mobile-friendly (max 130 words).',
     '- Plain text only (no markdown, no JSON).',

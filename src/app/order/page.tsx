@@ -1289,6 +1289,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
   function addBotMessage(content: string, options?: { label: string; value: string }[], extra?: Partial<ChatMessage>) {
     const tenantDisplayName = (restaurantName || 'this restaurant').trim() || 'this restaurant';
     const assistantName = (chatbotName || DEFAULT_CHATBOT_NAME).trim() || DEFAULT_CHATBOT_NAME;
+    const effectiveOptions = chatMode === 'order' ? options : undefined;
     const normalizedContent = content
       .replace(/Coasis Restaurant Bar & Suites/gi, tenantDisplayName)
       .replace(/Welcome to Coasis/gi, `Welcome to ${tenantDisplayName}`)
@@ -1301,7 +1302,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       role: 'bot',
       content: addExpressiveEmojiToBotReply(normalizedContent),
       createdAt: Date.now(),
-      options,
+      options: effectiveOptions,
       ...extra
     };
     setChatMessages(prev => [...prev, msg]);
@@ -1563,6 +1564,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isBotTyping) return;
     if (!userInput.trim()) return;
 
     const input = userInput.trim();
@@ -2562,6 +2564,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           <AnimatePresence mode="popLayout">
             {chatMessages.map((msg, index) => {
               const previous = chatMessages[index - 1];
+              const isLatestMessage = index === chatMessages.length - 1;
               const showDateSeparator = !previous || new Date(previous.createdAt).toDateString() !== new Date(msg.createdAt).toDateString();
 
               return (
@@ -2612,7 +2615,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                   </div>
 
                   {/* Quick Options */}
-                  {msg.options && msg.options.length > 0 && (
+                  {chatMode === 'order' && isLatestMessage && msg.options && msg.options.length > 0 && (
                     <div className="flex flex-wrap gap-2 mt-3">
                       {msg.options.map((opt, optIndex) => (
                         <button
@@ -3274,7 +3277,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
           />
           <button 
             type="submit" 
-            disabled={!userInput.trim()}
+            disabled={!userInput.trim() || isBotTyping}
             className="w-11 h-11 sm:w-12 sm:h-12 text-black rounded-2xl flex items-center justify-center active:scale-95 transition-transform disabled:opacity-40"
             style={{ background: theme.primary }}
           >
