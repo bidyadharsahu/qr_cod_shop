@@ -935,6 +935,12 @@ function detectCategory(text: string): string | null {
 // ============================================
 function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): IntentType {
   const normalized = normalize(text);
+  const hasEmoji = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(text);
+  const hasAlphaNumeric = /[a-z0-9]/i.test(text);
+
+  if (hasEmoji && !hasAlphaNumeric) {
+    return 'CASUAL_CHAT';
+  }
 
   if (
     /\ballerg(y|ies|ic)\b|\bintoleran(t|ce)\b|\bno\s+(potato|tomato|onion|garlic|cheese|sauce)\b|\bwithout\s+(potato|tomato|onion|garlic|cheese|sauce)\b|\bmild\s+spice\b|\bspice\s+level\b|\bextra\s+spicy\b|\bon\s+the\s+side\b/.test(normalized)
@@ -1657,6 +1663,14 @@ export function processChatMessage(
 
     // ---- CASUAL CHAT ----
     case 'CASUAL_CHAT': {
+      if (/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u.test(message) && !/[a-z0-9]/i.test(message)) {
+        return {
+          message: "Love the energy 😄 I'm here with you. Want me to suggest a great dish for your mood right now?",
+          intent,
+          entities,
+        };
+      }
+
       if (/\b(girlfriend|boyfriend|date\s+me|love\s+you|romantic|sexy)\b/i.test(message)) {
         return {
           message: "I can't do romantic roleplay, but I can absolutely keep this warm and personal while helping with your order.\n\nTell me your mood and I will suggest a great dish right away.",
