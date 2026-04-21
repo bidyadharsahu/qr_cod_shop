@@ -22,6 +22,11 @@ const ADMIN_WHATSAPP = '+16562145190';
 const TIP_OPTIONS = [0, 10, 15, 20, 25];
 const DEFAULT_CHATBOT_NAME = 'SIA';
 const DEFAULT_LOGO_URL = '/icons/icon-96x96.png';
+const ALLOWED_REMOTE_IMAGE_HOSTS = new Set([
+  'images.unsplash.com',
+  'images.pexels.com',
+  'api.qrserver.com',
+]);
 const CHAT_EMOJI_OPTIONS = ['😀', '😄', '😋', '😎', '🤩', '🤔', '🙏', '👍', '❤️', '🔥', '✨', '🎉', '🍽️', '🛒', '🥗', '🍤', '🍰', '☕', '🥤', '🌶️', '🦞', '🐟', '😅', '😂'];
 const EMOJI_DETECT_REGEX = /\p{Extended_Pictographic}/u;
 
@@ -547,7 +552,19 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
     ));
   }, []);
 
-  const getDisplayImage = (item: MenuItem): string => item.image_url || getDefaultMenuImage(item.name, item.category);
+  const getDisplayImage = (item: MenuItem): string => {
+    const candidate = (item.image_url || '').trim();
+    if (candidate) {
+      if (candidate.startsWith('/')) return candidate;
+      try {
+        const parsed = new URL(candidate);
+        if (ALLOWED_REMOTE_IMAGE_HOSTS.has(parsed.hostname)) return candidate;
+      } catch {
+        // Ignore invalid URLs and fall back to defaults below.
+      }
+    }
+    return getDefaultMenuImage(item.name, item.category);
+  };
 
   const mergeUnique = (a: string[], b: string[]) => Array.from(new Set([...a, ...b].map(v => v.trim()).filter(Boolean)));
 
@@ -1434,6 +1451,7 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         break;
       case 'menu':
         addUserMessage('Show me the menu');
+        setSelectedCategory(null);
         addBotMessage('Here\'s what we\'ve got tonight! ?? Tap any category or just tell me what you\'re feeling.', undefined, { showMenu: true });
         break;
       case 'cart':
@@ -1616,13 +1634,15 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
         if (response.matchedItems && response.matchedItems.length > 0) {
           setLastAskedItem(response.matchedItems[0].item);
         }
+        setSelectedCategory(null);
         addBotMessage(
           response.message,
           [
             { label: '? Add to Cart', value: 'add_last_item' },
             { label: '??? See Menu', value: 'menu' },
             { label: '? No Thanks', value: 'no_thanks' }
-          ]
+          ],
+          { showMenu: true }
         );
         return;
       }
@@ -1679,11 +1699,17 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
       }
 
       if (response.suggestedItems && response.suggestedItems.length > 0) {
+        setSelectedCategory(null);
         addBotMessage(response.message, undefined, { showMenu: true });
         return;
       }
 
       if (response.action === 'show_menu' || response.action === 'show_category') {
+        if (response.action === 'show_category' && response.category) {
+          setSelectedCategory(response.category);
+        } else {
+          setSelectedCategory(null);
+        }
         addBotMessage(response.message, undefined, { showMenu: true });
         return;
       }
@@ -2635,6 +2661,13 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                                     fill
                                     sizes="80px"
                                     className="object-cover"
+                                    onError={(event) => {
+                                      const target = event.currentTarget;
+                                      const fallbackSrc = getDefaultMenuImage(item.name, item.category);
+                                      if (target.src !== fallbackSrc) {
+                                        target.src = fallbackSrc;
+                                      }
+                                    }}
                                   />
                                 </div>
                                 <div className="flex-1 min-w-0 mr-1">
@@ -2730,6 +2763,13 @@ function OrderContent({ forcedTenantSlug }: OrderPageProps) {
                                   fill
                                   sizes="64px"
                                   className="object-cover"
+                                  onError={(event) => {
+                                    const target = event.currentTarget;
+                                    const fallbackSrc = getDefaultMenuImage(item.name, item.category);
+                                    if (target.src !== fallbackSrc) {
+                                      target.src = fallbackSrc;
+                                    }
+                                  }}
                                 />
                               </div>
                               <div className="flex-1 mr-3 min-w-0">

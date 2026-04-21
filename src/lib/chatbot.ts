@@ -370,7 +370,7 @@ const DISH_KNOWLEDGE: Record<string, DishInfo> = {
 // ============================================
 const INTENT_PATTERNS: Record<IntentType, string[]> = {
   GREETING: ['hi', 'hello', 'hey', 'bro', 'boss', 'waiter', 'yo', 'whats up', "what's up", 'sup', 'hola', 'howdy', 'good morning', 'good evening', 'good afternoon'],
-  VIEW_MENU: ['show menu', 'see menu', 'full menu', 'what do you have', 'available items', 'what can i get', 'let me see', 'whatcha got', 'what you got', 'show me everything', 'see the menu', 'browse menu', 'open menu', 'menu please'],
+  VIEW_MENU: ['menu', 'show menu', 'see menu', 'full menu', 'what do you have', 'available items', 'what can i get', 'let me see', 'whatcha got', 'what you got', 'show me everything', 'see the menu', 'browse menu', 'open menu', 'menu please'],
   VIEW_CATEGORY: ['appetizers', 'appetizer', 'starters', 'starter', 'salads', 'mains', 'main dish', 'main course', 'entree', 'entrees', 'sandwiches', 'desserts', 'sides'],
   ORDER_ITEM: ['i want', 'give me', 'add', 'include', 'get me', 'bring me', 'make it', 'serve me', 'pour me', 'i need', 'can i have', "i'll have", 'ill have', 'i will have', 'let me get', 'one', 'two', 'three', 'order'],
   ADD_TO_CART: ['add it', 'add that', 'yes add', 'add to cart', 'put it in', 'add this', 'yes please add', 'add to my order', 'add to order', 'yes add it'],
@@ -1016,6 +1016,9 @@ function detectIntent(text: string, menuItems: MenuItem[], cart: CartItem[]): In
   for (const keyword of INTENT_PATTERNS.VEGETARIAN_REQUEST) {
     if (normalized.includes(keyword)) return 'VEGETARIAN_REQUEST';
   }
+
+  // Check view menu (also support short direct commands like "menu")
+  if (/\bmenu(s)?\b/.test(normalized)) return 'VIEW_MENU';
 
   // Check view menu
   for (const keyword of INTENT_PATTERNS.VIEW_MENU) {
